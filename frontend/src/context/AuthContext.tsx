@@ -1,16 +1,15 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, AuthResponse } from '../types';
-import api from '../services/api';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { User } from '../types';
+import { authService } from '../services/greencodeApi';
+import { getRefreshToken, clearSession } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (login: string, password: string) => Promise<void>;
-  signup: (email: string, username: string, password: string, fullName?: string, githubToken?: string) => Promise<void>;
-  githubSignin: (githubToken: string) => Promise<void>;
-  logout: () => void;
+  connectGitHub: (githubToken: string) => Promise<User>;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -24,78 +23,94 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
 
+  /**
+   * Restore the session on first load.
+   *
+   * The access token lives only in memory, so after a page reload it is gone.
+   * The persisted refresh token is exchanged for a fresh access token, which the
+   * axios interceptor stores automatically. This is what keeps a refresh from
+   * logging the user out.
+   */
   useEffect(() => {
-    const storedToken = localStorage.getItem('greencode_token');
-    const storedUser = localStorage.getItem('greencode_user');
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
-      api.defaults.headers.common.Authorization = `Bearer ${storedToken}`;
-    }
-    setIsLoading(false);
+    let cancelled = false;
 
-    const handleLogout = () => logout();
-    window.addEventListener('auth:logout', handleLogout);
-    return () => window.removeEventListener('auth:logout', handleLogout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const restore = async () => {
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) {
+        setIsLoading(false);
+        return;
+      }
+      try {
+        const res = await authService.refresh(refreshToken);
+        if (!cancelled && res.data.user) {
+          setUser(res.data.user);
+        }
+      } catch {
+        // Expired or revoked refresh token - start from a clean slate.
+        if (!cancelled) {
+          clearSession();
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    restore();
+
+    // The axios interceptor fires this when a refresh cannot recover the session.
+    const handleForcedLogout = () => {
+      clearSession();
+      setUser(null);
+      setIsLoading(false);
+      navigate('/login', { replace: true });
+    };
+    window.addEventListener('auth:logout', handleForcedLogout);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('auth:logout', handleForcedLogout);
+    };
+  }, [navigate]);
+
+  const connectGitHub = useCallback(async (githubToken: string) => {
+    const res = await authService.signInWithGitHub(githubToken);
+    setUser(res.data.user);
+    return res.data.user;
   }, []);
 
-  const login = async (login: string, password: string) => {
-    const resp = await api.post<AuthResponse>('/api/auth/signin', { login, password });
-    const { access_token, user: userData } = resp.data;
-    localStorage.setItem('greencode_token', access_token);
-    localStorage.setItem('greencode_user', JSON.stringify(userData));
-    api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
-    setToken(access_token);
-    setUser(userData);
-  };
-
-  const signup = async (email: string, username: string, password: string, fullName?: string, githubToken?: string) => {
-    const resp = await api.post<AuthResponse>('/api/auth/signup', {
-      email, username, password, full_name: fullName, github_token: githubToken,
-    });
-    const { access_token, user: userData } = resp.data;
-    localStorage.setItem('greencode_token', access_token);
-    localStorage.setItem('greencode_user', JSON.stringify(userData));
-    api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
-    setToken(access_token);
-    setUser(userData);
-  };
-
-  const githubSignin = async (githubToken: string) => {
-    const resp = await api.post<AuthResponse>('/api/auth/github', { github_token: githubToken });
-    const { access_token, user: userData } = resp.data;
-    localStorage.setItem('greencode_token', access_token);
-    localStorage.setItem('greencode_user', JSON.stringify(userData));
-    api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
-    setToken(access_token);
-    setUser(userData);
-  };
-
-  const logout = () => {
-    localStorage.removeItem('greencode_token');
-    localStorage.removeItem('greencode_user');
-    api.defaults.headers.common.Authorization = '';
-    setToken(null);
+  const logout = useCallback(async () => {
+    try {
+      await authService.logout();
+    } catch {
+      // Best effort - the local session is cleared regardless.
+    }
+    clearSession();
     setUser(null);
-  };
+    navigate('/login', { replace: true });
+  }, [navigate]);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     if (!user?.id) return;
-    const resp = await api.get<User>(`/api/auth/user/${user.id}`);
-    setUser(resp.data);
-    localStorage.setItem('greencode_user', JSON.stringify(resp.data));
-  };
+    const res = await authService.getUser(user.id);
+    setUser(res.data);
+  }, [user?.id]);
 
   return (
-    <AuthContext.Provider value={{
-      user, token, isAuthenticated: !!token, isLoading,
-      login, signup, githubSignin, logout, refreshUser,
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        isLoading,
+        connectGitHub,
+        logout,
+        refreshUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 };
+

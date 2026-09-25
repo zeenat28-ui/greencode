@@ -1009,6 +1009,22 @@ def audit_file(file_path: str) -> Dict[str, Any]:
     return audit_source_code(source_code, language=lang, file_path=file_path)
 
 
+def _rebase_result_paths(result: Dict[str, Any], relative_path: str) -> None:
+    """Rewrite absolute host paths in a file result to repository-relative paths.
+
+    `audit_file` records the on-disk path it actually read. For a GitHub audit
+    that path is a throwaway temp workspace, so exposing it would (a) leak the
+    server's directory layout to API consumers and (b) break
+    `create_refactoring_pull_request`, which must address files by their real
+    in-repo path.
+    """
+    result["file_path"] = relative_path
+    result["relative_path"] = relative_path
+    for violation in result.get("violations", []):
+        violation["file_path"] = relative_path
+        violation["relative_path"] = relative_path
+
+
 def audit_repository(repo_path: str) -> Dict[str, Any]:
     """Recursively scan an entire directory or repository for all supported languages.
 
@@ -1031,6 +1047,7 @@ def audit_repository(repo_path: str) -> Dict[str, Any]:
         if lang:
             res = audit_file(repo_path)
             res["relative_path"] = os.path.basename(repo_path)
+            _rebase_result_paths(res, os.path.basename(repo_path))
             file_results.append(res)
             all_violations.extend(res["violations"])
             total_lines += res["lines_count"]
@@ -1057,6 +1074,10 @@ def audit_repository(repo_path: str) -> Dict[str, Any]:
                     rel_path = os.path.relpath(full_path, repo_path).replace("\\", "/")
                     res = audit_file(full_path)
                     res["relative_path"] = rel_path
+                    # Report repository-relative paths, never the host's absolute
+                    # temp/workspace path. Absolute paths leaked server layout and
+                    # made GitHub PR patching fail to match the remote file.
+                    _rebase_result_paths(res, rel_path)
                     file_results.append(res)
                     all_violations.extend(res["violations"])
                     total_lines += res["lines_count"]
@@ -1155,10 +1176,34 @@ def audit_zip_archive(zip_path: str) -> Dict[str, Any]:
 
                 z.extract(member, temp_dir)
 
-        results = audit_repository(temp_dir)
+        # GitHub zipballs wrap the whole tree in a single "owner-repo-<sha>/"
+        # directory. Detecting and descending into it keeps every reported
+        # file path relative to the actual repository root.
+        audit_root = _resolve_archive_root(temp_dir)
+        results = audit_repository(audit_root)
         results["repo_path"] = zip_path
         results["workspace_dir"] = temp_dir
         return results
     except Exception:
         cleanup_workspace(temp_dir)
         raise
+
+
+def _resolve_archive_root(temp_dir: str) -> str:
+    """Descend past a single synthetic top-level wrapper directory, if present.
+
+    GitHub/Codeload archives are shaped as `<owner>-<repo>-<sha>/...`. Without
+    this, every violation would be reported as
+    `zeenat28-ui-greencode-a1b2c3d4/src/app.py` instead of `src/app.py`, which
+    breaks the Pull Request patcher and the SARIF paths.
+    """
+    try:
+        entries = [e for e in os.listdir(temp_dir) if e != "__MACOSX"]
+    except OSError:
+        return temp_dir
+    if len(entries) != 1:
+        return temp_dir
+    candidate = os.path.join(temp_dir, entries[0])
+    if os.path.isdir(candidate) and not os.path.islink(candidate):
+        return candidate
+    return temp_dir

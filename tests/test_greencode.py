@@ -214,7 +214,7 @@ class TestGreenCodeAuditor(unittest.TestCase):
             self.assertIn("refactored_code", refactored)
             self.assertGreater(refactored["energy_reduction_pct"], 0)
             self.assertGreater(refactored["carbon_saved_gco2_10k_runs"], 0)
-            self.assertIn("IBM", refactored.get("model_used", ""))
+            self.assertTrue(refactored.get("model_used"))
 
     def test_11_async_database_connection_pool(self):
         """Verify asynchronous connection pooling, transaction retries, and async CRUD operations."""
@@ -300,18 +300,28 @@ class TestGreenCodeAuditor(unittest.TestCase):
         self.assertEqual(fossil_res["time_of_day_info"]["multiplier"], 1.28)
 
     def test_15_async_engine_disposal_and_task_polling(self):
-        """Verify async DB engine disposal and asynchronous scanning task queue status polling."""
+        """Verify async DB engine disposal and asynchronous scan task queue status polling."""
         import asyncio
         from app.database import close_async_db
-        from app.tasks import enqueue_scan_task, get_task_status
+        from app.tasks import enqueue_github_scan_task, get_task_status
 
-        # Test task enqueue and polling
-        samples_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "samples"))
-        task_id = enqueue_scan_task(samples_dir)
+        # Enqueue a GitHub audit. No network call happens synchronously: the
+        # payload is dispatched to the broker or the in-process worker.
+        queued = enqueue_github_scan_task(
+            "octocat/Hello-World", token="ghp_dummytoken1234567890", user_id=1
+        )
+        task_id = queued.get("task_id")
         self.assertIsNotNone(task_id)
+        self.assertIn(queued.get("queue_backend", ""), (
+            "Celery / Redis Distributed Broker",
+            "In-Process Concurrent Task Worker",
+        ))
 
-        status_info = get_task_status(task_id)
-        self.assertIn(status_info.get("status"), ["PENDING", "STARTED", "Processing", "Completed", "SUCCESS"])
+        # Polling must never raise, whatever state the task happens to be in.
+        status_info = get_task_status(task_id, user_id=1)
+        self.assertIn(status_info.get("status"), [
+            "PENDING", "STARTED", "Processing", "Completed", "SUCCESS", "FAILURE",
+        ])
 
         # Test close_async_db without errors
         asyncio.run(close_async_db())
@@ -404,7 +414,7 @@ class TestGreenCodeAuditor(unittest.TestCase):
         from unittest.mock import patch
         # 1. Test Python nested loop transformation (under deterministic synthesis)
         bad_py = "for i in a:\n    for j in b:\n        for k in c:\n            val = i * j * k"
-        with patch.dict(os.environ, {"IBM_BOB_API_KEY": ""}):
+        with patch.dict(os.environ, {"HUGGINGFACE_API_KEY": "", "HF_TOKEN": ""}):
             res = refactor_repository_code(bad_py, ViolationType.NESTED_LOOPS, language_id="python")
             self.assertIn("product(a, b, c)", res["refactored_code"])
             self.assertIn("for i, j, k in", res["refactored_code"])
@@ -655,7 +665,9 @@ class TestGreenCodeAuditor(unittest.TestCase):
         mock_resp.status_code = 201
         mock_resp.json.return_value = {"id": 98765, "html_url": "https://github.com/test/repo/issues/12#issuecomment-98765"}
 
-        with patch("requests.post", return_value=mock_resp) as mock_post:
+        with patch("app.github_client._get_session") as mock_session:
+            mock_request = mock_session.return_value.request
+            mock_request.return_value = mock_resp
             res = post_pr_carbon_comment(
                 repo_full_name="test/repo",
                 pr_number=12,
@@ -666,7 +678,7 @@ class TestGreenCodeAuditor(unittest.TestCase):
             self.assertTrue(res["success"])
             self.assertEqual(res["comment_id"], 98765)
 
-            called_args, called_kwargs = mock_post.call_args
+            called_args, called_kwargs = mock_request.call_args
             payload = called_kwargs.get("json", {})
             body = payload.get("body", "")
             self.assertIn("GreenCode Auditor — Pull Request Carbon Quality Gate", body)

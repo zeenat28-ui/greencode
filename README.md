@@ -17,14 +17,24 @@ greencode/
 │   ├── __init__.py         # Package initialization
 │   ├── main.py             # FastAPI backend server & CI/CD terminal CLI
 │   ├── parser.py           # AST Static Analysis Engine (GSF Patterns)
-│   ├── profiler.py         # Docker SDK Dynamic Container Sandbox & SCI Hardware Power Model
-│   ├── optimizer.py        # Electricity Maps Client & GreenCode AI Refactoring Synthesizer
+│   ├── energy_sensors.py   # Hardware energy counters (RAPL / perf / battery) + TDP model
+│   ├── energy_tracer.py    # Per-function energy attribution via sys.settrace
+│   ├── sci.py              # Green Software Foundation SCI = (E x I + M) / R
+│   ├── dynamic_analysis.py # Sandboxed repo execution under measurement (Docker)
+│   ├── huggingface_client.py # HuggingFace Inference API client (classified errors)
+│   ├── llm_refactor.py     # LLM refactoring + behaviour-preserving verification gate
+│   ├── audit_intel.py      # Deterministic root-cause grouping & remediation planning
+│   ├── optimizer.py        # Electricity Maps client + rule-based refactor engine
 │   └── database.py         # SQLite + SQLAlchemy historic ledger & metrics persistence
 ├── samples/
 │   ├── heavy_pipeline.py   # Benchmark script exhibiting all 4 GSF anti-patterns (Score: 47/100)
 │   └── eco_pipeline.py     # Refactored script conforming to Green Computing standards (Score: 100/100)
 ├── tests/
 │   ├── test_greencode.py   # Comprehensive unit test suite (AST, DB, Grid, Profiler, Refactoring)
+│   ├── test_energy.py      # Counter wrap-around, domain precedence, SCI arithmetic
+│   ├── test_energy_tracer.py # Function-level energy attribution
+│   ├── test_llm_refactor.py# Verification gate: what is allowed through, and what is not
+│   ├── test_dynamic_analysis.py # Sandbox posture, archive safety, entry-point discovery
 │   └── test_api.py         # FastAPI REST endpoint integration tests
 ├── action.yml              # Native GitHub Action manifest for CI/CD blocker
 ├── ui.py                   # Streamlit green dashboard with side-by-side diffs & SCI charts
@@ -129,7 +139,7 @@ streamlit run ui.py
 Open your browser at `http://localhost:8501` to view:
 - **Repository Explorer**: Scan local paths or drag-and-drop ZIP archives.
 - **Global Grid Carbon Gauge**: Interactive live regional carbon intensities.
-- **Dynamic Container Profiler**: Hardware CPU/RAM watts, Joules, and SCI metrics.
+- **Dynamic Container Profiler**: Hardware energy counters (RAPL/perf), Joules, and SCI metrics.
 - **Interactive Code Diff**: Side-by-side comparison using `streamlit-code-diff` showcasing Original Inefficient Code vs. GreenCode AI Eco-Refactored Code.
 - **SCI Carbon Analytics**: Plotly projections of carbon saved across 10,000 production cycles.
 
@@ -156,12 +166,93 @@ python -m unittest discover tests
 
 ---
 
-## 🤖 GreenCode AI Refactoring Synthesizer
+## 🤖 Refactoring: deterministic rules first, model second
 
-Flagged code patterns are transformed using Green Software Foundation SCI standards:
-> *"You are a Green Computing Optimization Agent. Refactor this specific source code to drastically reduce physical CPU cycles, minimize memory foot-prints, and drop energy consumption, while guaranteeing identical output logical data."*
+There are two refactoring paths, and the order matters.
 
-The application supports both direct AI model integration (IBM Granite 3.2, Qwen 2.5 Coder, Llama 3.2 via HuggingFace Inference API) and an offline AST-driven Green Code Synthesizer that produces immediate, deterministic code optimizations across 500+ languages.
+**1. Deterministic rule engine (default, always available).** For each rule the
+engine has a pattern-specific, provably-correct transformation: O(n²) string
+concatenation becomes a list plus `''.join()`; a 3-deep Python loop nest becomes
+`itertools.product`. These are better than anything a language model produces,
+and they are reproducible, so the engine prefers them unconditionally.
+
+**2. HuggingFace code model (only where the engine has no specific rewrite).**
+`Qwen2.5-Coder-32B-Instruct` is asked for an energy-focused rewrite, but its
+output is **verified before it is shown**:
+
+| Gate | What it rejects |
+| :--- | :--- |
+| Not code | Prose, empty output, `pass` / `...` stubs |
+| Compiles | Output that fails `compile()` |
+| Similar | Rewrites below a token-similarity floor (catches unrelated code) |
+| Behaves | Output executed against the original on 12 probe inputs, results compared |
+
+The behaviour gate is the important one. It catches changes a reviewer would
+miss — flipping `t += x` to `t -= x` is a one-character edit, passes every
+static check, and computes a completely different answer. If any gate fails, the
+deterministic suggestion is returned instead and the response says why.
+
+`refactor_repository_code()` always reports which path produced the output via
+`model_used`, and the verification outcome via `verification`.
+
+---
+
+## ⚡ Dynamic analysis: what the code actually costs
+
+Static analysis says a pattern *can* be expensive. Dynamic analysis measures
+what the program *did* cost. Both are shipped, and they are reported as
+distinct things.
+
+### Energy measurement (`app/energy_sensors.py`)
+
+A tiered set of backends, each reporting which one produced the number:
+
+| Backend | Source | Fidelity |
+| :--- | :--- | :--- |
+| `rapl` | `/sys/class/powercap/intel-rapl:*/energy_uj` (Linux, Intel/AMD) | Millijoule-accurate hardware counter |
+| `perf` | `perf stat -e power/energy-pkg/` | Same PMU counters via perf |
+| `battery` | `/sys/class/power_supply` / Win32_Battery | Whole-system discharge rate |
+| `model` | TDP + load curve | **Estimate, not measurement** |
+
+RAPL details that are easy to get wrong and are handled explicitly:
+counter **wrap-around** (a naive `end - start` goes sharply negative once a
+workload crosses the wrap point) and **domain precedence** (`core` is a subset of
+`package`; adding both double-counts).
+
+The result is never presented as measured when it isn't — `measurement_method`
+and `measurement_is_hardware` are in every payload, and modelled figures carry
+an explicit warning.
+
+### Function-level attribution (`app/energy_tracer.py`)
+
+A background sampler reads the energy counter on a fixed interval while
+`sys.settrace` emits call/return events; the two timelines are correlated so
+each function is charged the energy read while it was on the stack. Self time is
+derived by subtracting child time, and the tracer excludes both the standard
+library and its own frames so the measurement never bills its own bookkeeping.
+
+### Sandboxed execution (`app/dynamic_analysis.py`)
+
+`POST /api/dynamic/analyze` checks out a repository, finds its test suite or
+entry point, and runs it under measurement. Executing third-party code is RCE by
+definition, so the sandbox is mandatory rather than optional: network disabled,
+read-only rootfs, all capabilities dropped, non-root, CPU/memory/PID limits, hard
+timeout. **Host-level execution of untrusted code is deliberately not offered as
+a fallback** — a denylist of dangerous calls is bypassed trivially. Without
+Docker the endpoint returns `sandbox_unavailable` and no numbers.
+
+### SCI (`app/sci.py`)
+
+Implements the Green Software Foundation formula exactly:
+
+```
+SCI = (E × I + M) / R
+```
+
+`E` energy (kWh), `I` carbon intensity (gCO2e/kWh), `M` embodied emissions,
+`R` the **functional unit**. `R` is mandatory: a figure without it is a total,
+not an intensity, and comparing a once-per-deploy build to a once-per-second
+service is meaningless. The API warns when `R` is left at 1.
 
 ---
 
@@ -205,6 +296,6 @@ jobs:
           green-score-threshold: "75.0"
           target-zone: "US-CAL-CISO"
           electricity-maps-token: ${{ secrets.ELECTRICITY_MAPS_TOKEN }}
-          ibm-bob-token: ${{ secrets.IBM_BOB_TOKEN }}
+          huggingface-token: ${{ secrets.HUGGINGFACE_TOKEN }}
 ```
 

@@ -13,7 +13,12 @@ import os
 import secrets
 import sys
 import time
+import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional
+
+import re
+try: from cryptography.fernet import Fernet, InvalidToken; FERNET_OK=True
+except ImportError: FERNET_OK=False
 
 import bcrypt
 
@@ -39,6 +44,50 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import declarative_base, relationship, scoped_session, sessionmaker
+
+# FERNET COLUMN ENCRYPTION for secrets at rest
+_ENCRYPTION_KEY_RAW = os.environ.get("SECRETS_ENCRYPTION_KEY")
+if _ENCRYPTION_KEY_RAW and FERNET_OK:
+    import base64, hashlib
+    _key_bytes = hashlib.sha256(_ENCRYPTION_KEY_RAW.encode()).digest()
+    _FERNET_KEY = base64.urlsafe_b64encode(_key_bytes)
+    _fernet = Fernet(_FERNET_KEY)
+else:
+    _fernet = None
+    if not _ENCRYPTION_KEY_RAW:
+        _ENCRYPTION_WARNED = True
+        import logging as _logging
+        _logging.getLogger("greencode.db").warning(
+            "SECRETS_ENCRYPTION_KEY is not set - GitHub tokens are being stored in "
+            "PLAINTEXT in the database. Set it to a long random string before deploying."
+        )
+
+
+def secrets_encryption_enabled() -> bool:
+    """Whether Fernet encryption at rest is active for credential columns."""
+    return _fernet is not None
+
+def encrypt_secret(plaintext: Optional[str]) -> Optional[str]:
+    if plaintext is None or not _fernet: return plaintext
+    try: return _fernet.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+    except Exception: return plaintext
+def decrypt_secret(ciphertext: Optional[str]) -> Optional[str]:
+    if ciphertext is None or not _fernet: return ciphertext
+    try: return _fernet.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, Exception): return ciphertext
+
+# PASSWORD POLICY: min 12 chars, 3 of 4 classes (upper, lower, digit, special)
+_BCRYPT_ROUNDS = int(os.environ.get("BCRYPT_ROUNDS", "12"))
+def validate_password_policy(password: str) -> None:
+    if not password or len(password) < 12:
+        raise ValueError("Password must be at least 12 characters long.")
+    classes = 0
+    if re.search(r"[a-z]", password): classes += 1
+    if re.search(r"[A-Z]", password): classes += 1
+    if re.search(r"\d", password): classes += 1
+    if re.search(r"[^A-Za-z0-9]", password): classes += 1
+    if classes < 3:
+        raise ValueError("Password must contain at least 3 of: uppercase, lowercase, digits, special characters.")
 
 # ---------------------------------------------------------------------------
 # DATABASE URL & ASYNC ENGINE CONFIGURATION
@@ -171,6 +220,15 @@ class Repository(Base):
     status = Column(String(50), default="completed")
     summary_json = Column(Text, nullable=True)
 
+    # --- GitHub provenance -------------------------------------------------
+    # `source` is "github" for every audit in GitHub-only mode. `full_name` and
+    # `default_branch` let History re-run a scan and let Issues open a PR without
+    # having to re-derive the slug from a display name.
+    source = Column(String(32), default="github", nullable=True, index=True)
+    full_name = Column(String(255), nullable=True, index=True)
+    default_branch = Column(String(255), nullable=True)
+    html_url = Column(String(1024), nullable=True)
+
     user = relationship("User", back_populates="repositories")
     violations = relationship(
         "ScanViolation", back_populates="repository", cascade="all, delete-orphan", lazy="selectin"
@@ -244,6 +302,36 @@ class RefactoringRecord(Base):
     violation = relationship("ScanViolation", back_populates="refactorings")
 
 
+class LoginAttempt(Base):  # lockout tracking
+    __tablename__ = "login_attempts"
+    id = Column(Integer, primary_key=True)
+    login_identifier = Column(String(255), index=True, nullable=False)
+    success = Column(Boolean, default=False, nullable=False)
+    ip_address = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class RefreshToken(Base):  # refresh tokens for short-lived access JWTs
+    __tablename__ = "refresh_tokens"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_jti = Column(String(128), unique=True, index=True, nullable=False)
+    token_hash = Column(String(255), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    revoked = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+# Additive, idempotent SQLite migrations for the repositories table.
+# Kept declarative so every new provenance column follows the same pattern.
+_REPOSITORY_ADDITIVE_COLUMNS: List[Any] = [
+    ("source", "source VARCHAR(32) DEFAULT 'github'"),
+    ("full_name", "full_name VARCHAR(255)"),
+    ("default_branch", "default_branch VARCHAR(255)"),
+    ("html_url", "html_url VARCHAR(1024)"),
+]
+
+
 # ---------------------------------------------------------------------------
 # INITIALIZATION & CONTEXT MANAGERS WITH RETRY LOGIC
 # ---------------------------------------------------------------------------
@@ -260,6 +348,10 @@ def init_db() -> None:
                 col_names = [r[1] for r in res]
                 if "user_id" not in col_names:
                     conn.execute(text("ALTER TABLE repositories ADD COLUMN user_id INTEGER REFERENCES users(id);"))
+                # GitHub provenance columns (additive migration, idempotent)
+                for new_col, col_ddl in _REPOSITORY_ADDITIVE_COLUMNS:
+                    if new_col not in col_names:
+                        conn.execute(text(f"ALTER TABLE repositories ADD COLUMN {col_ddl};"))
                 # Migrate verification and reset columns to users if not yet present
                 u_res = conn.execute(text("PRAGMA table_info(users);")).fetchall()
                 u_cols = [r[1] for r in u_res]
@@ -271,6 +363,34 @@ def init_db() -> None:
                     conn.execute(text("ALTER TABLE users ADD COLUMN reset_token VARCHAR(255);"))
                 if "reset_token_expires" not in u_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN reset_token_expires DATETIME;"))
+                # Guard for login_attempts table columns
+                la_res = conn.execute(text("PRAGMA table_info(login_attempts);")).fetchall()
+                la_cols = [r[1] for r in la_res]
+                if la_cols:
+                    if "login_identifier" not in la_cols:
+                        conn.execute(text("ALTER TABLE login_attempts ADD COLUMN login_identifier VARCHAR(255);"))
+                    if "success" not in la_cols:
+                        conn.execute(text("ALTER TABLE login_attempts ADD COLUMN success BOOLEAN DEFAULT 0;"))
+                    if "ip_address" not in la_cols:
+                        conn.execute(text("ALTER TABLE login_attempts ADD COLUMN ip_address VARCHAR(64);"))
+                    if "created_at" not in la_cols:
+                        conn.execute(text("ALTER TABLE login_attempts ADD COLUMN created_at DATETIME;"))
+                # Guard for refresh_tokens table columns
+                rt_res = conn.execute(text("PRAGMA table_info(refresh_tokens);")).fetchall()
+                rt_cols = [r[1] for r in rt_res]
+                if rt_cols:
+                    if "user_id" not in rt_cols:
+                        conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN user_id INTEGER REFERENCES users(id);"))
+                    if "token_jti" not in rt_cols:
+                        conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN token_jti VARCHAR(128);"))
+                    if "token_hash" not in rt_cols:
+                        conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN token_hash VARCHAR(255);"))
+                    if "expires_at" not in rt_cols:
+                        conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN expires_at DATETIME;"))
+                    if "revoked" not in rt_cols:
+                        conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN revoked BOOLEAN DEFAULT 0;"))
+                    if "created_at" not in rt_cols:
+                        conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN created_at DATETIME;"))
                 conn.commit()
         except Exception:
             pass
@@ -298,6 +418,34 @@ async def init_async_db() -> None:
                     await conn.execute(text("ALTER TABLE users ADD COLUMN reset_token VARCHAR(255);"))
                 if "reset_token_expires" not in u_cols:
                     await conn.execute(text("ALTER TABLE users ADD COLUMN reset_token_expires DATETIME;"))
+                # Guard for login_attempts table columns
+                la_res = await conn.execute(text("PRAGMA table_info(login_attempts);"))
+                la_cols = [r[1] for r in la_res.fetchall()]
+                if la_cols:
+                    if "login_identifier" not in la_cols:
+                        await conn.execute(text("ALTER TABLE login_attempts ADD COLUMN login_identifier VARCHAR(255);"))
+                    if "success" not in la_cols:
+                        await conn.execute(text("ALTER TABLE login_attempts ADD COLUMN success BOOLEAN DEFAULT 0;"))
+                    if "ip_address" not in la_cols:
+                        await conn.execute(text("ALTER TABLE login_attempts ADD COLUMN ip_address VARCHAR(64);"))
+                    if "created_at" not in la_cols:
+                        await conn.execute(text("ALTER TABLE login_attempts ADD COLUMN created_at DATETIME;"))
+                # Guard for refresh_tokens table columns
+                rt_res = await conn.execute(text("PRAGMA table_info(refresh_tokens);"))
+                rt_cols = [r[1] for r in rt_res.fetchall()]
+                if rt_cols:
+                    if "user_id" not in rt_cols:
+                        await conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN user_id INTEGER REFERENCES users(id);"))
+                    if "token_jti" not in rt_cols:
+                        await conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN token_jti VARCHAR(128);"))
+                    if "token_hash" not in rt_cols:
+                        await conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN token_hash VARCHAR(255);"))
+                    if "expires_at" not in rt_cols:
+                        await conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN expires_at DATETIME;"))
+                    if "revoked" not in rt_cols:
+                        await conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN revoked BOOLEAN DEFAULT 0;"))
+                    if "created_at" not in rt_cols:
+                        await conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN created_at DATETIME;"))
             except Exception:
                 pass
 
@@ -358,10 +506,12 @@ async def save_scan_results_async(
     green_score: float,
     violations_data: List[Dict[str, Any]],
     summary_json: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Persist repository scan results asynchronously using connection pooling."""
     async with get_async_session() as session:
         repo = Repository(
+            user_id=user_id,
             name=name,
             path_or_url=path_or_url,
             total_files=total_files,
@@ -499,9 +649,16 @@ def save_scan_results(
     violations_data: List[Dict[str, Any]],
     summary_json: Optional[str] = None,
     user_id: Optional[int] = None,
+    source: str = "github",
+    full_name: Optional[str] = None,
+    default_branch: Optional[str] = None,
+    html_url: Optional[str] = None,
 ) -> Repository:
-    """Sync wrapper to persist scan results."""
-    init_db()
+    """Sync wrapper to persist scan results.
+
+    `violations_data` rows are written with repository-relative paths, so no host
+    filesystem layout is persisted.
+    """
     db = SessionLocal()
     try:
         repo = Repository(
@@ -513,6 +670,10 @@ def save_scan_results(
             green_score=green_score,
             status="completed",
             summary_json=summary_json,
+            source=source,
+            full_name=full_name,
+            default_branch=default_branch,
+            html_url=html_url,
         )
         db.add(repo)
         db.flush()
@@ -554,7 +715,6 @@ def save_profile_metric(
     repo_id: Optional[int] = None,
 ) -> ProfileMetric:
     """Sync wrapper to persist profile metric."""
-    init_db()
     db = SessionLocal()
     try:
         metric = ProfileMetric(
@@ -587,7 +747,6 @@ def save_refactoring_record(
     violation_id: Optional[int] = None,
 ) -> RefactoringRecord:
     """Sync wrapper to persist refactoring record."""
-    init_db()
     db = SessionLocal()
     try:
         record = RefactoringRecord(
@@ -608,19 +767,41 @@ def save_refactoring_record(
         db.close()
 
 
-def get_latest_repositories(limit: int = 10) -> List[Dict[str, Any]]:
-    """Sync wrapper for repository history."""
+def get_latest_repositories(
+    limit: int = 15,
+    user_id: Optional[int] = None,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """Return a page of repository audits, newest first, scoped to a user.
+
+    Filtering happens in SQL rather than in Python. The previous implementation
+    fetched a fixed 100 rows and then discarded other users' rows in the API
+    layer, which silently truncated results and leaked cross-tenant volume.
+    """
     init_db()
+    limit = max(1, min(int(limit), 100))
+    offset = max(0, int(offset))
     db = SessionLocal()
     try:
+        query = db.query(Repository)
+        if user_id is not None:
+            query = query.filter(Repository.user_id == user_id)
+        total = query.count()
         repos = (
-            db.query(Repository).order_by(desc(Repository.created_at)).limit(limit).all()
+            query.order_by(desc(Repository.created_at), desc(Repository.id))
+            .offset(offset)
+            .limit(limit)
+            .all()
         )
-        return [
+        items = [
             {
                 "id": r.id,
                 "name": r.name,
                 "path_or_url": r.path_or_url,
+                "full_name": r.full_name,
+                "default_branch": r.default_branch,
+                "html_url": r.html_url,
+                "source": r.source or "github",
                 "created_at": r.created_at.isoformat() if r.created_at else None,
                 "total_files": r.total_files,
                 "total_lines": r.total_lines,
@@ -630,6 +811,13 @@ def get_latest_repositories(limit: int = 10) -> List[Dict[str, Any]]:
             }
             for r in repos
         ]
+        return {
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + len(items) < total,
+        }
     finally:
         db.close()
 
@@ -646,6 +834,10 @@ def get_repository_details(repo_id: int) -> Optional[Dict[str, Any]]:
             "id": repo.id,
             "name": repo.name,
             "path_or_url": repo.path_or_url,
+            "full_name": repo.full_name,
+            "default_branch": repo.default_branch,
+            "html_url": repo.html_url,
+            "source": repo.source or "github",
             "user_id": repo.user_id,
             "created_at": repo.created_at.isoformat() if repo.created_at else None,
             "total_files": repo.total_files,
@@ -685,12 +877,15 @@ def get_repository_details(repo_id: int) -> Optional[Dict[str, Any]]:
         db.close()
 
 
-def get_cumulative_carbon_savings() -> Dict[str, float]:
+def get_cumulative_carbon_savings(user_id=None) -> Dict[str, float]:
     """Sync wrapper for cumulative savings."""
     init_db()
     db = SessionLocal()
     try:
-        records = db.query(RefactoringRecord).all()
+        query = db.query(RefactoringRecord)
+        if user_id is not None:
+            query = query.join(ScanViolation, RefactoringRecord.violation_id == ScanViolation.id).join(Repository, ScanViolation.repo_id == Repository.id).filter(Repository.user_id == user_id)
+        records = query.all()
         total_gco2 = sum(r.carbon_saved_gco2_10k_runs for r in records)
         avg_pct = (
             sum(r.energy_reduction_pct for r in records) / len(records)
@@ -711,7 +906,7 @@ def get_cumulative_carbon_savings() -> Dict[str, float]:
 # ---------------------------------------------------------------------------
 def hash_password(plain_password: str) -> str:
     """Hash password using bcrypt."""
-    salt = bcrypt.gensalt()
+    salt = bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
     return bcrypt.hashpw(plain_password.encode("utf-8"), salt).decode("utf-8")
 
 
@@ -729,10 +924,11 @@ def user_to_dict(user: Optional[User], include_sensitive: bool = False) -> Optio
     """Serialize User model to sanitized dictionary (never exposes password_hash; protects tokens by default)."""
     if not user:
         return None
-    token = user.github_token
+    token = decrypt_secret(user.github_token) if include_sensitive else user.github_token
     token_masked = None
-    if token:
-        token_masked = f"{token[:4]}****{token[-4:]}" if len(token) > 8 else "****"
+    if user.github_token:
+        raw_for_mask = decrypt_secret(user.github_token)
+        token_masked = f"{raw_for_mask[:4]}****{raw_for_mask[-4:]}" if len(raw_for_mask) > 8 else "****"
 
     return {
         "id": user.id,
@@ -741,7 +937,7 @@ def user_to_dict(user: Optional[User], include_sensitive: bool = False) -> Optio
         "full_name": user.full_name or user.username,
         "github_username": user.github_username,
         "github_token": token if include_sensitive else None,
-        "has_github_token": bool(token),
+        "has_github_token": bool(user.github_token),
         "github_token_masked": token_masked,
         "avatar_url": user.avatar_url,
         "role": user.role,
@@ -773,8 +969,7 @@ def create_user(
             raise ValueError("A valid email address is required.")
         if not clean_username or len(clean_username) < 3:
             raise ValueError("Username must be at least 3 characters long.")
-        if not password or len(password) < 6:
-            raise ValueError("Password must be at least 6 characters long.")
+        validate_password_policy(password)
 
         existing = db.query(User).filter(
             (User.email == clean_email) | (User.username == clean_username)
@@ -788,13 +983,14 @@ def create_user(
         hashed_pwd = hash_password(password)
         now_utc = datetime.now(timezone.utc)
         v_token = None if auto_verify else secrets.token_urlsafe(32)
+        encrypted_github_token = encrypt_secret(github_token.strip()) if github_token else None
         user = User(
             email=clean_email,
             username=clean_username,
             password_hash=hashed_pwd,
             full_name=full_name.strip() if full_name else clean_username,
             github_username=github_username.strip() if github_username else None,
-            github_token=github_token.strip() if github_token else None,
+            github_token=encrypted_github_token,
             avatar_url=avatar_url,
             role=role,
             is_verified=auto_verify,
@@ -819,12 +1015,15 @@ def authenticate_user(login: str, password: str) -> Optional[Dict[str, Any]]:
     db = SessionLocal()
     try:
         clean_login = login.strip().lower()
+        if is_account_locked(clean_login):
+            return None
         user = db.query(User).filter(
             (User.email == clean_login) | (User.username == clean_login)
         ).first()
         if not user:
             return None
         if not verify_password(password, user.password_hash):
+            record_failed_login(clean_login)
             return None
         user.last_login_at = datetime.now(timezone.utc)
         db.commit()
@@ -841,6 +1040,17 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     try:
         user = db.query(User).filter(User.id == user_id).first()
         return user_to_dict(user, include_sensitive=False) if user else None
+    finally:
+        db.close()
+
+
+def get_user_by_id_raw(user_id: int) -> Optional[User]:
+    """Return raw ORM User object (not user_to_dict) - needed by auth middleware to check ownership."""
+    init_db()
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        return user
     finally:
         db.close()
 
@@ -873,7 +1083,7 @@ def get_user_raw_github_token(user_id: int) -> Optional[str]:
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == user_id).first()
-        return user.github_token if user else None
+        return decrypt_secret(user.github_token) if user else None
     finally:
         db.close()
 
@@ -893,7 +1103,7 @@ def update_user_profile(
         if not user:
             return None
         if github_token is not None:
-            user.github_token = github_token.strip() if github_token else None
+            user.github_token = encrypt_secret(github_token.strip()) if github_token else None
         if github_username is not None:
             user.github_username = github_username.strip() if github_username else None
         if avatar_url is not None:
@@ -928,7 +1138,7 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
 
         now_utc = datetime.now(timezone.utc)
         if user:
-            user.github_token = github_token.strip()
+            user.github_token = encrypt_secret(github_token.strip()) if github_token else None
             user.github_username = gh_login
             if avatar_url:
                 user.avatar_url = avatar_url
@@ -937,7 +1147,8 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
             user.last_login_at = now_utc
             db.commit()
             db.refresh(user)
-            return user_to_dict(user, include_sensitive=True)
+            # Sanitized by default: the raw PAT must never reach an API response.
+            return user_to_dict(user, include_sensitive=False)
         else:
             random_pwd = os.urandom(16).hex()
             user = User(
@@ -946,7 +1157,7 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
                 password_hash=hash_password(random_pwd),
                 full_name=full_name,
                 github_username=gh_login,
-                github_token=github_token.strip(),
+                github_token=encrypt_secret(github_token.strip()) if github_token else None,
                 avatar_url=avatar_url,
                 role="developer",
                 is_verified=True,  # GitHub-authenticated emails are pre-verified by GitHub
@@ -956,7 +1167,8 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
             db.add(user)
             db.commit()
             db.refresh(user)
-            return user_to_dict(user, include_sensitive=True)
+            # Sanitized by default: the raw PAT must never reach an API response.
+            return user_to_dict(user, include_sensitive=False)
     except Exception:
         db.rollback()
         raise
@@ -1036,3 +1248,136 @@ def reset_password_with_token(token: str, new_password: str) -> Dict[str, Any]:
         db.close()
 
 
+def record_failed_login(login_identifier: str, ip_address: Optional[str] = None) -> None:
+    """Record a failed login attempt using SessionLocal to insert LoginAttempt row."""
+    init_db()
+    db = SessionLocal()
+    try:
+        attempt = LoginAttempt(
+            login_identifier=login_identifier.strip().lower(),
+            success=False,
+            ip_address=ip_address,
+        )
+        db.add(attempt)
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
+def is_account_locked(login_identifier: str, max_attempts: int = 5, lockout_minutes: int = 15) -> bool:
+    """Check if account is locked based on failed login attempts in the lockout window."""
+    init_db()
+    db = SessionLocal()
+    try:
+        clean_id = login_identifier.strip().lower()
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=lockout_minutes)
+        count = db.query(LoginAttempt).filter(
+            LoginAttempt.login_identifier == clean_id,
+            LoginAttempt.success == False,
+            LoginAttempt.created_at >= cutoff,
+        ).count()
+        return count >= max_attempts
+    finally:
+        db.close()
+
+
+def create_refresh_token(user_id: int) -> Dict[str, Any]:
+    """Create a new refresh token for a user. Returns plain token, jti, and expires_at."""
+    import hashlib
+    init_db()
+    db = SessionLocal()
+    try:
+        jti = str(uuid.uuid4())
+        plain_token = secrets.token_urlsafe(64)
+        token_hash = hashlib.sha256(plain_token.encode("utf-8")).hexdigest()
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        rt = RefreshToken(
+            user_id=user_id,
+            token_jti=jti,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            revoked=False,
+        )
+        db.add(rt)
+        db.commit()
+        return {
+            "refresh_token": plain_token,
+            "jti": jti,
+            "expires_at": expires_at.isoformat(),
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def rotate_refresh_token(old_refresh_token: str) -> Optional[Dict[str, Any]]:
+    """Revoke old refresh token and issue a new one for the same user."""
+    import hashlib
+    init_db()
+    db = SessionLocal()
+    try:
+        old_hash = hashlib.sha256(old_refresh_token.encode("utf-8")).hexdigest()
+        now_utc = datetime.now(timezone.utc)
+        old_rt = db.query(RefreshToken).filter(
+            RefreshToken.token_hash == old_hash,
+            RefreshToken.revoked == False,
+            RefreshToken.expires_at > now_utc,
+        ).first()
+        if not old_rt:
+            return None
+        user_id = old_rt.user_id
+        old_rt.revoked = True
+        db.flush()
+        new_result = create_refresh_token_internal(db, user_id)
+        new_result["user_id"] = user_id
+        db.commit()
+        return new_result
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def create_refresh_token_internal(db, user_id: int) -> Dict[str, Any]:
+    """Internal helper to create refresh token using existing db session."""
+    import hashlib
+    jti = str(uuid.uuid4())
+    plain_token = secrets.token_urlsafe(64)
+    token_hash = hashlib.sha256(plain_token.encode("utf-8")).hexdigest()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    rt = RefreshToken(
+        user_id=user_id,
+        token_jti=jti,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        revoked=False,
+    )
+    db.add(rt)
+    db.flush()
+    return {
+        "refresh_token": plain_token,
+        "jti": jti,
+        "expires_at": expires_at.isoformat(),
+        "user_id": user_id,
+    }
+
+
+def revoke_refresh_tokens(user_id: int) -> None:
+    """Mark all refresh tokens for a user as revoked."""
+    init_db()
+    db = SessionLocal()
+    try:
+        db.query(RefreshToken).filter(
+            RefreshToken.user_id == user_id,
+            RefreshToken.revoked == False,
+        ).update({RefreshToken.revoked: True}, synchronize_session=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()

@@ -1,206 +1,144 @@
-import { useState } from 'react';
+﻿import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
-import { theme } from '../styles/theme';
+import { Github, Leaf, Loader2, AlertCircle, Eye, EyeOff, ExternalLink } from 'lucide-react';
 
-const loginSchema = z.object({
-  login: z.string().min(1, 'Email or username is required'),
-  password: z.string().min(1, 'Password is required'),
-});
-
-type LoginFormData = z.infer<typeof loginSchema>;
+const TOKEN_HELP_URL =
+  'https://github.com/settings/tokens/new?scopes=repo&description=GreenCode%20Auditor';
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, githubSignin } = useAuth();
-  const [showPassword, setShowPassword] = useState(false);
+  const { connectGitHub } = useAuth();
+
+  const [token, setToken] = useState('');
+  const [showToken, setShowToken] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ghToken, setGhToken] = useState('');
-  const [useGithub, setUseGithub] = useState(false);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-  });
+  const from =
+    (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard';
 
-  const from = location.state?.from?.pathname || '/dashboard';
-
-  const onSubmit = async (data: LoginFormData) => {
-    if (useGithub && ghToken) {
-      setIsSubmitting(true);
-      try {
-        await githubSignin(ghToken);
-        navigate(from, { replace: true });
-      } catch (err: any) {
-        setError(err.response?.data?.detail || 'GitHub authentication failed');
-      } finally {
-        setIsSubmitting(false);
-      }
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = token.trim();
+    if (!trimmed) {
+      setError('Paste a GitHub Personal Access Token to continue.');
       return;
     }
     setIsSubmitting(true);
+    setError(null);
     try {
-      await login(data.login, data.password);
+      await connectGitHub(trimmed);
       navigate(from, { replace: true });
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Invalid credentials. Please try again.');
+      setError(
+        err?.response?.data?.detail ||
+          'GitHub rejected that token. Make sure it exists and has the "repo" scope.'
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-mint-50">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <img src="/logo.png" alt="GreenCode" className="h-12 w-12 rounded-full" />
-            <span className="font-black text-2xl text-mint-800" style={{ color: theme.colors.primary }}>GreenCode Auditor</span>
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white shadow-lg shadow-emerald-500/20 mb-4">
+            <Leaf size={26} className="fill-white/20" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-800">Welcome back</h1>
-          <p className="text-slate-500 mt-1">Sign in to your account to continue</p>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">GreenCode Auditor</h1>
+          <p className="text-slate-500 mt-1.5 text-sm">
+            Connect your GitHub account to audit its repositories
+          </p>
         </div>
 
-        <div className="bg-white rounded-xl border border-mint-200 shadow-lg p-8">
-          <div className="flex gap-2 mb-6">
-            <button
-              type="button"
-              onClick={() => { setUseGithub(false); setError(null); }}
-              className={`flex-1 py-2.5 rounded-lg font-medium text-sm transition-all ${
-                !useGithub ? 'bg-mint-600 text-white shadow-md' : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              Email / Username
-            </button>
-            <button
-              type="button"
-              onClick={() => { setUseGithub(true); setError(null); }}
-              className={`flex-1 py-2.5 rounded-lg font-medium text-sm transition-all ${
-                useGithub ? 'bg-mint-600 text-white shadow-md' : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              GitHub Token
-            </button>
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-7">
+          <div className="flex items-center gap-2.5 mb-6">
+            <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center">
+              <Github size={17} />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Sign in with GitHub</h2>
+              <p className="text-xs text-slate-500">A personal access token is the only credential used</p>
+            </div>
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-              <p className="text-sm text-red-800">{error}</p>
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 p-3 mb-5 rounded-lg bg-red-50 border border-red-200"
+            >
+              <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700 leading-relaxed">{error}</p>
             </div>
           )}
 
-          {!useGithub ? (
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Email or Username
-                </label>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label htmlFor="gh-token" className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Personal Access Token
+              </label>
+              <div className="relative">
                 <input
-                  type="text"
-                  placeholder="you@example.com or your_username"
-                  className="input"
-                  {...register('login')}
-                />
-                {errors.login && <p className="text-xs text-red-600 mt-1">{errors.login.message}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    className="input pr-12"
-                    {...register('password')}
-                  />
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-                {errors.password && <p className="text-xs text-red-600 mt-1">{errors.password.message}</p>}
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full btn-primary flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" /> Signing in...
-                  </>
-                ) : (
-                  'Sign In'
-                )}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  GitHub Personal Access Token
-                </label>
-                <input
-                  type="password"
+                  id="gh-token"
+                  type={showToken ? 'text' : 'password'}
+                  value={token}
+                  onChange={(e) => {
+                    setToken(e.target.value);
+                    setError(null);
+                  }}
                   placeholder="ghp_... or github_pat_..."
-                  className="input"
-                  value={ghToken}
-                  onChange={(e) => setGhToken(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input pr-11 font-mono text-sm"
                 />
-                <p className="text-xs text-slate-500 mt-1">
-                  Token needs 'repo' scope. Generate at{' '}
-                  <a
-                    href="https://github.com/settings/tokens"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                    style={{ color: theme.colors.primary }}
-                  >
-                    github.com/settings/tokens
-                  </a>
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowToken((s) => !s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  aria-label={showToken ? 'Hide token' : 'Show token'}
+                >
+                  {showToken ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
               </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting || !ghToken}
-                className="w-full btn-primary flex items-center justify-center gap-2"
+              <a
+                href={TOKEN_HELP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:text-emerald-900 hover:underline mt-2"
               >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" /> Connecting...
-                  </>
-                ) : (
-                  'Connect with GitHub'
-                )}
-              </button>
-            </form>
-          )}
-
-          {!useGithub && (
-            <div className="mt-6 text-center text-sm">
-              <span className="text-slate-500">Need an account? </span>
-              <button
-                onClick={() => navigate('/signup')}
-                className="font-semibold hover:underline"
-                style={{ color: theme.colors.primary }}
-              >
-                Create Account
-              </button>
+                Generate a token with the &quot;repo&quot; scope
+                <ExternalLink size={11} />
+              </a>
             </div>
-          )}
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="btn-primary w-full flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Verifying with GitHub...
+                </>
+              ) : (
+                <>
+                  <Github size={16} />
+                  Connect GitHub
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 pt-5 border-t border-slate-100">
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Your token is stored encrypted on the server and is never sent back to your
+              browser. Revoke it any time from your GitHub token settings.
+            </p>
+          </div>
         </div>
       </div>
     </div>

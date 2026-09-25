@@ -5,10 +5,15 @@ GreenCode eco-refactored patches, and open real Pull Requests.
 """
 
 import base64
+from collections import OrderedDict
 from datetime import datetime, timezone
+import hashlib
 import os
+import re
+import tempfile
+import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 try:
@@ -18,131 +23,352 @@ except ImportError:
     pass
 
 GITHUB_API_BASE = "https://api.github.com"
+USER_AGENT = "GreenCode-Auditor/1.0 (+https://github.com/zeenat28-ui/greencode)"
+
+# GitHub rejects API calls without a descriptive User-Agent.
+_DEFAULT_HEADERS = {
+    "Accept": "application/vnd.github.v3+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": USER_AGENT,
+}
+
+# ---------------------------------------------------------------------------
+# Connection pooling: a single keep-alive Session per thread means listing 100
+# repositories costs one TCP+TLS handshake instead of 100.
+# ---------------------------------------------------------------------------
+_SESSION_LOCAL = threading.local()
+
+
+def _get_session() -> requests.Session:
+    """Return a thread-local requests.Session with a tuned connection pool."""
+    session = getattr(_SESSION_LOCAL, "session", None)
+    if session is None:
+        session = requests.Session()
+        session.headers.update(_DEFAULT_HEADERS)
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=10,
+            pool_maxsize=20,
+            max_retries=0,  # retries handled explicitly with backoff below
+        )
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        _SESSION_LOCAL.session = session
+    return session
+
+
+class GitHubAPIError(Exception):
+    """Raised when the GitHub REST API rejects a request with a clear reason."""
+
+    def __init__(self, message: str, status_code: int = 502):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+
+def _build_headers(token: Optional[str] = None) -> Dict[str, str]:
+    headers = dict(_DEFAULT_HEADERS)
+    tok = token or get_github_token()
+    if tok:
+        headers["Authorization"] = f"token {tok}"
+    return headers
+
+
+def _github_error_detail(resp: requests.Response, fallback: str) -> str:
+    """Extract a human-readable message out of a GitHub JSON error body."""
+    try:
+        payload = resp.json()
+        msg = payload.get("message")
+        if msg:
+            errs = payload.get("errors")
+            return f"{msg} ({errs})" if errs else msg
+    except Exception:
+        pass
+    return fallback
+
+
+def _request(
+    method: str,
+    path: str,
+    token: Optional[str] = None,
+    timeout: float = 8.0,
+    stream: bool = False,
+    **kwargs: Any,
+) -> requests.Response:
+    """Perform a GitHub REST call with bounded retry/backoff on transient faults."""
+    url = path if path.startswith("http") else f"{GITHUB_API_BASE}{path}"
+    last_exc: Optional[Exception] = None
+
+    for attempt in range(3):
+        try:
+            resp = _get_session().request(
+                method, url, headers=_build_headers(token),
+                timeout=timeout, stream=stream, **kwargs,
+            )
+        except requests.exceptions.RequestException as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(0.4 * (2 ** attempt))
+                continue
+            raise GitHubAPIError(
+                f"Could not reach the GitHub API. Check network connectivity ({exc}).", 502
+            ) from exc
+
+        # Retry only rate limits / server hiccups. Never retry a client error.
+        if resp.status_code in (403, 429, 500, 502, 503, 504) and attempt < 2:
+            if resp.status_code == 403 and "rate limit" not in resp.text.lower():
+                break
+            time.sleep(0.6 * (2 ** attempt))
+            continue
+        return resp
+
+    raise GitHubAPIError(f"GitHub API request failed: {last_exc}", 502)
+
+
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+def normalize_repo_slug(raw: str) -> str:
+    """Normalise user input into a strict `owner/repo` slug.
+
+    Accepts `owner/repo`, `https://github.com/owner/repo`, and `owner/repo.git`.
+    """
+    if not raw:
+        raise ValueError("Repository reference is required.")
+    clean = raw.strip()
+    clean = re.sub(r"^https?://github\.com/", "", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"^git@github\.com:", "", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\.git$", "", clean, flags=re.IGNORECASE)
+    clean = clean.strip("/").strip()
+    if not _REPO_SLUG_RE.match(clean):
+        raise ValueError(f"Invalid repository reference '{raw}'. Expected the form 'owner/repo'.")
+    return clean
 
 
 def get_github_token() -> str:
-    """Retrieve GitHub token from environment."""
+    """Retrieve the server-level GitHub token from the environment."""
     return os.environ.get("GITHUB_TOKEN", "")
 
 
 def get_authenticated_user(token: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Verify GitHub token and retrieve current user profile."""
+    """Verify a GitHub token and retrieve the authenticated user profile."""
     tok = token or get_github_token()
     if not tok:
         return None
-    headers = {
-        "Authorization": f"token {tok}",
-        "Accept": "application/vnd.github.v3+json",
-    }
     try:
-        resp = requests.get(f"{GITHUB_API_BASE}/user", headers=headers, timeout=5)
-        if resp.status_code == 200:
-            return resp.json()
-    except Exception:
-        pass
-    return None
+        resp = _request("GET", "/user", token=tok, timeout=8.0)
+    except GitHubAPIError:
+        return None
+    return resp.json() if resp.status_code == 200 else None
 
 
-def list_user_repositories(token: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
-    """List public and private repositories accessible to the authenticated user."""
+def list_user_repositories(
+    token: Optional[str] = None,
+    limit: int = 50,
+    include_forks: bool = True,
+) -> List[Dict[str, Any]]:
+    """List repositories accessible to the authenticated user, most recently updated first."""
     tok = token or get_github_token()
     if not tok:
         return []
-    headers = {
-        "Authorization": f"token {tok}",
-        "Accept": "application/vnd.github.v3+json",
-    }
+
+    limit = max(1, min(int(limit), 100))
+    repos: List[Dict[str, Any]] = []
+    page = 1
     try:
-        resp = requests.get(
-            f"{GITHUB_API_BASE}/user/repos?sort=updated&per_page={limit}",
-            headers=headers,
-            timeout=6,
-        )
-        if resp.status_code == 200:
-            repos = [
-                {
-                    "full_name": r["full_name"],
-                    "name": r["name"],
-                    "default_branch": r.get("default_branch", "main"),
+        while len(repos) < limit and page <= 3:
+            per_page = min(100, limit)
+            resp = _request(
+                "GET",
+                f"/user/repos?sort=updated&direction=desc&per_page={per_page}&page={page}",
+                token=tok, timeout=10.0,
+            )
+            if resp.status_code != 200:
+                break
+            batch = resp.json()
+            if not batch:
+                break
+            for r in batch:
+                if not include_forks and r.get("fork"):
+                    continue
+                repos.append({
+                    "full_name": r.get("full_name", ""),
+                    "name": r.get("name", ""),
+                    "owner": (r.get("owner") or {}).get("login", ""),
+                    "default_branch": r.get("default_branch") or "main",
                     "language": r.get("language") or "Other",
+                    "description": r.get("description") or "",
                     "size_kb": r.get("size", 0),
-                    "private": r.get("private", False),
+                    "private": bool(r.get("private", False)),
+                    "fork": bool(r.get("fork", False)),
+                    "archived": bool(r.get("archived", False)),
+                    "stars": r.get("stargazers_count", 0),
+                    "forks": r.get("forks_count", 0),
+                    "open_issues": r.get("open_issues_count", 0),
+                    "updated_at": r.get("updated_at", ""),
                     "url": r.get("html_url", ""),
-                }
-                for r in resp.json()
-            ]
-            # Prioritize Python repositories first
-            repos.sort(key=lambda r: (0 if r["language"] == "Python" else 1, r["name"].lower()))
-            return repos
-    except Exception:
+                })
+                if len(repos) >= limit:
+                    break
+            if len(batch) < per_page:
+                break
+            page += 1
+    except GitHubAPIError:
         pass
-    return []
+
+    repos.sort(key=lambda r: (0 if r["language"] == "Python" else 1, r["name"].lower()))
+    return repos
 
 
-_INSPECT_CACHE: Dict[str, Dict[str, Any]] = {}
+def list_repository_branches(
+    repo_full_name: str,
+    token: Optional[str] = None,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """List branches so the scanner can target a specific git ref."""
+    tok = token or get_github_token()
+    slug = normalize_repo_slug(repo_full_name)
+    if not tok:
+        return []
+    try:
+        resp = _request(
+            "GET", f"/repos/{slug}/branches?per_page={max(1, min(limit, 100))}",
+            token=tok, timeout=8.0,
+        )
+        if resp.status_code != 200:
+            return []
+        return [
+            {"name": b.get("name", ""), "sha": (b.get("commit") or {}).get("sha", "")}
+            for b in resp.json() if b.get("name")
+        ]
+    except GitHubAPIError:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Bounded, per-credential LRU cache for pre-flight inspection.
+#
+# The previous cache was (a) an unbounded dict -> slow memory leak and
+# (b) keyed only on the repo name -> metadata fetched with one user's private
+# token could be served to a different user. Keys now embed a salted token
+# fingerprint so entries can never cross a credential boundary.
+# ---------------------------------------------------------------------------
+_INSPECT_CACHE_MAX = 256
 _INSPECT_CACHE_TTL = 60.0  # seconds
+_INSPECT_CACHE: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+_INSPECT_CACHE_LOCK = threading.Lock()
+
+
+def _cache_fingerprint(token: Optional[str]) -> str:
+    tok = token or get_github_token()
+    return hashlib.sha256((tok or "anonymous").encode("utf-8")).hexdigest()[:16]
+
+
+def _cache_get(key: str) -> Optional[Dict[str, Any]]:
+    now = time.monotonic()
+    with _INSPECT_CACHE_LOCK:
+        entry = _INSPECT_CACHE.get(key)
+        if entry is None:
+            return None
+        if now - entry["timestamp"] >= _INSPECT_CACHE_TTL:
+            _INSPECT_CACHE.pop(key, None)
+            return None
+        _INSPECT_CACHE.move_to_end(key)
+        return entry["data"]
+
+
+def _cache_put(key: str, data: Dict[str, Any]) -> None:
+    with _INSPECT_CACHE_LOCK:
+        _INSPECT_CACHE[key] = {"data": data, "timestamp": time.monotonic()}
+        _INSPECT_CACHE.move_to_end(key)
+        while len(_INSPECT_CACHE) > _INSPECT_CACHE_MAX:
+            _INSPECT_CACHE.popitem(last=False)
 
 
 def inspect_repository_before_audit(
     repo_full_name: str,
     token: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Pre-flight check to verify repository language and size before downloading."""
-    now = time.time()
-    clean_name = repo_full_name.strip().strip("/")
-    if clean_name in _INSPECT_CACHE:
-        cached = _INSPECT_CACHE[clean_name]
-        if now - cached["timestamp"] < _INSPECT_CACHE_TTL:
-            return cached["data"]
+    """Pre-flight check: verify the repository exists, is code, and is auditable.
 
-    tok = token or get_github_token()
-    headers = {"Accept": "application/vnd.github.v3+json"}
-    if tok:
-        headers["Authorization"] = f"token {tok}"
+    Raises GitHubAPIError (404/403) instead of silently reporting success, which
+    previously caused a confusing "scan failed" long after a real 404 was swallowed.
+    """
+    clean_name = normalize_repo_slug(repo_full_name)
+    cache_key = f"{_cache_fingerprint(token)}::{clean_name}"
 
-    try:
-        resp = requests.get(f"{GITHUB_API_BASE}/repos/{clean_name}", headers=headers, timeout=6)
-        if resp.status_code == 200:
-            data = resp.json()
-            lang = data.get("language") or "Other"
-            size_kb = data.get("size", 0)
-            default_branch = data.get("default_branch", "main")
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
 
-            # Check against universal polyglot language engine (500+ languages)
-            from app.parser import UNIVERSAL_EXTENSION_MAP
-            known_languages = set(UNIVERSAL_EXTENSION_MAP.values())
-            known_languages.update({
-                "python", "javascript", "typescript", "c++", "c", "java", "go",
-                "rust", "c#", "c_sharp", "ruby", "php", "swift", "kotlin", "scala",
-                "dart", "zig", "julia", "r", "lua", "perl", "haskell", "elixir",
-                "solidity", "fortran", "cobol", "pascal", "bash", "shell", "powershell", "sql"
-            })
-            is_supported_code = lang.lower() in known_languages or lang in ("Other", "Unknown")
+    resp = _request("GET", f"/repos/{clean_name}", token=token, timeout=8.0)
 
-            if not is_supported_code and size_kb > 30000:
-                result = {
-                    "can_audit": False,
-                    "language": lang,
-                    "size_kb": size_kb,
-                    "default_branch": default_branch,
-                    "message": f"Repository '{clean_name}' ({size_kb/1024:.1f} MB) contains non-code/unsupported binary assets ({lang}).",
-                }
-            else:
-                result = {
-                    "can_audit": True,
-                    "language": lang,
-                    "size_kb": size_kb,
-                    "default_branch": default_branch,
-                    "message": "Ready to audit",
-                }
-            _INSPECT_CACHE[clean_name] = {"data": result, "timestamp": now}
-            return result
+    if resp.status_code == 404:
+        raise GitHubAPIError(
+            f"Repository '{clean_name}' was not found. It may be private or deleted - "
+            "verify the name and make sure your token has the 'repo' scope.",
+            404,
+        )
+    if resp.status_code == 403:
+        raise GitHubAPIError(
+            f"Access to '{clean_name}' was denied. Your GitHub token is missing the "
+            "'repo' scope needed for private repositories.",
+            403,
+        )
+    if resp.status_code != 200:
+        raise GitHubAPIError(
+            _github_error_detail(resp, f"GitHub returned HTTP {resp.status_code}."),
+            502,
+        )
 
-    except Exception:
-        pass
-    fallback = {"can_audit": True, "language": "Unknown", "size_kb": 0, "default_branch": "main", "message": "Proceeding with standard audit"}
-    _INSPECT_CACHE[clean_name] = {"data": fallback, "timestamp": now}
-    return fallback
+    data = resp.json()
+    lang = data.get("language") or "Other"
+    size_kb = data.get("size", 0)
+    default_branch = data.get("default_branch") or "main"
+    archived = bool(data.get("archived", False))
+
+    from app.parser import UNIVERSAL_EXTENSION_MAP
+    known_languages = {v.lower() for v in UNIVERSAL_EXTENSION_MAP.values()}
+    known_languages.update({
+        "python", "javascript", "typescript", "c++", "c", "java", "go", "rust",
+        "c#", "c_sharp", "c-sharp", "ruby", "php", "swift", "kotlin", "scala",
+        "dart", "zig", "julia", "r", "lua", "perl", "haskell", "elixir",
+        "solidity", "fortran", "cobol", "pascal", "bash", "shell",
+        "powershell", "sql",
+    })
+    is_supported_code = lang.lower() in known_languages or lang in ("Other", "Unknown")
+
+    base = {
+        "language": lang,
+        "size_kb": size_kb,
+        "default_branch": default_branch,
+        "archived": archived,
+        "full_name": clean_name,
+        "html_url": data.get("html_url", ""),
+    }
+
+    # 100 MB is the hard ceiling for an in-process synchronous audit.
+    MAX_AUDITABLE_KB = 100 * 1024
+    if size_kb > MAX_AUDITABLE_KB:
+        result = {
+            **base, "can_audit": False,
+            "message": (
+                f"'{clean_name}' is {size_kb / 1024:.1f} MB, above the 100 MB audit "
+                "ceiling. Try a smaller repository or a lighter branch."
+            ),
+        }
+    elif not is_supported_code:
+        result = {
+            **base, "can_audit": False,
+            "message": (
+                f"'{clean_name}' is primarily {lang}. The polyglot engine finds no "
+                "energy anti-patterns in it, so the audit would report a flat 100."
+            ),
+        }
+    else:
+        result = {**base, "can_audit": True, "message": "Ready to audit"}
+
+    _cache_put(cache_key, result)
+    return result
 
 
 
@@ -175,51 +401,74 @@ def create_refactoring_pull_request(
     if not tok:
         return {"success": False, "error": "GitHub token not configured."}
 
-    headers = {
-        "Authorization": f"token {tok}",
-        "Accept": "application/vnd.github.v3+json",
-    }
+    try:
+        slug = normalize_repo_slug(repo_full_name)
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
+
+    repo_url = f"{GITHUB_API_BASE}/repos/{slug}"
 
     # 1. Fetch Repository Details & Default Branch
-    repo_url = f"{GITHUB_API_BASE}/repos/{repo_full_name}"
-    resp_repo = requests.get(repo_url, headers=headers, timeout=6)
+    try:
+        resp_repo = _request("GET", repo_url, token=tok, timeout=10.0)
+    except GitHubAPIError as exc:
+        return {"success": False, "error": exc.message}
     if resp_repo.status_code != 200:
         return {
             "success": False,
-            "error": f"Repository '{repo_full_name}' not found or access denied (Status {resp_repo.status_code}).",
+            "error": (
+                f"Repository '{slug}' was not found or your token cannot access it "
+                f"(HTTP {resp_repo.status_code})."
+            ),
         }
     repo_data = resp_repo.json()
-    default_branch = repo_data.get("default_branch", "main")
+    default_branch = repo_data.get("default_branch") or "main"
 
     # 2. Get latest commit SHA of default branch
-    ref_url = f"{repo_url}/git/ref/heads/{default_branch}"
-    resp_ref = requests.get(ref_url, headers=headers, timeout=6)
+    try:
+        resp_ref = _request("GET", f"{repo_url}/git/ref/heads/{default_branch}", token=tok, timeout=10.0)
+    except GitHubAPIError as exc:
+        return {"success": False, "error": exc.message}
     if resp_ref.status_code != 200:
         return {
             "success": False,
-            "error": f"Could not retrieve branch reference for '{default_branch}'.",
+            "error": f"Could not resolve branch '{default_branch}' on '{slug}'.",
         }
     base_sha = resp_ref.json().get("object", {}).get("sha")
+    if not base_sha:
+        return {"success": False, "error": f"Branch '{default_branch}' has no resolvable head commit."}
 
     # 3. Create a unique feature branch name
     timestamp = int(time.time())
     new_branch = f"greencode/eco-refactor-{timestamp}"
-    create_ref_url = f"{repo_url}/git/refs"
     create_ref_payload = {
         "ref": f"refs/heads/{new_branch}",
         "sha": base_sha,
     }
-    resp_create_ref = requests.post(create_ref_url, json=create_ref_payload, headers=headers, timeout=6)
+    try:
+        resp_create_ref = _request(
+            "POST", f"{repo_url}/git/refs", token=tok,
+            timeout=10.0, json=create_ref_payload,
+        )
+    except GitHubAPIError as exc:
+        return {"success": False, "error": exc.message}
     if resp_create_ref.status_code not in (200, 201):
         return {
             "success": False,
-            "error": f"Failed to create branch '{new_branch}': {resp_create_ref.text}",
+            "error": (
+                f"Failed to create branch '{new_branch}': "
+                f"{_github_error_detail(resp_create_ref, 'unknown error')}"
+            ),
         }
 
     # 4. Check if the target file already exists to get its blob SHA and remote content
     norm_path = file_path.replace("\\", "/").lstrip("/")
-    content_url = f"{repo_url}/contents/{norm_path}?ref={new_branch}"
-    resp_content = requests.get(content_url, headers=headers, timeout=6)
+    try:
+        resp_content = _request(
+            "GET", f"{repo_url}/contents/{norm_path}?ref={new_branch}", token=tok, timeout=10.0,
+        )
+    except GitHubAPIError as exc:
+        return {"success": False, "error": exc.message}
     existing_file_sha = None
     existing_file_content = None
     if resp_content.status_code == 200:
@@ -274,11 +523,20 @@ def create_refactoring_pull_request(
     if existing_file_sha:
         put_payload["sha"] = existing_file_sha
 
-    resp_put = requests.put(f"{repo_url}/contents/{norm_path}", json=put_payload, headers=headers, timeout=8)
+    try:
+        resp_put = _request(
+            "PUT", f"{repo_url}/contents/{norm_path}",
+            token=tok, timeout=15.0, json=put_payload,
+        )
+    except GitHubAPIError as exc:
+        return {"success": False, "error": exc.message}
     if resp_put.status_code not in (200, 201):
         return {
             "success": False,
-            "error": f"Failed to commit refactored file: {resp_put.text}",
+            "error": (
+                "Failed to commit refactored file: "
+                f"{_github_error_detail(resp_put, f'HTTP {resp_put.status_code}')}"
+            ),
         }
 
     # 6. Open the Pull Request
@@ -290,7 +548,7 @@ def create_refactoring_pull_request(
     annual_savings = round((monthly_baseline_cost - monthly_optimized_cost) * 12, 2)
 
     pr_body = (
-        f"## 🌱 GreenCode Auditor & IBM Bob 2.0 — Automated Eco-Refactoring\n\n"
+        f"## 🌱 GreenCode Auditor — Verified Eco-Refactoring\n\n"
         f"### 📊 Before vs. After Energy & Cloud Cost Impact\n\n"
         f"| Metric | Before Optimization | After Eco-Refactor | Net Savings |\n"
         f"| :--- | :--- | :--- | :--- |\n"
@@ -307,11 +565,10 @@ def create_refactoring_pull_request(
         f"| **Deterministic Rollback Backup** | ✅ **VERIFIED** | Sibling `.bak` backup generated prior to disk commit. |\n\n"
         f"### 🤖 Architectural Metadata\n"
         f"- **Violation Resolved**: `{violation_title}`\n"
-        f"- **Agentic Partner**: `IBM Bob 2.0 Plan Mode & Repository Context Engine`\n"
-        f"- **Code Synthesis**: `IBM Granite 3.2 / Qwen 2.5 Coder`\n"
+        f"- **Analysis Engine**: `Deterministic GreenCode rule engine (GSF patterns)`\n"
         f"- **Standard**: Green Software Foundation SCI v1.0 (`ISO/IEC 21031:2024`)\n\n"
         f"---\n"
-        f"*Generated automatically by GreenCode Auditor & IBM Bob 2.0.*"
+        f"*Generated automatically by GreenCode Auditor.*"
     )
 
     pr_payload = {
@@ -320,11 +577,20 @@ def create_refactoring_pull_request(
         "head": new_branch,
         "base": default_branch,
     }
-    resp_pr = requests.post(f"{repo_url}/pulls", json=pr_payload, headers=headers, timeout=8)
+    try:
+        resp_pr = _request(
+            "POST", f"{repo_url}/pulls", token=tok,
+            timeout=15.0, json=pr_payload,
+        )
+    except GitHubAPIError as exc:
+        return {"success": False, "error": exc.message}
     if resp_pr.status_code not in (200, 201):
         return {
             "success": False,
-            "error": f"Failed to create Pull Request: {resp_pr.text}",
+            "error": (
+                "Failed to create Pull Request: "
+                f"{_github_error_detail(resp_pr, f'HTTP {resp_pr.status_code}')}"
+            ),
         }
 
     pr_json = resp_pr.json()
@@ -337,48 +603,80 @@ def create_refactoring_pull_request(
     }
 
 
+class RepositoryTooLargeError(GitHubAPIError):
+    """Raised when a repository archive exceeds the synchronous download ceiling."""
+
+
 def download_repository_archive(
     repo_full_name: str,
     ref: Optional[str] = None,
     token: Optional[str] = None,
-    max_mb: int = 25,
-) -> Optional[str]:
-    """Download a repository archive (ZIP) from GitHub into a temporary file with size safeguards.
+    max_mb: int = 100,
+) -> str:
+    """Download a repository zipball into a temporary file with hard size safeguards.
 
-    Returns the path to the temporary .zip file, or None if failed.
+    Returns the temp .zip path. Raises GitHubAPIError (404/403/unreachable) or
+    RepositoryTooLargeError instead of returning a bare `None` that made every
+    failure look identical to the caller.
     """
-    import tempfile
-    tok = token or get_github_token()
-    headers = {"Accept": "application/vnd.github.v3+json"}
-    if tok:
-        headers["Authorization"] = f"token {tok}"
-
-    url = f"{GITHUB_API_BASE}/repos/{repo_full_name}/zipball"
+    slug = normalize_repo_slug(repo_full_name)
+    url = f"{GITHUB_API_BASE}/repos/{slug}/zipball"
     if ref:
         url += f"/{ref}"
 
+    resp = _request("GET", url, token=token, timeout=20.0, stream=True)
+
+    if resp.status_code == 404:
+        resp.close()
+        raise GitHubAPIError(
+            f"Could not download '{slug}'"
+            + (f" at ref '{ref}'." if ref else ".")
+            + " The repository, branch, or commit does not exist.",
+            404,
+        )
+    if resp.status_code in (401, 403):
+        resp.close()
+        raise GitHubAPIError(
+            f"GitHub refused the download of '{slug}'. Check that your token has the "
+            "'repo' scope and still has access to this repository.",
+            403,
+        )
+    if resp.status_code != 200:
+        detail = _github_error_detail(resp, f"HTTP {resp.status_code}")
+        resp.close()
+        raise GitHubAPIError(f"GitHub download of '{slug}' failed: {detail}", 502)
+
+    max_bytes = max_mb * 1024 * 1024
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip", prefix="gh_repo_")
     try:
-        resp = requests.get(url, headers=headers, allow_redirects=True, stream=True, timeout=15)
-        if resp.status_code == 200:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".zip", prefix="gh_repo_") as f:
-                downloaded = 0
-                max_bytes = max_mb * 1024 * 1024
-                for chunk in resp.iter_content(chunk_size=65536):
-                    if chunk:
-                        downloaded += len(chunk)
-                        if downloaded > max_bytes:
-                            # Exceeds safe limit for synchronous audit
-                            f.close()
-                            try:
-                                os.remove(f.name)
-                            except Exception:
-                                pass
-                            return None
-                        f.write(chunk)
-                return f.name
+        downloaded = 0
+        for chunk in resp.iter_content(chunk_size=65536):
+            if not chunk:
+                continue
+            downloaded += len(chunk)
+            if downloaded > max_bytes:
+                raise RepositoryTooLargeError(
+                    f"'{slug}' exceeds the {max_mb} MB audit download limit. "
+                    "Try a smaller branch, or exclude large asset directories.",
+                    413,
+                )
+            tmp.write(chunk)
+        tmp.close()
     except Exception:
-        pass
-    return None
+        try:
+            tmp.close()
+        except Exception:
+            pass
+        if os.path.exists(tmp.name):
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
+        raise
+    finally:
+        resp.close()
+
+    return tmp.name
 
 
 def post_pr_carbon_comment(
@@ -400,10 +698,10 @@ def post_pr_carbon_comment(
     if not tok:
         return {"success": False, "error": "GitHub token not configured."}
 
-    headers = {
-        "Authorization": f"token {tok}",
-        "Accept": "application/vnd.github.v3+json",
-    }
+    try:
+        slug = normalize_repo_slug(repo_full_name)
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
 
     score = float(scan_result.get("green_score", 100.0))
     passed = score >= gate_threshold
@@ -459,9 +757,9 @@ def post_pr_carbon_comment(
         f"*Audited automatically by [GreenCode Auditor](https://github.com/zeenat28-ui/greencode) CI/CD Gatekeeper.*"
     )
 
-    url = f"{GITHUB_API_BASE}/repos/{repo_full_name}/issues/{pr_number}/comments"
+    url = f"{GITHUB_API_BASE}/repos/{slug}/issues/{pr_number}/comments"
     try:
-        resp = requests.post(url, headers=headers, json={"body": comment_body}, timeout=10)
+        resp = _request("POST", url, token=tok, timeout=15.0, json={"body": comment_body})
         if resp.status_code in (200, 201):
             c_data = resp.json()
             return {
@@ -470,13 +768,15 @@ def post_pr_carbon_comment(
                 "comment_url": c_data.get("html_url"),
                 "message": f"Successfully posted GreenCode audit comment to PR #{pr_number}.",
             }
-        else:
-            return {
-                "success": False,
-                "error": f"Failed to post comment (Status {resp.status_code}): {resp.text[:300]}",
-            }
-    except Exception as exc:
-        return {"success": False, "error": f"Network exception while posting PR comment: {str(exc)}"}
+        return {
+            "success": False,
+            "error": (
+                f"Failed to post comment (HTTP {resp.status_code}): "
+                f"{_github_error_detail(resp, 'unknown error')}"
+            ),
+        }
+    except GitHubAPIError as exc:
+        return {"success": False, "error": f"Could not post PR comment: {exc.message}"}
 
 
 

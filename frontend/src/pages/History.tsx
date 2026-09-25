@@ -2,32 +2,21 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { scanService } from '../services/greencodeApi';
 import { useLocalStorage } from '../hooks/useLocalStorage';
-import { RepositoryRecord, ScanResult } from '../types';
+import { RepositoryRecord, RepositoryPage, ScanResult } from '../types';
 import ScoreBadge from '../components/common/ScoreBadge';
 import {
-  Calendar,
-  FileText,
-  ExternalLink,
-  RefreshCw,
-  GitBranch,
-  Search,
-  Eye,
-  RotateCw,
-  Leaf,
-  Zap,
-  CheckCircle2,
-  AlertTriangle,
-  FolderGit2
+  Calendar, ExternalLink, RefreshCw, GitBranch, Search,
+  Eye, RotateCw, Leaf, Zap, AlertTriangle, FolderGit2,
 } from 'lucide-react';
 
 export default function History() {
   const navigate = useNavigate();
-  const [historyData, setHistoryData] = useLocalStorage<any>('greencode_history', null);
-  const [loading, setLoading]         = useState(true);
-  const [refreshing, setRefreshing]   = useState(false);
-  const [, setScanData]               = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
-  const [threshold]                   = useLocalStorage('greencode_threshold', 75);
-  const [searchTerm, setSearchTerm]   = useState('');
+  const [historyData, setHistoryData] = useLocalStorage<RepositoryPage | null>('greencode_history', null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [, setScanData] = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
+  const [threshold] = useLocalStorage('greencode_threshold', 75);
+  const [searchTerm, setSearchTerm] = useState('');
   const [rescanningId, setRescanningId] = useState<number | null>(null);
   const [rescanError, setRescanError] = useState<string | null>(null);
 
@@ -49,58 +38,50 @@ export default function History() {
     }
   };
 
-  // Bug Fix #4: Robust rescan handler with GitHub vs Local detection & row spinner
+  /**
+   * Re-run a stored audit. In GitHub-only mode every record is a GitHub
+   * repository, so there is no local-path branch to worry about.
+   */
   const handleRescan = async (record: RepositoryRecord) => {
+    const slug = record.full_name || record.path_or_url;
+    if (!slug) {
+      setRescanError('This record has no repository reference.');
+      return;
+    }
     setRescanningId(record.id);
     setRescanError(null);
     try {
-      const isGithub =
-        record.path_or_url?.startsWith('http') ||
-        (!record.path_or_url?.includes('\\') && record.path_or_url?.includes('/'));
-
-      const resp = isGithub
-        ? await scanService.scanGitHub(record.path_or_url)
-        : await scanService.scanRepository(record.path_or_url, record.name);
-
+      const resp = await scanService.scanGitHub(slug, record.default_branch || undefined);
       setScanData(resp.data);
       await loadHistory(true);
       navigate('/dashboard');
     } catch (err: any) {
-      setRescanError(err.response?.data?.detail || 'Rescan failed. Verify repository connectivity.');
+      setRescanError(
+        err?.response?.data?.detail || `Could not re-audit ${slug}. Verify the repository still exists and is accessible.`
+      );
     } finally {
       setRescanningId(null);
     }
   };
 
-  // Inline "View" action to load historical scan into active session
+  /** Load a stored audit into the active session (score + provenance only). */
   const handleViewRecord = (record: RepositoryRecord) => {
-    let breakdown: Record<string, number> = {};
-    if (record.summary_json) {
-      try {
-        const parsed = JSON.parse(record.summary_json);
-        if (parsed.violation_breakdown) breakdown = parsed.violation_breakdown;
-      } catch {
-        // ignore JSON parse
-      }
-    }
-    if (Object.keys(breakdown).length === 0 && record.violations_data) {
-      record.violations_data.forEach(v => {
-        breakdown[v.violation_type] = (breakdown[v.violation_type] || 0) + 1;
-      });
-    }
-
     const loadedScan: ScanResult = {
-      repo_path: record.path_or_url || record.name,
+      repo_path: record.full_name || record.path_or_url || record.name,
       repo_id: record.id,
+      full_name: record.full_name || undefined,
+      default_branch: record.default_branch || undefined,
+      html_url: record.html_url || undefined,
+      source: 'github',
+      is_github: true,
       total_files: record.total_files || 0,
       total_lines: record.total_lines || 0,
       green_score: record.green_score || 0,
-      total_violations: record.violations_data?.length || 0,
-      violation_breakdown: breakdown,
+      total_violations: 0,
+      violation_breakdown: {},
       languages_breakdown: {},
-      violations: record.violations_data || [],
+      violations: [],
       file_results: [],
-      is_github: record.path_or_url?.startsWith('http') || !record.path_or_url?.includes('\\'),
     };
 
     setScanData(loadedScan);
@@ -108,10 +89,11 @@ export default function History() {
   };
 
   const records: RepositoryRecord[] = historyData?.repositories || [];
-  const filteredRecords = records.filter(r => {
+  const filteredRecords = records.filter((r) => {
     const q = searchTerm.toLowerCase();
     return (
       (r.name && r.name.toLowerCase().includes(q)) ||
+      (r.full_name && r.full_name.toLowerCase().includes(q)) ||
       (r.path_or_url && r.path_or_url.toLowerCase().includes(q))
     );
   });
@@ -269,34 +251,37 @@ export default function History() {
                 {filteredRecords.map(record => {
                   const score = record.green_score ?? 0;
                   const isPass = score >= threshold;
-                  const violations = record.violations_data || [];
-                  const isGithub =
-                    record.path_or_url?.startsWith('http') ||
-                    (!record.path_or_url?.includes('\\') && record.path_or_url?.includes('/'));
                   const isRescanning = rescanningId === record.id;
 
                   return (
                     <tr key={record.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-4 py-3.5">
                         <div className="flex items-start gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 text-slate-500 mt-0.5">
-                            {isGithub ? <GitBranch size={14} className="text-slate-700" /> : <FileText size={14} />}
+                          <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 text-slate-700 mt-0.5">
+                            <GitBranch size={14} />
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-slate-900 text-sm truncate max-w-xs">
-                                {record.name || record.path_or_url}
+                                {record.full_name || record.name}
                               </span>
-                              {isGithub && (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+                              {record.html_url && (
+                                <a
+                                  href={record.html_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded hover:bg-slate-200 transition-colors"
+                                >
                                   GitHub
                                   <ExternalLink size={9} className="opacity-70" />
-                                </span>
+                                </a>
                               )}
                             </div>
-                            <p className="text-xs text-slate-400 font-mono truncate max-w-sm mt-0.5">
-                              {record.path_or_url}
-                            </p>
+                            {record.default_branch && (
+                              <p className="text-xs text-slate-400 font-mono truncate max-w-sm mt-0.5">
+                                @{record.default_branch}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -323,16 +308,8 @@ export default function History() {
                         </div>
                       </td>
                       <td className="px-4 py-3.5">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            violations.length === 0
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : violations.length > 5
-                              ? 'bg-red-50 text-red-700'
-                              : 'bg-amber-50 text-amber-700'
-                          }`}
-                        >
-                          {violations.length} issue{violations.length !== 1 ? 's' : ''}
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                          View score
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-xs text-slate-500 whitespace-nowrap">
@@ -372,3 +349,4 @@ export default function History() {
     </div>
   );
 }
+

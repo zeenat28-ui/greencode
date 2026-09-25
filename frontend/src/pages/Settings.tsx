@@ -1,504 +1,314 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
-import { gridService, githubService } from '../services/greencodeApi';
+import { gridService, githubService, authService } from '../services/greencodeApi';
+import { useAuth } from '../context/AuthContext';
 import { ZoneData } from '../types';
-import { save } from '../utils/storage';
-import {
-  Key, Save, Globe, CheckCircle, Eye, EyeOff,
-  AlertCircle, Loader2, ShieldCheck, Github, Zap, RefreshCw, Sparkles
-} from 'lucide-react';
 import { GRID_ZONES } from '../styles/theme';
+import {
+  Globe, CheckCircle, ShieldCheck, Github, Loader2, RefreshCw,
+  AlertCircle, Key, Leaf,
+} from 'lucide-react';
+
+function getThresholdGrade(val: number) {
+  if (val >= 90) return 'A+';
+  if (val >= 80) return 'A';
+  if (val >= 70) return 'B';
+  if (val >= 60) return 'C';
+  return 'F';
+}
 
 export default function Settings() {
-  const [emApiKey, setEmApiKey]           = useLocalStorage('greencode_em_key', '');
-  const [hfApiKey, setHfApiKey]           = useLocalStorage('greencode_hf_key', '');
-  const [ghToken, setGhToken]             = useLocalStorage('greencode_gh_token', '');
+  const { user, refreshUser } = useAuth();
+
+  const [selectedZone, setSelectedZone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
   const [qualityThreshold, setQualityThreshold] = useLocalStorage('greencode_threshold', 75);
-  const [selectedZone, setSelectedZone]   = useLocalStorage('greencode_zone', 'US-CAL-CISO');
+  const [saved, setSaved] = useState(false);
 
-  const [gridData, setGridData]           = useState<ZoneData | null>(null);
-  const [gridLoading, setGridLoading]     = useState(false);
-  const [showEmKey, setShowEmKey]         = useState(false);
-  const [showHfKey, setShowHfKey]         = useState(false);
-  const [showGhToken, setShowGhToken]     = useState(false);
-  const [saved, setSaved]                 = useState(false);
+  const [gridData, setGridData] = useState<ZoneData | null>(null);
+  const [gridLoading, setGridLoading] = useState(false);
+  const [gridError, setGridError] = useState<string | null>(null);
 
-  // Bug fix #6: Electricity Maps key test with real status & message
-  const [emTestStatus, setEmTestStatus]   = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [emTestFeedback, setEmTestFeedback] = useState<string | null>(null);
+  const [ghUser, setGhUser] = useState<{ login: string; avatar_url: string } | null>(null);
+  const [ghTesting, setGhTesting] = useState(false);
+  const [ghError, setGhError] = useState<string | null>(null);
 
-  // GitHub token test status
-  const [ghTestStatus, setGhTestStatus]   = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [ghTestFeedback, setGhTestFeedback] = useState<string | null>(null);
+  const [rotating, setRotating] = useState(false);
+  const [newToken, setNewToken] = useState('');
+  const [rotateMsg, setRotateMsg] = useState<string | null>(null);
+  const [rotateError, setRotateError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadGridData();
-  }, [selectedZone]);
-
-  const loadGridData = async () => {
+  const loadGrid = async () => {
     setGridLoading(true);
+    setGridError(null);
     try {
-      const resp = await gridService.getZoneIntensity(selectedZone, emApiKey || undefined);
-      setGridData(resp.data);
-    } catch {
+      const res = await gridService.getZoneIntensity(selectedZone);
+      setGridData(res.data);
+    } catch (err: any) {
       setGridData(null);
+      setGridError(err?.response?.data?.detail || 'Could not reach the grid telemetry service.');
     } finally {
       setGridLoading(false);
     }
   };
 
-  // Bug fix #6: Explicit test using the key currently entered in the input field
-  const handleTestEmKey = async () => {
-    const keyToTest = emApiKey.trim();
-    if (!keyToTest) {
-      setEmTestStatus('error');
-      setEmTestFeedback('Please enter an Electricity Maps API key to test.');
-      return;
-    }
+  useEffect(() => { loadGrid(); }, [selectedZone]);
 
-    setEmTestStatus('testing');
-    setEmTestFeedback(null);
-
+  const testGitHub = async () => {
+    setGhTesting(true);
+    setGhError(null);
     try {
-      const resp = await gridService.getZoneIntensity(selectedZone, keyToTest);
-      const d = resp.data;
-      setGridData(d);
-      setEmTestStatus('success');
-      setEmTestFeedback(
-        `Verified! Connected to ${d.name} (${d.marginal_carbon_intensity ?? d.carbon_intensity} gCO₂/kWh · ${d.is_live ? 'Live Stream Active' : 'Baseline Verified'})`
-      );
+      const res = await githubService.getAuthenticatedUser();
+      setGhUser(res.data.user as any);
     } catch (err: any) {
-      setEmTestStatus('error');
-      setEmTestFeedback(
-        err.response?.data?.detail || 'Connection failed. Please verify your Electricity Maps API key and zone.'
+      setGhError(
+        err?.response?.data?.detail || 'Your stored GitHub token is no longer valid. Please reconnect.'
       );
+    } finally {
+      setGhTesting(false);
     }
   };
 
-  const handleTestGhToken = async () => {
-    const tokenToTest = (ghToken as string || '').trim();
-    if (!tokenToTest) {
-      setGhTestStatus('error');
-      setGhTestFeedback('Please enter a GitHub Personal Access Token to test.');
+  useEffect(() => { testGitHub(); }, []);
+
+  const handleRotateToken = async () => {
+    const trimmed = newToken.trim();
+    if (!trimmed) {
+      setRotateError('Paste a new token first.');
       return;
     }
-
-    setGhTestStatus('testing');
-    setGhTestFeedback(null);
-
+    setRotating(true);
+    setRotateError(null);
+    setRotateMsg(null);
     try {
-      const resp = await githubService.getAuthenticatedUser(tokenToTest);
-      const user = resp.data.user;
-      setGhTestStatus('success');
-      setGhTestFeedback(`Verified as @${user?.login} (${user?.name || 'GitHub User'}) · ${user?.public_repos} Public Repos`);
+      // The API verifies the token with GitHub before persisting it.
+      await authService.updateProfile(user!.id, { github_token: trimmed });
+      await refreshUser();
+      setNewToken('');
+      setRotateMsg('GitHub token updated. Repositories will use it immediately.');
     } catch (err: any) {
-      setGhTestStatus('error');
-      setGhTestFeedback(err.response?.data?.detail || 'GitHub token verification failed. Ensure the token has repo scope.');
+      setRotateError(err?.response?.data?.detail || 'GitHub rejected that token.');
+    } finally {
+      setRotating(false);
     }
   };
 
   const handleSave = () => {
-    save('greencode_settings', {
-      emApiKey,
-      hfApiKey,
-      ghToken: ghToken as string,
-      qualityThreshold,
-      selectedZone
-    });
     setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  };
-
-  const getThresholdColor = (val: number) => {
-    if (val >= 90) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
-    if (val >= 80) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
-    if (val >= 70) return 'text-amber-700 bg-amber-50 border-amber-200';
-    return 'text-red-700 bg-red-50 border-red-200';
-  };
-
-  const getThresholdGrade = (val: number) => {
-    if (val >= 90) return 'A+';
-    if (val >= 80) return 'A';
-    if (val >= 70) return 'B';
-    if (val >= 60) return 'C';
-    return 'F';
+    setTimeout(() => setSaved(false), 2500);
   };
 
   return (
     <div className="space-y-6">
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200/80 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Platform Settings</h1>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Settings</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Configure live electricity telemetry, automated Pull Request credentials, and CI/CD quality gate rules.
+            Grid carbon telemetry, quality gate rules, and your GitHub connection
           </p>
         </div>
-
         <div className="flex items-center gap-3">
           {saved && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl animate-in fade-in">
-              <CheckCircle size={14} className="text-emerald-600" /> Settings Saved!
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
+              <CheckCircle size={14} className="text-emerald-600" /> Settings Saved
             </span>
           )}
-          <button
-            onClick={handleSave}
-            className="btn-primary flex items-center gap-2 text-xs py-2.5 px-5 shadow-sm"
-          >
-            <Save size={14} /> Save Configuration
+          <button onClick={handleSave} className="btn-primary flex items-center gap-2 text-xs py-2.5 px-5">
+            <CheckCircle size={14} /> Save Configuration
           </button>
         </div>
       </div>
 
-      {/* 2-Column Responsive Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-
-        {/* Left Column: API Credentials & Integrations (7 cols) */}
         <div className="lg:col-span-7 space-y-5">
-
-          {/* Electricity Maps Card */}
-          <div className="card p-6 shadow-sm border-slate-200/80 space-y-4">
+          {/* GitHub connection */}
+          <div className="card p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-                  <Globe size={16} />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">Electricity Maps API</h2>
-                  <p className="text-[11px] text-slate-400">Live regional carbon intensity telemetry</p>
-                </div>
-              </div>
-              <a
-                href="https://www.electricitymaps.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 hover:underline"
-              >
-                electricitymaps.com &rarr;
-              </a>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Electricity Maps API Key
-              </label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type={showEmKey ? 'text' : 'password'}
-                    placeholder="Enter your Electricity Maps API key"
-                    className="input pr-10 text-xs font-mono"
-                    value={emApiKey}
-                    onChange={e => {
-                      setEmApiKey(e.target.value);
-                      setEmTestStatus('idle');
-                      setEmTestFeedback(null);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowEmKey(!showEmKey)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    {showEmKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleTestEmKey}
-                  disabled={emTestStatus === 'testing'}
-                  className="btn-secondary text-xs px-4 py-2 shrink-0"
-                >
-                  {emTestStatus === 'testing' ? (
-                    <>
-                      <Loader2 size={13} className="animate-spin text-emerald-600" /> Testing...
-                    </>
-                  ) : (
-                    'Test Connection'
-                  )}
-                </button>
-              </div>
-
-              {emTestFeedback && (
-                <div className={`mt-2.5 p-3 rounded-xl text-xs flex items-start gap-2.5 ${
-                  emTestStatus === 'success'
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : 'bg-red-50 text-red-700 border border-red-200'
-                }`}>
-                  {emTestStatus === 'success' ? (
-                    <CheckCircle size={15} className="text-emerald-600 shrink-0 mt-0.5" />
-                  ) : (
-                    <AlertCircle size={15} className="text-red-500 shrink-0 mt-0.5" />
-                  )}
-                  <span className="leading-relaxed font-medium">{emTestFeedback}</span>
-                </div>
-              )}
-
-              <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
-                When provided, GreenCode streams real-time marginal carbon intensity (gCO₂/kWh) from regional electricity grids. If omitted, verified baseline coefficients are used.
-              </p>
-            </div>
-          </div>
-
-          {/* GitHub Integration Card */}
-          <div className="card p-6 shadow-sm border-slate-200/80 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center">
                   <Github size={16} />
                 </div>
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900">GitHub Access Token</h2>
-                  <p className="text-[11px] text-slate-400">Automated Pull Request creation &amp; private repo audits</p>
+                  <h2 className="text-sm font-bold text-slate-900">GitHub Connection</h2>
+                  <p className="text-[11px] text-slate-400">The only credential used by this tool</p>
                 </div>
               </div>
-              <a
-                href="https://github.com/settings/tokens"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 hover:underline"
-              >
-                Create PAT &rarr;
-              </a>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Personal Access Token (Classic or Fine-Grained)
-              </label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type={showGhToken ? 'text' : 'password'}
-                    placeholder="ghp_..."
-                    className="input pr-10 text-xs font-mono"
-                    value={ghToken}
-                    onChange={e => {
-                      setGhToken(e.target.value);
-                      setGhTestStatus('idle');
-                      setGhTestFeedback(null);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowGhToken(!showGhToken)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    {showGhToken ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleTestGhToken}
-                  disabled={ghTestStatus === 'testing'}
-                  className="btn-secondary text-xs px-4 py-2 shrink-0"
-                >
-                  {ghTestStatus === 'testing' ? (
-                    <>
-                      <Loader2 size={13} className="animate-spin text-slate-600" /> Verifying...
-                    </>
-                  ) : (
-                    'Verify Token'
-                  )}
-                </button>
-              </div>
-
-              {ghTestFeedback && (
-                <div className={`mt-2.5 p-3 rounded-xl text-xs flex items-start gap-2.5 ${
-                  ghTestStatus === 'success'
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : 'bg-red-50 text-red-700 border border-red-200'
-                }`}>
-                  {ghTestStatus === 'success' ? (
-                    <CheckCircle size={15} className="text-emerald-600 shrink-0 mt-0.5" />
-                  ) : (
-                    <AlertCircle size={15} className="text-red-500 shrink-0 mt-0.5" />
-                  )}
-                  <span className="leading-relaxed font-medium">{ghTestFeedback}</span>
-                </div>
-              )}
-
-              <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
-                Requires <code className="bg-slate-100 px-1 py-0.5 rounded text-[11px] font-mono">repo</code> permissions to commit eco-refactored patches and open automated Pull Requests.
-              </p>
-            </div>
-          </div>
-
-          {/* IBM Bob & Hugging Face Card */}
-          <div className="card p-6 shadow-sm border-slate-200/80 space-y-4">
-            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
-                <Zap size={16} />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">AI Code Synthesis Engines</h2>
-                <p className="text-[11px] text-slate-400">IBM Granite 3.2 Code &middot; Qwen 2.5 Coder &middot; AST Transformer</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Model API Token (Optional)
-              </label>
-              <div className="relative">
-                <input
-                  type={showHfKey ? 'text' : 'password'}
-                  placeholder="hf_... (optional custom inference token)"
-                  className="input pr-10 text-xs font-mono"
-                  value={hfApiKey}
-                  onChange={e => setHfApiKey(e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowHfKey(!showHfKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showHfKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
-                By default, GreenCode utilizes the built-in IBM Bob 2.0 Plan Mode engine and AST synthesizer with zero external token requirement.
-              </p>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Right Column: Grid Telemetry & Quality Gate (5 cols) */}
-        <div className="lg:col-span-5 space-y-5">
-
-          {/* Regional Grid Telemetry */}
-          <div className="card p-6 shadow-sm border-slate-200/80 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-                  <Globe size={16} />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">Regional Electricity Grid</h2>
-                  <p className="text-[11px] text-slate-400">Operational emissions coefficient</p>
-                </div>
-              </div>
-              <button
-                onClick={loadGridData}
-                disabled={gridLoading}
-                className="text-slate-400 hover:text-slate-600 p-1"
-                title="Refresh grid telemetry"
-              >
-                <RefreshCw size={13} className={gridLoading ? 'animate-spin' : ''} />
+              <button onClick={testGitHub} disabled={ghTesting} className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5">
+                {ghTesting ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                Test
               </button>
             </div>
 
+            {ghError && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
+                <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-700 leading-relaxed">{ghError}</p>
+              </div>
+            )}
+
+            {ghUser ? (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-50/60 border border-emerald-200">
+                {ghUser.avatar_url && <img src={ghUser.avatar_url} alt="" className="w-9 h-9 rounded-full border border-emerald-200" />}
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-900 truncate">{ghUser.login}</p>
+                  <p className="text-xs text-emerald-700 font-medium">Connected &middot; verified against the GitHub API</p>
+                </div>
+              </div>
+            ) : !ghError ? (
+              <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                <Loader2 size={13} className="animate-spin" /> Verifying connection...
+              </div>
+            ) : null}
+
+            <div className="pt-2 border-t border-slate-100">
+              <label htmlFor="rotate-token" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Rotate Token
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="rotate-token"
+                  type="password"
+                  value={newToken}
+                  onChange={(e) => { setNewToken(e.target.value); setRotateError(null); setRotateMsg(null); }}
+                  placeholder={user?.github_token_masked ? `Current: ${user.github_token_masked}` : 'Paste a new PAT'}
+                  className="input text-xs font-mono flex-1"
+                  autoComplete="off"
+                />
+                <button onClick={handleRotateToken} disabled={rotating || !newToken.trim()} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5">
+                  {rotating ? <Loader2 size={11} className="animate-spin" /> : <Key size={11} />}
+                  Update
+                </button>
+              </div>
+              {rotateError && <p className="text-xs text-red-600 mt-1.5">{rotateError}</p>}
+              {rotateMsg && <p className="text-xs text-emerald-700 mt-1.5">{rotateMsg}</p>}
+              <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                The token is verified with GitHub, then stored encrypted server-side. It is never
+                returned to the browser and is never sent as a URL parameter.
+              </p>
+            </div>
+          </div>
+
+          {/* Grid zone */}
+          <div className="card p-6 space-y-4">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                <Globe size={16} />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Grid Carbon Region</h2>
+                <p className="text-[11px] text-slate-400">Used to convert energy into operational carbon</p>
+              </div>
+            </div>
+
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Select Grid Zone
+              <label htmlFor="zone" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Default Grid Zone
               </label>
               <select
-                className="input text-xs font-medium"
+                id="zone"
                 value={selectedZone}
-                onChange={e => setSelectedZone(e.target.value)}
+                onChange={(e) => setSelectedZone(e.target.value)}
+                className="input text-sm"
               >
-                {GRID_ZONES.map(z => (
-                  <option key={z.value} value={z.value}>{z.label} &mdash; ({z.value})</option>
+                {GRID_ZONES.map((z) => (
+                  <option key={z.value} value={z.value}>{z.label} &mdash; {z.value}</option>
                 ))}
               </select>
             </div>
 
-            {/* Grid Live Metrics Box */}
-            {gridData && (
-              <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${gridData.is_live ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                    <span className="font-bold text-xs text-slate-900 truncate max-w-[180px]">
-                      {gridData.name}
-                    </span>
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    gridData.is_live ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'
-                  }`}>
-                    {gridData.is_live ? 'Live Feed' : 'Baseline Verified'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5 text-xs pt-1">
-                  <div className="bg-white p-2.5 rounded-lg border border-slate-200/70">
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Intensity</span>
-                    <span className="font-black text-slate-900 text-base">
-                      {gridData.marginal_carbon_intensity ?? gridData.carbon_intensity}
-                    </span>
-                    <span className="text-[10px] text-slate-400 ml-1">gCO₂/kWh</span>
-                  </div>
-                  <div className="bg-white p-2.5 rounded-lg border border-slate-200/70">
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Clean Energy</span>
-                    <span className="font-black text-emerald-700 text-base">
-                      {gridData.clean_energy_percentage}%
-                    </span>
-                    <span className="text-[10px] text-slate-400 ml-1">Renewables</span>
-                  </div>
-                </div>
-
-                {gridData.time_of_day_info?.recommendation && (
-                  <p className="text-[11px] text-slate-500 italic bg-white/70 p-2.5 rounded-lg border border-slate-200/60 leading-relaxed">
-                    💡 {gridData.time_of_day_info.recommendation}
-                  </p>
-                )}
+            {gridLoading ? (
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <Loader2 size={13} className="animate-spin" /> Fetching intensity...
               </div>
-            )}
+            ) : gridError ? (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <AlertCircle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 leading-relaxed">{gridError}</p>
+              </div>
+            ) : gridData ? (
+              <dl className="grid grid-cols-2 gap-3 text-sm">
+                <div className="p-3 rounded-lg bg-slate-50">
+                  <dt className="label">Intensity</dt>
+                  <dd className="font-bold text-slate-900">{gridData.marginal_carbon_intensity ?? gridData.carbon_intensity} g/kWh</dd>
+                </div>
+                <div className="p-3 rounded-lg bg-slate-50">
+                  <dt className="label">Clean energy</dt>
+                  <dd className="font-bold text-emerald-700">{gridData.clean_energy_percentage}%</dd>
+                </div>
+                <div className="p-3 rounded-lg bg-slate-50 col-span-2">
+                  <dt className="label">Source</dt>
+                  <dd className="text-xs text-slate-600">
+                    {gridData.name} &middot; {gridData.is_live ? 'Live telemetry' : 'Verified baseline'}
+                  </dd>
+                </div>
+              </dl>
+            ) : null}
           </div>
+        </div>
 
-          {/* CI/CD Quality Gate Threshold */}
-          <div className="card p-6 shadow-sm border-slate-200/80 space-y-4">
+        {/* Quality gate */}
+        <div className="lg:col-span-5 space-y-5">
+          <div className="card p-6 space-y-4">
             <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
                 <ShieldCheck size={16} />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-900">CI/CD Quality Gate</h2>
-                <p className="text-[11px] text-slate-400">Green Score passing threshold for merge</p>
+                <h2 className="text-sm font-bold text-slate-900">Quality Gate</h2>
+                <p className="text-[11px] text-slate-400">Minimum Green Score considered compliant</p>
               </div>
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Minimum Score (0-100)
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-extrabold px-2 py-0.5 rounded-md border ${getThresholdColor(qualityThreshold)}`}>
-                    Grade {getThresholdGrade(qualityThreshold)}
-                  </span>
-                  <span className="text-lg font-black text-slate-900">{qualityThreshold}</span>
-                </div>
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Threshold</span>
+                <span className="text-2xl font-black text-slate-900">
+                  {Number(qualityThreshold)}
+                  <span className="text-xs font-semibold text-slate-400 ml-1">/ 100</span>
+                </span>
               </div>
-
               <input
                 type="range"
-                min={50}
-                max={95}
+                min={0}
+                max={100}
                 step={5}
-                value={qualityThreshold}
-                onChange={e => setQualityThreshold(Number(e.target.value))}
-                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                value={Number(qualityThreshold)}
+                onChange={(e) => setQualityThreshold(Number(e.target.value))}
+                className="w-full accent-emerald-600"
+                aria-label="Quality gate threshold"
               />
-
-              <div className="flex justify-between text-[10px] font-semibold text-slate-400 mt-1.5 px-0.5">
-                <span>50 (Permissive)</span>
-                <span>75 (Recommended)</span>
-                <span>95 (Strict)</span>
+              <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-1">
+                <span>0</span><span>50</span><span>100</span>
               </div>
+            </div>
 
-              <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
-                CI/CD workflows running <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[10px]">--ci</code> exit with code 1 and block GitHub pull requests if the audited Green Score drops below <strong>{qualityThreshold}</strong>.
+            <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-center">
+              <p className="text-xs font-semibold text-slate-500">Repositories scoring below {Number(qualityThreshold)} are flagged</p>
+              <p className="text-3xl font-black mt-1.5" style={{ color: Number(qualityThreshold) >= 80 ? '#059669' : '#d97706' }}>
+                {getThresholdGrade(Number(qualityThreshold))}
               </p>
             </div>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              The same threshold is used by the native GitHub Action, so a local run and a CI run
+              report identical pass/fail verdicts.
+            </p>
           </div>
 
+          <div className="card p-5">
+            <div className="flex items-start gap-3">
+              <Leaf size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-slate-900">About this build</p>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                  GreenCode Auditor scans repositories from your connected GitHub account, scores
+                  them against Green Software Foundation SCI patterns, and opens eco-refactoring
+                  pull requests.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-
       </div>
-
     </div>
   );
 }

@@ -26,8 +26,8 @@ import { theme } from '../styles/theme';
 
 export default function Dashboard() {
   const [scanData, setScanData] = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
-  const [threshold]             = useLocalStorage('greencode_threshold', 75);
-  const [activeZone]            = useLocalStorage('greencode_zone', 'US-CAL-CISO');
+  const [threshold] = useLocalStorage('greencode_threshold', 75);
+  const [activeZone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
   const [gridData, setGridData] = useState<ZoneData | null>(null);
   const [isMounting, setIsMounting] = useState(true);
   const [loadingSample, setLoadingSample] = useState(false);
@@ -36,17 +36,21 @@ export default function Dashboard() {
     setIsMounting(false);
     gridService
       .getZoneIntensity(activeZone)
-      .then(r => setGridData(r.data))
+      .then((r) => setGridData(r.data))
       .catch(() => setGridData(null));
   }, [activeZone]);
 
   const handleScanSample = async () => {
     setLoadingSample(true);
     try {
-      const resp = await scanService.scanRepository('samples', 'Sample GreenCode Benchmarks');
+      // Re-run the most recent audit, if there is one, to refresh the dashboard.
+      const history = await scanService.getHistory(1, 0);
+      const latest = history.data.repositories?.[0];
+      if (!latest?.full_name) return;
+      const resp = await scanService.scanGitHub(latest.full_name, latest.default_branch || undefined);
       setScanData(resp.data);
     } catch {
-      // fallback if samples folder scan fails
+      // Keep the previously loaded scan visible on failure.
     } finally {
       setLoadingSample(false);
     }
@@ -363,3 +367,4 @@ function LanguageBreakdown({ fileResults }: { fileResults: any[] }) {
     </div>
   );
 }
+

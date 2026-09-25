@@ -198,33 +198,23 @@ export default function Issues() {
       return;
     }
 
-    const tokenToUse = prModalToken.trim() || ghToken;
-    if (!tokenToUse) {
-      setPrModalError('A GitHub Personal Access Token is required to commit code and create a Pull Request.');
-      return;
-    }
-
-    // Save token if entered in modal
-    if (prModalToken.trim()) {
-      setGhToken(prModalToken.trim());
-    }
-
+    // The server resolves the GitHub token from the authenticated session,
+    // so the client never needs to supply (or store) one for PR creation.
     setPrLoading(p => new Set(p).add(key));
     setPrModalError(null);
 
     try {
       const resp = await githubService.createPullRequest(
         cleanRepo,
-        violation.file_path,
+        violation.relative_path || violation.file_path,
         result.refactored_code,
         violation.title,
         result.energy_reduction_pct,
         result.carbon_saved_gco2_10k_runs,
-        tokenToUse,
         violation.snippet || violation.context_code || undefined
       );
 
-      const prUrl = resp.data?.pr_url || resp.data?.html_url || resp.data?.url;
+      const prUrl = resp.data?.pr_url;
       setPrResults(p => ({ ...p, [key]: { url: prUrl } }));
       setPrModalViolation(null);
 
@@ -232,7 +222,10 @@ export default function Issues() {
         window.open(prUrl, '_blank');
       }
     } catch (err: any) {
-      const msg = err.response?.data?.detail || err.message || 'Failed to create Pull Request. Please verify repository permissions.';
+      const msg =
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Failed to create Pull Request. Verify repository permissions.';
       setPrModalError(msg);
       setPrResults(p => ({ ...p, [key]: { error: msg } }));
     } finally {

@@ -1,4 +1,4 @@
-"""Automated Test Suite for GreenCode Auditor Authentication & Access Control.
+﻿"""Automated Test Suite for GreenCode Auditor Authentication & Access Control.
 
 Tests User model, bcrypt hashing, credential verification, GitHub OAuth/PAT integration,
 and FastAPI authentication endpoints (/api/auth/*).
@@ -134,7 +134,15 @@ class TestAuthDatabase(unittest.TestCase):
             },
         )
         self.assertEqual(user["id"], user_repeat["id"])
-        self.assertEqual(user_repeat["github_token"], "ghp_updated_token")
+
+        # The raw token must NEVER be returned by this function - it feeds
+        # directly into the /api/auth/github HTTP response.
+        self.assertIsNone(user_repeat["github_token"])
+        self.assertTrue(user_repeat["has_github_token"])
+        # Only a masked hint is exposed for the UI (e.g. "ghp_****aaaa").
+        self.assertIsNotNone(user_repeat["github_token_masked"])
+        self.assertIn("****", user_repeat["github_token_masked"])
+        self.assertNotIn("ghp_updated_token", str(user_repeat))
 
     def test_05_repository_scan_linked_to_user(self):
         """Verify audit scan records can be associated with a user_id."""
@@ -212,53 +220,15 @@ class TestAuthFastAPI(unittest.TestCase):
         init_db()
         cls.client = TestClient(app)
 
-    def test_01_api_signup_and_signin(self):
-        """Verify FastAPI /api/auth/signup and /api/auth/signin endpoints."""
-        uid = uuid.uuid4().hex[:8]
-        payload = {
-            "email": f"api_{uid}@greencode.io",
-            "username": f"api_{uid}",
-            "password": "Password2026!",
-            "full_name": "API Tester",
-        }
-
-        # Sign Up
-        res_signup = self.client.post("/api/auth/signup", json=payload)
-        self.assertEqual(res_signup.status_code, 200)
-        data = res_signup.json()
-        self.assertTrue(data["success"])
-        self.assertEqual(data["user"]["email"], payload["email"])
-        self.assertIn("email_dispatch", data)
-
-        # Duplicate signup returns 400
-        res_dup = self.client.post("/api/auth/signup", json=payload)
-        self.assertEqual(res_dup.status_code, 400)
-
-        # Sign In with Email
-        res_signin_email = self.client.post(
-            "/api/auth/signin",
-            json={"login": payload["email"], "password": payload["password"]},
-        )
-        self.assertEqual(res_signin_email.status_code, 200)
-        self.assertTrue(res_signin_email.json()["success"])
-
-        # Sign In with Username
-        res_signin_user = self.client.post(
-            "/api/auth/signin",
-            json={"login": payload["username"], "password": payload["password"]},
-        )
-        self.assertEqual(res_signin_user.status_code, 200)
-        self.assertTrue(res_signin_user.json()["success"])
-
-        # Sign In with Wrong Password returns 401
-        res_bad = self.client.post(
-            "/api/auth/signin",
-            json={"login": payload["email"], "password": "WrongPassword!"},
-        )
-        self.assertEqual(res_bad.status_code, 401)
+    def test_01_api_github_auth_is_the_only_signin(self):
+        """Email/password endpoints are gone; GitHub PAT is the sole identity provider."""
+        for gone in ("/api/auth/signup", "/api/auth/signin", "/api/auth/forgot-password"):
+            with self.subTest(path=gone):
+                res = self.client.post(gone, json={})
+                self.assertEqual(res.status_code, 404, f"{gone} should not exist")
 
     def test_02_api_github_auth(self):
-        """Verify FastAPI /api/auth/github endpoint with mocked GitHub response."""
+        """Verify /api/auth/github provisions an account and never echoes the token."""
         uid = uuid.uuid4().hex[:8]
         mock_gh_data = {
             "login": f"gh_api_{uid}",
@@ -266,56 +236,32 @@ class TestAuthFastAPI(unittest.TestCase):
             "avatar_url": "https://avatars.githubusercontent.com/u/123",
             "name": f"API GitHub User {uid}",
         }
+        raw_token = "ghp_" + "z" * 36
 
         with patch("app.main.get_authenticated_user", return_value=mock_gh_data):
-            res = self.client.post("/api/auth/github", json={"github_token": "ghp_api_token_test"})
-            self.assertEqual(res.status_code, 200)
-            data = res.json()
-            self.assertTrue(data["success"])
-            self.assertEqual(data["user"]["github_username"], mock_gh_data["login"])
+            res = self.client.post("/api/auth/github", json={"github_token": raw_token})
+        self.assertEqual(res.status_code, 200, res.text)
+        data = res.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["user"]["github_username"], mock_gh_data["login"])
+        self.assertIn("access_token", data)
+        self.assertIn("refresh_token", data)
 
-    def test_03_api_email_verification_and_password_reset(self):
-        """Verify /api/auth/verify-email, /api/auth/forgot-password, /api/auth/reset-password endpoints."""
-        uid = uuid.uuid4().hex[:8]
-        email = f"api_flow_{uid}@greencode.io"
-        user = create_user(
-            email=email,
-            username=f"api_flow_{uid}",
-            password="OriginalPassword123!",
-        )
+        # The submitted PAT must not be reflected anywhere in the response body.
+        self.assertNotIn(raw_token, res.text)
+        self.assertIsNone(data["user"]["github_token"])
+        self.assertTrue(data["user"]["has_github_token"])
 
-        # 1. Verify Email
-        v_token = user["verification_token"]
-        res_verify = self.client.get(f"/api/auth/verify-email?token={v_token}")
-        self.assertEqual(res_verify.status_code, 200)
-        self.assertTrue(res_verify.json()["success"])
+        # The issued access token must authenticate subsequent requests.
+        me = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {data['access_token']}"})
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(me.json()["user"]["github_username"], mock_gh_data["login"])
 
-        # 2. Forgot Password
-        res_forgot = self.client.post("/api/auth/forgot-password", json={"email": email})
-        self.assertEqual(res_forgot.status_code, 200)
-        self.assertTrue(res_forgot.json()["success"])
-        reset_token = res_forgot.json().get("email_dispatch", {}).get("subject")  # or fetch from db
-        from app.database import SessionLocal, User as UserModel
-        db = SessionLocal()
-        u_db = db.query(UserModel).filter(UserModel.email == email).first()
-        r_token = u_db.reset_token
-        db.close()
-
-        # 3. Reset Password
-        res_reset = self.client.post(
-            "/api/auth/reset-password",
-            json={"token": r_token, "new_password": "BrandNewPassword999!"},
-        )
-        self.assertEqual(res_reset.status_code, 200)
-        self.assertTrue(res_reset.json()["success"])
-
-        # 4. Sign in with brand new password
-        res_new_signin = self.client.post(
-            "/api/auth/signin",
-            json={"login": email, "password": "BrandNewPassword999!"},
-        )
-        self.assertEqual(res_new_signin.status_code, 200)
-        self.assertTrue(res_new_signin.json()["success"])
+    def test_03_invalid_github_token_is_rejected(self):
+        with patch("app.main.get_authenticated_user", return_value=None):
+            res = self.client.post("/api/auth/github", json={"github_token": "ghp_not_a_real_token"})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Invalid or expired GitHub token", res.json()["detail"])
 
 
 if __name__ == "__main__":

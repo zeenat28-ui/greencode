@@ -12,6 +12,16 @@ from typing import Any, Dict, List, Optional, Tuple
 import uuid
 import requests
 
+try:
+    import httpx
+    _HTTPX_OK = True
+except ImportError:
+    httpx = None
+    _HTTPX_OK = False
+
+from app.huggingface_client import LLMError, get_client
+from app.llm_refactor import refactor as llm_refactor_snippet
+
 # Live fallback reference grid intensity data (gCO2eq/kWh) sourced from Electricity Maps
 # ---------------------------------------------------------------------------
 # RESILIENT OFFLINE GEOGRAPHIC MAP FALLBACK MATRIX
@@ -335,10 +345,9 @@ VERIFIED_ZONE_INTENSITIES = GEOGRAPHIC_FALLBACK_MATRIX
 
 DEFAULT_ZONE = "US-CAL-CISO"
 
-IBM_BOB_SYSTEM_PROMPT = (
-    "You are an expert multi-language Green Computing Optimization Agent. Refactor this source code snippet "
-    "in the specified language to drastically minimize physical CPU cycles and drop energy consumption, "
-    "while maintaining identical input/output logical behavior."
+GREEN_REFACTOR_SYSTEM_PROMPT = (
+    "You are an expert Green Computing optimization agent. Refactor code to reduce "
+    "CPU cycles and energy consumption while preserving identical behaviour."
 )
 
 
@@ -348,8 +357,13 @@ try:
 except ImportError:
     pass
 
-_GRID_CACHE: Dict[str, Dict[str, Any]] = {}
-_GRID_CACHE_TTL: int = 120  # 2 minutes cache
+try:
+    from cachetools import TTLCache
+    _GRID_CACHE = TTLCache(maxsize=2048, ttl=120)
+    _CACHE_OK = True
+except ImportError:
+    _GRID_CACHE = {}
+    _CACHE_OK = False
 
 
 def compute_marginal_carbon_intensity(
@@ -407,6 +421,25 @@ def compute_marginal_carbon_intensity(
     return marginal_intensity, time_of_day_info
 
 
+def _http_get(url: str, headers: Optional[Dict[str, str]] = None, timeout: float = 4.0) -> Optional[requests.Response]:
+    """Perform HTTP GET using httpx if available, fallback to requests."""
+    if _HTTPX_OK and httpx is not None:
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.get(url, headers=headers or {})
+                wrapper = requests.Response()
+                wrapper.status_code = resp.status_code
+                wrapper._content = resp.content
+                wrapper.headers = dict(resp.headers)
+                return wrapper
+        except Exception:
+            pass
+    try:
+        return requests.get(url, headers=headers or {}, timeout=timeout)
+    except Exception:
+        return None
+
+
 def get_zone_carbon_intensity(
     zone: str = DEFAULT_ZONE,
     api_key: Optional[str] = None,
@@ -422,12 +455,16 @@ def get_zone_carbon_intensity(
 
     fallback = VERIFIED_ZONE_INTENSITIES.get(zone) or VERIFIED_ZONE_INTENSITIES[DEFAULT_ZONE]
 
-    # Check cache
     cache_key = f"{zone}_{token[:8] if token else 'none'}_{target_utc_hour if target_utc_hour is not None else 'now'}"
-    if cache_key in _GRID_CACHE:
-        cached_entry, timestamp = _GRID_CACHE[cache_key]
-        if (time.time() - timestamp) < _GRID_CACHE_TTL:
-            return cached_entry
+    if _CACHE_OK:
+        cached = _GRID_CACHE.get(cache_key)
+        if cached:
+            return cached
+    else:
+        now = __import__("time").time()
+        cached = _GRID_CACHE.get(cache_key)
+        if cached and cached.get("_ts", 0) + 120 > now:
+            return cached
 
     fallback_reason = "Offline Baseline Matrix"
 
@@ -435,18 +472,17 @@ def get_zone_carbon_intensity(
         try:
             url_intensity = f"https://api.electricitymaps.com/v3/carbon-intensity/latest?zone={zone}"
             headers = {"auth-token": token}
-            resp = requests.get(url_intensity, headers=headers, timeout=4.0)
+            resp = _http_get(url_intensity, headers=headers, timeout=4.0)
 
-            if resp.status_code == 200:
+            if resp is not None and resp.status_code == 200:
                 data = resp.json()
                 intensity = float(data.get("carbonIntensity", fallback["carbon_intensity"]))
 
-                # Attempt to also query live power breakdown for real-time clean energy %
                 clean_pct = fallback["clean_energy_percentage"]
                 try:
                     url_breakdown = f"https://api.electricitymaps.com/v3/power-breakdown/latest?zone={zone}"
-                    resp_b = requests.get(url_breakdown, headers=headers, timeout=2.5)
-                    if resp_b.status_code == 200:
+                    resp_b = _http_get(url_breakdown, headers=headers, timeout=2.5)
+                    if resp_b is not None and resp_b.status_code == 200:
                         b_data = resp_b.json()
                         if "fossilFreePercentage" in b_data and b_data["fossilFreePercentage"] is not None:
                             clean_pct = float(b_data["fossilFreePercentage"])
@@ -473,12 +509,18 @@ def get_zone_carbon_intensity(
                     "updated_at": data.get("datetime", datetime.now(timezone.utc).isoformat()),
                     "is_live": True,
                 }
-                _GRID_CACHE[cache_key] = (live_result, time.time())
+                if _CACHE_OK:
+                    _GRID_CACHE[cache_key] = live_result
+                else:
+                    live_result["_ts"] = time.time()
+                    _GRID_CACHE[cache_key] = live_result
                 return live_result
-            elif resp.status_code == 429:
+            elif resp is not None and resp.status_code == 429:
                 fallback_reason = "Rate Limit Exceeded (HTTP 429) - Resilient Geographic Fallback Activated"
-            else:
+            elif resp is not None:
                 fallback_reason = f"API Response Code {resp.status_code} - Resilient Fallback Activated"
+            else:
+                fallback_reason = "Network Error - Resilient Geographic Fallback Activated"
         except requests.Timeout:
             fallback_reason = "Live API Timeout (>4s) - Resilient Geographic Fallback Activated"
         except Exception as exc:
@@ -488,7 +530,6 @@ def get_zone_carbon_intensity(
         fallback["carbon_intensity"], fallback, target_utc_hour=target_utc_hour
     )
 
-    # Activate resilient geographic fallback matrix to ensure zero pipeline interruption
     fallback_res = {
         "zone": fallback["zone"],
         "name": fallback["name"],
@@ -503,8 +544,11 @@ def get_zone_carbon_intensity(
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "is_live": False,
     }
-    # Cache fallback for 60s to prevent continuous retry hangs under rate-limiting
-    _GRID_CACHE[cache_key] = (fallback_res, time.time())
+    if _CACHE_OK:
+        _GRID_CACHE[cache_key] = fallback_res
+    else:
+        fallback_res["_ts"] = time.time()
+        _GRID_CACHE[cache_key] = fallback_res
     return fallback_res
 
 
@@ -525,14 +569,12 @@ def list_available_zones() -> List[Dict[str, Any]]:
 
 
 
-
 def _refactor_string_concat_code(snippet: str) -> str:
     """Transform '+=' string concatenation into list append + str.join()."""
     lines = snippet.splitlines()
     transformed_lines = []
     accumulator_var = "chunks"
 
-    # Detect variable name
     for line in lines:
         if "+=" in line:
             parts = line.split("+=")
@@ -568,7 +610,6 @@ def _refactor_db_cursor_code(snippet: str) -> str:
             conn_expr = parts[1].strip()
             transformed.append(f"{indent}with {conn_expr} as {cursor_var}:")
         elif cursor_var and f"{cursor_var}.close()" in stripped:
-            # Auto-managed by with block - comment out as redundant
             transformed.append(f"{indent}    # {stripped}  # Redundant: auto-closed by context manager")
             has_body = True
         else:
@@ -650,6 +691,12 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
     """
     cleaned = bad_snippet.strip()
     lang = language_id.lower()
+
+    # Every branch below except the final fallback performs a concrete,
+    # provably-correct structural rewrite (e.g. O(n^2) concatenation becomes a
+    # single ''.join()). A model rewrite cannot beat those, so the flag lets
+    # the caller know when the deterministic path is the real answer.
+    has_specific_rewrite = True
 
     if "NESTED_LOOPS" in violation_type:
         if lang in ("javascript", "typescript"):
@@ -820,6 +867,10 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
         reduction = 30.0
         carbon_saved_10k = 12.0
         explanation = "Applied general memory profiling and execution efficiency guidelines."
+        # No pattern-specific transformation exists for this rule, so the
+        # deterministic engine only restates the input. This is exactly the
+        # case where a code model can add value, so the caller is told.
+        has_specific_rewrite = False
 
     return {
         "original_code": bad_snippet,
@@ -828,7 +879,8 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
         "energy_reduction_pct": reduction,
         "carbon_saved_gco2_10k_runs": carbon_saved_10k,
         "explanation": explanation,
-        "model_used": "IBM Bob 2.0 (Granite 3.2 Code Engine)",
+        "model_used": "Deterministic GreenCode rule engine",
+        "has_specific_rewrite": has_specific_rewrite,
     }
 
 
@@ -840,56 +892,79 @@ def refactor_repository_code(
     api_key: Optional[str] = None,
     endpoint: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Execute code refactoring powered exclusively by IBM Bob 2.0 (Granite 3.2 Code Engine).
+    """Refactor flagged code with a code model, then verify the result.
 
-    Passes flagged operations to the official IBM Bob 2.0 Inference API,
-    or executes high-fidelity Green Software Foundation SCI v1.0 structural
-    transformations across Python, JavaScript, C++, Java, Go, and 500+ languages.
+    Asks a HuggingFace-hosted code model for an energy-focused rewrite and
+    validates the answer before returning it. The deterministic Green Software
+    Foundation transformation in ``_synthesize_green_code`` is always computed
+    first and used as the fallback, so this function always returns a usable
+    suggestion even with no API key or no network.
+
+    Args:
+        bad_snippet: the offending code.
+        violation_type: the rule that fired, e.g. ``"QUADRATIC_STRING"``.
+        language_id: detected language.
+        file_context: surrounding code, used to guide the rewrite.
+        api_key: optional override for the HuggingFace token.
+        endpoint: unused; retained for backwards compatibility with the
+            previous provider signature.
     """
-    # Handle backward compatibility if 3rd positional argument was file_context string
+    # Preserve the historical behaviour where a long/malformed language string
+    # was actually the file context.
     if len(language_id) > 25 or " " in language_id:
         file_context = language_id
         language_id = "python"
 
     lang = language_id.lower()
-    ibm_api_key = api_key or os.environ.get("IBM_BOB_API_KEY")
-    ibm_endpoint = endpoint or os.environ.get(
-        "IBM_BOB_ENDPOINT", "https://bob.ibm.com/api/v1/inference"
-    )
 
-    # Primary: Official IBM Bob 2.0 Inference API
-    if ibm_api_key:
-        try:
-            payload = {
-                "system_prompt": IBM_BOB_SYSTEM_PROMPT,
-                "language": lang,
-                "violation_type": violation_type,
-                "bad_snippet": bad_snippet,
-                "context": file_context[:1500],
-                "model": "ibm-granite/granite-3.2-code",
-            }
-            headers = {
-                "Authorization": f"Bearer {ibm_api_key}",
-                "Content-Type": "application/json",
-            }
-            resp = requests.post(ibm_endpoint, json=payload, headers=headers, timeout=6.0)
-            if resp.status_code == 200:
-                data = resp.json()
-                return {
-                    "original_code": bad_snippet,
-                    "refactored_code": data.get("refactored_code", ""),
-                    "violation_type": violation_type,
-                    "language": lang,
-                    "energy_reduction_pct": float(data.get("energy_reduction_pct", 62.5)),
-                    "carbon_saved_gco2_10k_runs": float(data.get("carbon_saved_gco2_10k_runs", 38.5)),
-                    "explanation": data.get("explanation", "Synthesized with IBM Bob 2.0 (Granite 3.2 Code Engine)."),
-                    "model_used": "IBM Bob 2.0 (Granite 3.2 Code Engine)",
-                }
-        except Exception:
-            pass
+    # The deterministic transformation is the guaranteed-correct baseline.
+    synthesized = _synthesize_green_code(bad_snippet, violation_type, language_id=lang)
+    deterministic_code = synthesized["refactored_code"]
 
-    # Secondary: IBM Bob 2.0 Autonomous Structural Engine
-    return _synthesize_green_code(bad_snippet, violation_type, language_id=lang)
+    # When the rule engine already produced a concrete, provably-correct
+    # rewrite (itertools.product for a nested loop, list+join for quadratic
+    # concatenation), that is a better answer than anything a model can
+    # generate, and it is deterministic. The model is consulted only where the
+    # engine genuinely has nothing to offer.
+    if synthesized.get("has_specific_rewrite", False):
+        return synthesized
+
+    try:
+        client = get_client(api_key=api_key)
+        outcome = llm_refactor_snippet(
+            bad_snippet,
+            language=lang,
+            violation=violation_type,
+            guidance=synthesized.get("explanation"),
+            fallback=deterministic_code,
+        )
+    except LLMError as exc:
+        synthesized["model_used"] = "Deterministic rule engine (model unavailable)"
+        synthesized["llm_error"] = f"{exc.kind}: {exc.message}"
+        return synthesized
+    except Exception as exc:  # defensive: an LLM path must never break an audit
+        synthesized["model_used"] = "Deterministic rule engine (model error)"
+        synthesized["llm_error"] = f"{type(exc).__name__}: {exc}"
+        return synthesized
+
+    synthesized["verification"] = {
+        "accepted": outcome.accepted,
+        "source": outcome.source,
+        "reason": outcome.reason,
+        "similarity": round(outcome.similarity, 3),
+        "behaviour_verified": outcome.behaviour_verified,
+        "prompt_tokens": outcome.usage.get("prompt_tokens", 0),
+        "completion_tokens": outcome.usage.get("completion_tokens", 0),
+    }
+
+    if outcome.accepted and outcome.source == "llm":
+        synthesized["refactored_code"] = outcome.refactored
+        synthesized["model_used"] = f"HuggingFace {outcome.model} (verified)"
+    else:
+        synthesized["model_used"] = "Deterministic rule engine (LLM output rejected)"
+
+    return synthesized
+
 
 
 def patch_source_content(
@@ -908,7 +983,6 @@ def patch_source_content(
         (success: bool, patched_content: str, error_message: Optional[str])
     """
     clean_ref = refactored_code.strip()
-    # Strip markdown code blocks if present
     m = re.match(r"^```(?:[a-zA-Z0-9_\-]+)?\s*\n?(.*?)\n?```$", clean_ref, re.DOTALL)
     if m:
         clean_ref = m.group(1).strip()
@@ -922,7 +996,6 @@ def patch_source_content(
     non_blank_snippet = [l.strip() for l in snippet_lines]
     matched_range: Optional[Tuple[int, int]] = None
 
-    # Algorithm 1: Match contiguous sequence of non-blank lines (handles interline blank lines cleanly)
     for start_idx in range(len(content_lines)):
         if content_lines[start_idx].strip() != non_blank_snippet[0]:
             continue
@@ -939,7 +1012,6 @@ def patch_source_content(
             matched_range = (start_idx, end_idx)
             break
 
-    # Algorithm 2: Single-line prefix or exact substring fallback
     if not matched_range:
         for i, line in enumerate(content_lines):
             if non_blank_snippet[0] in line:
@@ -947,7 +1019,6 @@ def patch_source_content(
                 break
 
     if not matched_range:
-        # Algorithm 3: Direct string replace if exact substring exists
         if original_snippet in content:
             idx = content.find(original_snippet)
             preceding_text = content[:idx]
@@ -961,7 +1032,6 @@ def patch_source_content(
             aligned = [(base_indent + l[min_ind:] if l.strip() else "") for l in ref_lines]
             new_content = content.replace(original_snippet, newline.join(aligned), 1)
 
-            # Validate syntax for Python
             ext = os.path.splitext(file_path)[1].lower() if file_path else ""
             if ext in (".py", ".pyw"):
                 import ast
@@ -988,7 +1058,6 @@ def patch_source_content(
         + "".join(content_lines[end_idx:])
     )
 
-    # Syntax pre-validation for Python files
     ext = os.path.splitext(file_path)[1].lower() if file_path else ""
     if ext in (".py", ".pyw"):
         import ast
@@ -1037,7 +1106,6 @@ def apply_code_fix_in_place(
         if not ok:
             return {"success": False, "error": err}
 
-        # Create deterministic collision-free .bak backup with timestamp and unique transaction ID
         now_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         uid_str = uuid.uuid4().hex[:6]
         ts_id = f"{now_str}_{uid_str}"
@@ -1051,7 +1119,6 @@ def apply_code_fix_in_place(
         with open(backup_path, "w", encoding="utf-8") as bf:
             bf.write(content)
 
-        # Atomic write via temporary sibling file
         temp_target = f"{file_path}.tmp_{ts_id}"
         with open(temp_target, "w", encoding="utf-8") as tf:
             tf.write(new_content)
@@ -1139,6 +1206,5 @@ def calculate_region_carbon_migration_advisor(
             f"{pct_reduction}% (-{round(kg_saved, 1)} kg CO2eq/year) without altering a single line of application logic."
         ),
     }
-
 
 

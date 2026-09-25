@@ -23,7 +23,7 @@ jobs:
           green-score-threshold: "75.0"
           target-zone: "US-CAL-CISO"
           electricity-maps-token: ${{ secrets.ELECTRICITY_MAPS_API_KEY }}
-          ibm-bob-token: ${{ secrets.HUGGINGFACE_TOKEN }}
+          huggingface-token: ${{ secrets.HUGGINGFACE_TOKEN }}
 
       - name: Quality Gate Status Output
         run: |

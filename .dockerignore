@@ -1,0 +1,43 @@
+# Git & Version Control
+.git/
+.gitignore
+.gitattributes
+
+# Python cache & compiled artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local databases & state
+*.db
+*.sqlite3
+*.bak
+*.tmp*
+
+# Secrets & Local Configs
+.env
+*.pem
+*.key
+
+# IDE & Editor artifacts
+.vscode/
+.idea/
+.gemini/

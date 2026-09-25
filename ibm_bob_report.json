@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0.0",
+  "standard": "ISO/IEC 21031:2024 / GSF SCI v1.0",
+  "tool": "GreenCode Auditor powered by IBM Bob 2.0",
+  "generated_at": "2026-09-25T15:57:07Z",
+  "grid_telemetry": {
+    "zone": "US-CAL-CISO",
+    "carbon_intensity_gco2_kwh": 178.0,
+    "is_live": true,
+    "source": "Electricity Maps API"
+  },
+  "audit": {
+    "before": {
+      "file": "samples/heavy_pipeline.py",
+      "green_score": 47.0,
+      "total_deductions": 53.0,
+      "violation_count": 4,
+      "latency_ms": 18.118,
+      "ast_gate": "PASS",
+      "violations": [
+        {
+          "rule": "NESTED_LOOPS_DEPTH_3+",
+          "line": 40,
+          "severity": "HIGH",
+          "deduction": 15.0
+        },
+        {
+          "rule": "RAW_DB_CURSOR_NO_CONTEXT",
+          "line": 25,
+          "severity": "HIGH",
+          "deduction": 10.0
+        },
+        {
+          "rule": "QUADRATIC_STRING_CONCAT_IN_LOOP",
+          "line": 46,
+          "severity": "MEDIUM",
+          "deduction": 8.0
+        },
+        {
+          "rule": "UNCACHED_NETWORK_IN_LOOP",
+          "line": 53,
+          "severity": "CRITICAL",
+          "deduction": 20.0
+        }
+      ]
+    },
+    "after": {
+      "file": "samples/heavy_pipeline_refactored.py",
+      "green_score": 100.0,
+      "total_deductions": 0,
+      "violation_count": 0,
+      "latency_ms": 10.504,
+      "ast_gate": "PASS",
+      "violations": []
+    }
+  },
+  "gsf_sci": {
+    "formula": "SCI = (E x I) + M",
+    "runs_per_year": 10000,
+    "before": {
+      "duration_s": 3.8,
+      "kwh_per_run": 1.9e-05,
+      "total_kwh_10k": 0.19,
+      "gco2eq_10k": 33.82,
+      "annual_cost_usd": 0.0182
+    },
+    "after": {
+      "duration_s": 0.45,
+      "kwh_per_run": 2.25e-06,
+      "total_kwh_10k": 0.0225,
+      "gco2eq_10k": 4.005,
+      "annual_cost_usd": 0.0022
+    },
+    "delta": {
+      "energy_reduction_pct": 88.16,
+      "co2_abated_gco2eq": 29.815,
+      "co2_abated_kgco2eq": 0.029815,
+      "annual_cost_saving_usd": 0.016,
+      "score_delta": "+53 pts (47 -> 100)",
+      "violations_resolved": 4
+    }
+  }
+}

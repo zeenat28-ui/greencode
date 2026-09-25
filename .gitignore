@@ -1,0 +1,56 @@
+# Python Bytecode and Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets and Local Configurations
+.env
+.env.local
+*.pem
+*.key
+*.cert
+
+# Node / Frontend Artifacts
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+frontend/.vite/
+
+# Database Files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+greencode.db
+greencode.db-shm
+greencode.db-wal
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Streamlit Local Cache
+.streamlit/
+
+# Docker Local Data Mounts
+postgres_data/
+redis_data/
+
+# IDE and OS Artifacts
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+temp/
+

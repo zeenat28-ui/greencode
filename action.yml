@@ -1,0 +1,91 @@
+name: 'GreenCode Auditor'
+description: 'Automated Carbon Inefficiency Scanner, GSF SCI v1.0 Gatekeeper, SARIF & SonarQube Exporter'
+author: 'GreenCode'
+branding:
+  icon: 'activity'
+  color: 'green'
+
+inputs:
+  path:
+    description: 'Path to source directory or repository to audit'
+    required: false
+    default: '.'
+  threshold:
+    description: 'Minimum acceptable Green Score (0-100) before failing CI build'
+    required: false
+    default: '75.0'
+  zone:
+    description: 'Electricity Maps grid zone identifier for operational carbon calculation'
+    required: false
+    default: 'US-CAL-CISO'
+  sarif_file:
+    description: 'Output filepath to generate OASIS SARIF v2.1.0 report'
+    required: false
+    default: 'greencode.sarif'
+  sonar_file:
+    description: 'Optional output filepath for SonarQube Generic Issue Import JSON report'
+    required: false
+    default: ''
+  upload_sarif:
+    description: 'Automatically upload SARIF report to GitHub Code Scanning Alerts (Security Tab)'
+    required: false
+    default: 'true'
+  pr_comment:
+    description: 'Automatically post a carbon audit sticky breakdown comment on Pull Requests'
+    required: false
+    default: 'true'
+  github_token:
+    description: 'GitHub Personal Access Token or GITHUB_TOKEN for PR commenting and SARIF upload'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  green_score:
+    description: 'Calculated project Green Score (0 - 100.0)'
+    value: ${{ steps.greencode.outputs.green_score }}
+  total_violations:
+    description: 'Total number of energy anti-patterns detected'
+    value: ${{ steps.greencode.outputs.total_violations }}
+  passed:
+    description: 'True if Green Score >= threshold, False otherwise'
+    value: ${{ steps.greencode.outputs.passed }}
+  sarif_file:
+    description: 'Path to the generated SARIF report file'
+    value: ${{ steps.greencode.outputs.sarif_file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python Environment
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install GreenCode Auditor Dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r ${{ github.action_path }}/requirements.txt
+
+    - name: Run GreenCode Static Carbon Gatekeeper
+      id: greencode
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: |
+        EXTRA_FLAGS=""
+        if [ -n "${{ inputs.sonar_file }}" ]; then
+          EXTRA_FLAGS="$EXTRA_FLAGS --sonar ${{ inputs.sonar_file }}"
+        fi
+        python -m app.main \
+          --path "${{ inputs.path }}" \
+          --threshold "${{ inputs.threshold }}" \
+          --zone "${{ inputs.zone }}" \
+          --sarif "${{ inputs.sarif_file }}" \
+          --ci $EXTRA_FLAGS
+
+    - name: Upload SARIF to GitHub Code Scanning Alerts
+      if: ${{ inputs.upload_sarif == 'true' && (success() || failure()) }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif_file }}

@@ -1,0 +1,33 @@
+name: "GreenCode Auditor CI Quality Gate"
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  green-audit:
+    name: "Audit Software Carbon Intensity & Green Score"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Repository
+        uses: actions/checkout@v4
+
+      - name: Run GreenCode Auditor Action
+        id: auditor
+        uses: ./
+        with:
+          repo-path: "."
+          green-score-threshold: "75.0"
+          target-zone: "US-CAL-CISO"
+          electricity-maps-token: ${{ secrets.ELECTRICITY_MAPS_API_KEY }}
+          ibm-bob-token: ${{ secrets.HUGGINGFACE_TOKEN }}
+
+      - name: Quality Gate Status Output
+        run: |
+          echo "Green Score: ${{ steps.auditor.outputs.green-score }} / 100"
+          echo "Total Violations Detected: ${{ steps.auditor.outputs.total-violations }}"
+          echo "Gate Passed: ${{ steps.auditor.outputs.passed }}"
+

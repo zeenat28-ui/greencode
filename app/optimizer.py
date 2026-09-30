@@ -22,6 +22,11 @@ except ImportError:
 from app.huggingface_client import LLMError, get_client
 from app.llm_refactor import refactor as llm_refactor_snippet
 
+# Provider-agnostic carbon intensity. Importing the module (rather than the
+# functions) keeps provider registry changes visible at call time and lets
+# optimizer stay the single entry point the rest of the app already uses.
+from app import carbon_intensity
+
 # Live fallback reference grid intensity data (gCO2eq/kWh) sourced from Electricity Maps
 # ---------------------------------------------------------------------------
 # RESILIENT OFFLINE GEOGRAPHIC MAP FALLBACK MATRIX
@@ -445,111 +450,73 @@ def get_zone_carbon_intensity(
     api_key: Optional[str] = None,
     target_utc_hour: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Retrieve live grid carbon intensity coefficient (gCO2eq/kWh) from Electricity Maps.
+    """Retrieve grid carbon intensity (gCO2eq/kWh) with full provenance.
 
-    Queries the real-time Electricity Maps API when token is provided, caching results
-    for 120 seconds to optimize latency, and falls back to verified zone tables if offline.
-    Computes dynamic, diurnal marginal carbon shifts according to time-of-day solar/fossil patterns.
+    Delegates provider selection to app/carbon_intensity.py, which walks an
+    ordered chain of decreasing authority:
+
+        primary official (grid operator data, often no key required)
+        -> customer subscription key (bring your own)
+        -> free global annual dataset
+        -> bundled static matrix
+
+    The previous implementation hard-coded Electricity Maps as the only live
+    source. That provider costs EUR 6,000 per year per country per signal, and
+    as a dependency it was wrong twice over: unaffordable at this product's
+    scale, and redundant for an enterprise buyer who already pays for it.
+
+    Whatever the source, the returned dict states which one it was, at what
+    resolution, how old the reading is, and which providers were tried first.
+    A static fallback is never reported as a live measurement.
     """
-    token = api_key or os.environ.get("ELECTRICITY_MAPS_API_KEY", "")
-
     fallback = VERIFIED_ZONE_INTENSITIES.get(zone) or VERIFIED_ZONE_INTENSITIES[DEFAULT_ZONE]
 
-    cache_key = f"{zone}_{token[:8] if token else 'none'}_{target_utc_hour if target_utc_hour is not None else 'now'}"
-    if _CACHE_OK:
-        cached = _GRID_CACHE.get(cache_key)
-        if cached:
-            return cached
-    else:
-        now = __import__("time").time()
-        cached = _GRID_CACHE.get(cache_key)
-        if cached and cached.get("_ts", 0) + 120 > now:
-            return cached
+    # An explicitly supplied key must reach the provider chain. The previous
+    # refactor dropped this argument on the floor, so a caller passing
+    # api_key=... silently got the static matrix instead - which then surfaced
+    # as a live-looking result rather than an obvious failure.
+    key_override = {"ELECTRICITY_MAPS_API_KEY": api_key} if api_key else None
 
-    fallback_reason = "Offline Baseline Matrix"
-
-    if token:
-        try:
-            url_intensity = f"https://api.electricitymaps.com/v3/carbon-intensity/latest?zone={zone}"
-            headers = {"auth-token": token}
-            resp = _http_get(url_intensity, headers=headers, timeout=4.0)
-
-            if resp is not None and resp.status_code == 200:
-                data = resp.json()
-                intensity = float(data.get("carbonIntensity", fallback["carbon_intensity"]))
-
-                clean_pct = fallback["clean_energy_percentage"]
-                try:
-                    url_breakdown = f"https://api.electricitymaps.com/v3/power-breakdown/latest?zone={zone}"
-                    resp_b = _http_get(url_breakdown, headers=headers, timeout=2.5)
-                    if resp_b is not None and resp_b.status_code == 200:
-                        b_data = resp_b.json()
-                        if "fossilFreePercentage" in b_data and b_data["fossilFreePercentage"] is not None:
-                            clean_pct = float(b_data["fossilFreePercentage"])
-                        elif "renewablePercentage" in b_data and b_data["renewablePercentage"] is not None:
-                            clean_pct = float(b_data["renewablePercentage"])
-                except Exception:
-                    pass
-
-                marginal_intensity, tod_info = compute_marginal_carbon_intensity(
-                    intensity, fallback, target_utc_hour=target_utc_hour
-                )
-
-                live_result = {
-                    "zone": zone,
-                    "name": fallback["name"],
-                    "region": fallback.get("region", "Global"),
-                    "carbon_intensity": round(intensity, 1),
-                    "marginal_carbon_intensity": marginal_intensity,
-                    "time_of_day_info": tod_info,
-                    "clean_energy_percentage": round(clean_pct, 1),
-                    "fossil_fuel_percentage": round(100.0 - clean_pct, 1),
-                    "datacenter_hubs": fallback.get("datacenter_hubs", []),
-                    "source": "Electricity Maps Live API (Real-Time)",
-                    "updated_at": data.get("datetime", datetime.now(timezone.utc).isoformat()),
-                    "is_live": True,
-                }
-                if _CACHE_OK:
-                    _GRID_CACHE[cache_key] = live_result
-                else:
-                    live_result["_ts"] = time.time()
-                    _GRID_CACHE[cache_key] = live_result
-                return live_result
-            elif resp is not None and resp.status_code == 429:
-                fallback_reason = "Rate Limit Exceeded (HTTP 429) - Resilient Geographic Fallback Activated"
-            elif resp is not None:
-                fallback_reason = f"API Response Code {resp.status_code} - Resilient Fallback Activated"
-            else:
-                fallback_reason = "Network Error - Resilient Geographic Fallback Activated"
-        except requests.Timeout:
-            fallback_reason = "Live API Timeout (>4s) - Resilient Geographic Fallback Activated"
-        except Exception as exc:
-            fallback_reason = f"Network Error ({type(exc).__name__}) - Resilient Geographic Fallback Activated"
-
-    marginal_intensity, tod_info = compute_marginal_carbon_intensity(
-        fallback["carbon_intensity"], fallback, target_utc_hour=target_utc_hour
+    resolved = carbon_intensity.resolve_carbon_intensity(
+        zone,
+        static_lookup=lambda z: VERIFIED_ZONE_INTENSITIES.get(z),
+        use_cache=True,
+        key_override=key_override,
     )
 
-    fallback_res = {
-        "zone": fallback["zone"],
+    marginal_intensity, tod_info = compute_marginal_carbon_intensity(
+        resolved.carbon_intensity, fallback, target_utc_hour=target_utc_hour
+    )
+
+    clean_pct = fallback.get("clean_energy_percentage")
+    fossil_pct = fallback.get("fossil_fuel_percentage")
+
+    result: Dict[str, Any] = {
+        "zone": resolved.zone or zone,
         "name": fallback["name"],
         "region": fallback.get("region", "Global"),
-        "carbon_intensity": fallback["carbon_intensity"],
+        "carbon_intensity": resolved.carbon_intensity,
         "marginal_carbon_intensity": marginal_intensity,
         "time_of_day_info": tod_info,
-        "clean_energy_percentage": fallback["clean_energy_percentage"],
-        "fossil_fuel_percentage": fallback["fossil_fuel_percentage"],
+        "clean_energy_percentage": clean_pct,
+        "fossil_fuel_percentage": fossil_pct,
         "datacenter_hubs": fallback.get("datacenter_hubs", []),
-        "source": f"Electricity Maps Geographic Fallback Matrix ({fallback_reason})",
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "is_live": False,
+        "source": resolved.source_label,
+        "updated_at": resolved.observed_at,
+        "is_live": resolved.is_live,
+
+        # Provenance: everything needed to defend this number in an audit.
+        "intensity_source": resolved.intensity_source,
+        "intensity_source_tier": resolved.intensity_source_tier,
+        "resolution": resolved.resolution,
+        "freshness": resolved.freshness,
+        "age_seconds": resolved.age_seconds,
+        "fallback_chain": resolved.fallback_chain,
+        "providers_tried": resolved.tried,
+        "intensity_caveats": resolved.caveats,
+        "intensity_citation": resolved.citation,
     }
-    if _CACHE_OK:
-        _GRID_CACHE[cache_key] = fallback_res
-    else:
-        fallback_res["_ts"] = time.time()
-        _GRID_CACHE[cache_key] = fallback_res
-    return fallback_res
+    return result
 
 
 

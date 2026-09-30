@@ -631,6 +631,23 @@ def health_check():
     hf = get_hf_client()
     deps["huggingface"] = "ok" if hf.configured else "not_configured"
 
+    # Carbon-intensity provider readiness. Operators need to know whether the
+    # figures they are about to publish are live, and which source produced
+    # them, without having to read the code.
+    try:
+        from app.optimizer import carbon_intensity as _ci
+
+        ci_status = _ci.provider_status()
+        live = [p for p in ci_status["providers"] if p["usable_now"]]
+        deps["carbon_intensity"] = (
+            "official_live" if any(p["tier"] == _ci.TIER_PRIMARY_OFFICIAL for p in live)
+            else "customer_key" if live
+            else "static_only"
+        )
+    except Exception as ci_exc:
+        ci_status = {"error": f"{type(ci_exc).__name__}: {ci_exc}"}
+        deps["carbon_intensity"] = "unavailable"
+
     # Configuration faults are reported rather than hidden. A host that is
     # running on the published default JWT key is reachable and answering, but
     # its access tokens are forgeable, so it must not report itself as healthy.
@@ -656,6 +673,7 @@ def health_check():
             "credential_encryption_configured": not crypto_faults,
             "credential_encryption_blockers": crypto_faults,
             "rate_limiting_active": SLOWAPI_OK,
+            "carbon_intensity_providers": ci_status,
         },
         "capabilities": {
             "dynamic_analysis": dyn["dynamic_analysis_available"],

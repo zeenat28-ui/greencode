@@ -167,6 +167,53 @@ RAPL counters are 32-bit and wrap at `max_energy_range_uj`. `wrap_delta()`
 handles the wrap; a naive `end - start` produces a catastrophically negative
 figure that silently corrupts every downstream result.
 
+### Carbon Intensity Providers
+
+Grid carbon intensity (gCO2eq/kWh) is resolved from an ordered chain. **No key is
+required by default** — Electricity Maps costs EUR 6,000/year/country/signal, so
+it is a bring-your-own credential rather than a dependency.
+
+| Tier | Provider | Key | Verification status |
+|---|---|---|---|
+| 1 `primary_official` | **UK National Grid ESO** | none | **verified live** — HTTP 200, 30-min, no auth |
+| 1 `primary_official` | **ENTSO-E** (EU, ~30 zones, 15-min) | free token | not verified from the build sandbox (DNS) |
+| 2 `customer_key` | **Electricity Maps** | your key | verified only when a key is configured |
+| 2 `customer_key` | **WattTime** (marginal) | your token | verified only when a token is configured |
+| 3 `free_dataset` | Bundled global reference table | none | always available |
+| 4 `static_matrix` | Per-zone reference values | none | always available |
+
+Check what is live on your host:
+
+```bash
+curl http://localhost:8000/api/health | python -m json.tool
+# security.carbon_intensity_providers.providers[]
+```
+
+`verified_live: false` means the provider has never answered a request from this
+host. It is reported as such rather than assumed working.
+
+### Provenance travels with every figure
+
+```json
+{
+  "carbon_intensity": 82.0,
+  "is_live": true,
+  "intensity_source": "uk_eso",
+  "intensity_source_tier": "primary_official",
+  "resolution": "PT30M",
+  "observed_at": "2026-09-30T09:00Z",
+  "age_seconds": 254,
+  "freshness": "live",
+  "fallback_chain": ["primary_official", "customer_key", "free_dataset", "static_matrix"],
+  "providers_tried": [{"provider": "static_matrix", "result": "ok"}],
+  "intensity_citation": "UK National Grid ESO Carbon Intensity API",
+  "intensity_caveats": []
+}
+```
+
+A static fallback is **never** reported as live, and always carries a caveat
+saying so. That property is enforced by tests.
+
 ### Enabling the Scaphandre sidecar (Linux only)
 
 ```bash

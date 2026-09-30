@@ -274,12 +274,24 @@ class TestGreenCodeAuditor(unittest.TestCase):
         self.assertIn("CA-QC", GEOGRAPHIC_FALLBACK_MATRIX)
         self.assertIn("SG", GEOGRAPHIC_FALLBACK_MATRIX)
 
-        # Verify rate-limit resilience: invalid/rate-limited token activates fallback without throwing
+        # Verify resilience: a bad/rate-limited key must not throw, and must be
+        # reported as a non-live value with an explicit provenance tier.
+        #
+        # This previously asserted that the string "Fallback" appeared in
+        # `source`, which only described the old implementation's wording. The
+        # assertion is now the stronger property that actually matters: the
+        # result is flagged not-live and names the tier it came from.
         fallback_res = get_zone_carbon_intensity("CA-QC", api_key="rate_limit_token_test")
         self.assertEqual(fallback_res["zone"], "CA-QC")
         self.assertGreater(fallback_res["carbon_intensity"], 0)
-        self.assertIn("Fallback", fallback_res["source"])
         self.assertFalse(fallback_res["is_live"])
+        self.assertEqual(fallback_res["intensity_source_tier"], "static_matrix")
+        self.assertEqual(fallback_res["resolution"], "static")
+        self.assertTrue(fallback_res["intensity_caveats"])
+        # Every provider that was consulted before falling back must be recorded.
+        tried = {t["provider"] for t in fallback_res["providers_tried"]}
+        self.assertIn("electricity_maps", tried)
+        self.assertIn("static_matrix", tried)
 
     def test_14_dynamic_time_of_day_carbon_shift(self):
         """Verify dynamic time-of-day marginal carbon shift calculations (solar clean bonus vs evening fossil peaker)."""

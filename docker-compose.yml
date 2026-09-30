@@ -58,10 +58,10 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - DOCKER_HOST=unix:///var/run/docker.sock
-      # Scaphandre sidecar: real RAPL energy counter over HTTP.
-      # On Linux this yields hardware=true measurements; on Windows/WSL2 the
-      # sidecar starts but returns no RAPL domains so the code falls back to
-      # the model and clearly labels the result as an estimate.
+      # Point at the opt-in Scaphandre RAPL sidecar (profile: rapl).
+      # On Linux this yields real hardware counters; on Windows/WSL2 the
+      # sidecar cannot reach /sys/class/powercap at all, so it stays off by
+      # default and the code labels results as an estimate.
       - SCAPHANDRE_URL=http://scaphandre:8080/metrics
     volumes:
       - .:/app
@@ -71,8 +71,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      scaphandre:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
       interval: 10s
@@ -127,20 +125,34 @@ services:
       - backend
 
   # ----------------------------------------------------
-  # 6. Scaphandre — Real RAPL Energy Exporter
+  # 6. Scaphandre - Real RAPL Energy Exporter (OPT-IN)
   #
-  # Reads host Intel/AMD RAPL hardware counters and exposes them as
-  # Prometheus metrics at http://scaphandre:8080/metrics.
-  # The backend's ScaphhandreMeter polls this endpoint to get real
-  # millijoule-accurate energy data for each container run.
+  # Enabled only with:  docker compose --profile rapl up -d
   #
-  # On Linux: provides real RAPL measurements (method=scaphandre, hardware=true)
-  # On Windows/WSL2: starts but RAPL domains = 0, backend falls back to model
+  # WHY IT IS NOT ON BY DEFAULT
+  #   Verified on this host (Intel i5-7200U + Docker Desktop/WSL2):
+  #     docker run --rm --privileged ubuntu:22.04 \
+  #       find /sys/class/powercap -name energy_uj | wc -l   ->  0
+  #   Even with --privileged and a read-only bind mount of
+  #   /sys/class/powercap, and even inside the WSL2 VM itself, the
+  #   count is 0: the WSL2 hypervisor does not pass the host RAPL
+  #   MSRs through. Starting the sidecar there yields a container that
+  #   publishes zero energy domains, so it buys nothing.
+  #
+  # ON A NATIVE LINUX HOST
+  #   Intel/AMD RAPL is exposed at /sys/class/powercap and this sidecar
+  #   publishes real microjoules at http://scaphandre:8080/metrics,
+  #   which ScaphhandreMeter reads -> method=scaphandre, hardware=true.
+  #
+  # Without this profile the backend still runs; probe_capabilities()
+  # reports best_available="model" and every result is flagged
+  # measurement_is_hardware=false with an explicit estimate warning.
   # ----------------------------------------------------
   scaphandre:
     image: hubblo/scaphandre:latest
     container_name: greencode-scaphandre
     restart: unless-stopped
+    profiles: ["rapl"]
     privileged: true
     ports:
       - "8080:8080"
@@ -154,7 +166,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
 
 volumes:
   postgres_data:

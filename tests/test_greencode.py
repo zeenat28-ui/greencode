@@ -430,6 +430,119 @@ class TestGreenCodeAuditor(unittest.TestCase):
             res_js = refactor_repository_code(bad_js, ViolationType.NESTED_LOOPS, language_id="javascript")
             self.assertIn("Map", res_js["refactored_code"])
 
+    def test_17b_refactored_python_must_actually_compile(self):
+        """Regression: the nested-loop rewrite once emitted stray indentation.
+
+        `_refactor_nested_loop_code` used `if not base_indent:` to capture the
+        loop's base indentation. An empty string is a *legitimate* indentation
+        for a top-level loop and is falsy, so the guard kept re-capturing until
+        it reached the first indented line. The whole rewritten block was then
+        emitted indented by four spaces, and the suggestion handed back to the
+        user was an IndentationError.
+
+        A refactor tool that returns code which does not compile is worse than
+        no refactor at all, so the output is compiled here rather than merely
+        pattern-matched.
+        """
+        from app.optimizer import _refactor_nested_loop_code
+
+        top_level = "for a in items:\n    for b in items:\n        for c in items:\n            total += a * b * c"
+        out = _refactor_nested_loop_code(top_level)
+        try:
+            compile("from itertools import product\n" + out, "<refactor>", "exec")
+        except SyntaxError as exc:
+            self.fail(f"top-level rewrite does not compile: {exc}\n{out}")
+
+        # The emitted `for` must sit at column 0, matching the input.
+        for_line = next(l for l in out.splitlines() if l.lstrip().startswith("for "))
+        self.assertFalse(for_line.startswith(" "), f"stray indent on: {for_line!r}")
+
+        # An indented fragment is only meaningful spliced into its block, so it
+        # is verified in place - which is how the UI applies it.
+        fragment = "\n".join([
+            "    for a in items:",
+            "        for b in items:",
+            "            for c in items:",
+            "                total += a * b * c",
+        ])
+        spliced = (
+            "from itertools import product\ndef outer():\n"
+            + _refactor_nested_loop_code(fragment)
+            + "\n    return total\n"
+        )
+        try:
+            compile(spliced, "<refactor>", "exec")
+        except SyntaxError as exc:
+            self.fail(f"indented fragment does not splice cleanly: {exc}")
+
+        # And through the public entry point, which is what the API returns.
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"HUGGINGFACE_API_KEY": "", "HF_TOKEN": ""}):
+            res = refactor_repository_code(
+                top_level, ViolationType.NESTED_LOOPS, language_id="python"
+            )
+        try:
+            compile(res["refactored_code"], "<refactor>", "exec")
+        except SyntaxError as exc:
+            self.fail(f"public refactor output does not compile: {exc}\n{res['refactored_code']}")
+
+    def test_17b_profiler_container_is_removed_when_start_fails(self):
+        """A failed start() must not strand a container in "created" state.
+
+        `start()` used to sit outside the removal guarantee, so any failure
+        between create() and the cleanup left a container holding its memory
+        and pid reservation on the host until the daemon was restarted.
+        """
+        from app.profiler import DynamicExecutionProfiler
+
+        class ExplodingContainer:
+            def __init__(self):
+                self.removed = False
+
+            def start(self):
+                raise RuntimeError("cgroup setup failed")
+
+            def remove(self, force=False):
+                self.removed = True
+
+        container = ExplodingContainer()
+
+        class FakeImages:
+            @staticmethod
+            def get(image):
+                return object()
+
+            @staticmethod
+            def pull(image):  # pragma: no cover - get() short-circuits
+                return object()
+
+        class FakeContainers:
+            def create(self, **kwargs):
+                self.kwargs = kwargs
+                return container
+
+        class FakeClient:
+            def __init__(self):
+                self.containers = FakeContainers()
+                self.images = FakeImages()
+
+        client = FakeClient()
+        profiler = DynamicExecutionProfiler(grid_intensity_gco2_per_kwh=300.0)
+        profiler.docker_client = client
+        profiler.connection_type = "DOCKER_ISOLATED"
+
+        with self.assertRaises(RuntimeError):
+            profiler._profile_with_docker(
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "samples", "eco_pipeline.py")),
+                10.0, 300.0,
+            )
+        self.assertTrue(container.removed, "container leaked after a failed start()")
+        self.assertEqual(
+            client.containers.kwargs.get("labels"),
+            {"com.greencode.analysis": "1"},
+            "containers must be labelled so crash cleanup can find them",
+        )
+
     def test_18_multi_language_profiler_host_detection(self):
         """Verify dynamic profiler gracefully handles diverse file extensions without Python syntax crashes."""
         profiler = DynamicExecutionProfiler(grid_intensity_gco2_per_kwh=200.0)

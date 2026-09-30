@@ -58,6 +58,11 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - DOCKER_HOST=unix:///var/run/docker.sock
+      # Scaphandre sidecar: real RAPL energy counter over HTTP.
+      # On Linux this yields hardware=true measurements; on Windows/WSL2 the
+      # sidecar starts but returns no RAPL domains so the code falls back to
+      # the model and clearly labels the result as an estimate.
+      - SCAPHANDRE_URL=http://scaphandre:8080/metrics
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
@@ -66,6 +71,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      scaphandre:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
       interval: 10s
@@ -88,6 +95,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SCAPHANDRE_URL=http://scaphandre:8080/metrics
     volumes:
       - .:/app
     depends_on:
@@ -117,6 +125,36 @@ services:
       - .:/app
     depends_on:
       - backend
+
+  # ----------------------------------------------------
+  # 6. Scaphandre — Real RAPL Energy Exporter
+  #
+  # Reads host Intel/AMD RAPL hardware counters and exposes them as
+  # Prometheus metrics at http://scaphandre:8080/metrics.
+  # The backend's ScaphhandreMeter polls this endpoint to get real
+  # millijoule-accurate energy data for each container run.
+  #
+  # On Linux: provides real RAPL measurements (method=scaphandre, hardware=true)
+  # On Windows/WSL2: starts but RAPL domains = 0, backend falls back to model
+  # ----------------------------------------------------
+  scaphandre:
+    image: hubblo/scaphandre:latest
+    container_name: greencode-scaphandre
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - /proc:/proc
+      - /sys/class/powercap:/sys/class/powercap:ro
+    command: prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/metrics | grep -q scaph_host || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 
 volumes:
   postgres_data:

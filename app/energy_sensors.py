@@ -7,14 +7,15 @@ measurement.
 
 Tiers (highest fidelity first):
 
-1. ``rapl``    - Intel/AMD Running Average Power Limit hardware counters exposed
-   by the Linux ``powercap`` subsystem under ``/sys/class/powercap``.
+1. ``rapl``        - Intel/AMD RAPL counters via Linux ``/sys/class/powercap``.
    Millijoule-accurate; this is what CodeGreen validates against.
-2. ``perf``    - the same PMU counters surfaced through ``perf stat -e
-   power/energy-pkg/`` for hosts where sysfs is not user-readable.
-3. ``battery`` - whole-system discharge rate on battery-powered machines.
-   Coarse (not per-process) but genuinely measured.
-4. ``model``   - calibrated TDP + load model. Explicitly an *estimate*.
+2. ``scaphandre``  - Scaphandre energy exporter sidecar (hubblo/scaphandre).
+   Reads the same RAPL hardware via a Prometheus HTTP endpoint, making real
+   energy data available to containers on hosts where /sys/class/powercap is
+   not bind-mounted. This is the production path for Docker-on-Linux and CI.
+3. ``perf``        - the same PMU counters via ``perf stat -e power/energy-pkg/``.
+4. ``battery``     - whole-system discharge rate. Coarse but genuinely measured.
+5. ``model``       - calibrated TDP + load model. Explicitly an *estimate*.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ import platform
 import re
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -157,6 +160,38 @@ class RaplMeter:
                 sample.per_domain_uj[d.name] = val
         return sample
 
+    def read(self) -> EnergySample:
+        """Public point-in-time reading across the active domains.
+
+        The sandbox runner brackets a container execution with two of these and
+        differences them, so this deliberately has a stable public name rather
+        than forcing callers to reach into ``_read_all``.
+        """
+        return self._read_all()
+
+    def joules_between(self, a: EnergySample, b: EnergySample) -> Dict[str, float]:
+        """Energy consumed between two readings, split by domain class.
+
+        Exposed so callers do not have to re-derive the package/memory
+        precedence rules - summing the wrong combination double counts, because
+        ``core`` is a subset of ``package`` and ``dram`` is often already folded
+        into ``psys``.
+        """
+        package_uj = 0.0
+        memory_uj = 0.0
+        for name, d_uj in self._delta(a, b).items():
+            kind = self._kinds.get(name, "uncore")
+            if kind in self.PACKAGE_KINDS:
+                package_uj += d_uj
+            elif kind in self.MEMORY_KINDS:
+                memory_uj += d_uj
+            # core/uncore are subsets of the package figure - skipped.
+        return {
+            "cpu_joules": package_uj / 1_000_000.0,
+            "memory_joules": memory_uj / 1_000_000.0,
+            "total_joules": (package_uj + memory_uj) / 1_000_000.0,
+        }
+
     def _delta(self, a: EnergySample, b: EnergySample) -> Dict[str, int]:
         out: Dict[str, int] = {}
         for name, end_v in b.per_domain_uj.items():
@@ -173,24 +208,7 @@ class RaplMeter:
         result = fn(*args, **kwargs)
         wall = time.perf_counter() - t0
         after = self._read_all()
-        deltas = self._delta(before, after)
-
-        package_uj = 0.0
-        memory_uj = 0.0
-        for name, d_uj in deltas.items():
-            kind = self._kinds.get(name, "uncore")
-            if kind in self.PACKAGE_KINDS:
-                package_uj += d_uj
-            elif kind in self.MEMORY_KINDS:
-                memory_uj += d_uj
-            # core/uncore are subsets of the package figure - skipped to avoid
-            # double counting.
-
-        return result, wall, {
-            "cpu_joules": package_uj / 1_000_000.0,
-            "memory_joules": memory_uj / 1_000_000.0,
-            "total_joules": (package_uj + memory_uj) / 1_000_000.0,
-        }
+        return result, wall, self.joules_between(before, after)
 
     def describe(self) -> Dict[str, Any]:
         return {
@@ -316,15 +334,151 @@ class BatteryMeter:
             "total_joules": delta_w * wall,
         }
 
+    def read(self) -> None:
+        """Battery discharge cannot be differenced as a per-domain delta.
+
+        Returns ``None`` deliberately: the sandbox runner uses this to decide
+        whether a real measurement is possible, and a battery figure is a
+        whole-system average, not a per-run energy counter. Claiming otherwise
+        would let a coarse average masquerade as a measurement.
+        """
+        return None
+
     def describe(self) -> Dict[str, Any]:
         return {"backend": "battery", "baseline_watts": self._baseline}
 
 
+# ---------------------------------------------------------------------------
+# Scaphandre meter — reads RAPL via the hubblo/scaphandre Prometheus exporter.
+#
+# On a real Linux host Scaphandre reads /sys/class/powercap directly (same
+# hardware as RaplMeter) and exposes per-process and host-total joule counters
+# on an HTTP endpoint.  This gives Docker containers access to real energy data
+# without bind-mounting the sysfs powercap tree into every analysis container.
+#
+# Default endpoint: http://localhost:8080/metrics   (configurable via
+# SCAPHANDRE_URL env var, e.g. point it at the sidecar's Docker bridge IP).
+# ---------------------------------------------------------------------------
+
+_SCAPH_ENERGY_RE = re.compile(
+    r'^scaph_host_energy_microjoules\s+([\d.]+)', re.MULTILINE
+)
+
+SCAPHANDRE_URL = os.environ.get(
+    "SCAPHANDRE_URL", "http://localhost:8080/metrics"
+)
+
+
+class ScaphhandreMeter:
+    """Energy meter backed by a running Scaphandre Prometheus exporter.
+
+    Scaphandre (https://github.com/hubblo-org/scaphandre) reads the host's
+    RAPL hardware counters and exposes them over HTTP. This is the correct
+    production path for containerised workloads on Linux: the analysis sandbox
+    does not need ``/sys/class/powercap`` mounted inside it; the sidecar reads
+    the hardware on its behalf.
+
+    On Windows / WSL2 the sidecar cannot reach RAPL either, so
+    ``available`` will be False and ``select_meter`` will skip this tier.
+    """
+
+    # Prometheus scrape timeout. Scaphandre is local, so 2 s is generous.
+    _TIMEOUT = 2
+
+    def __init__(self, url: str = SCAPHANDRE_URL) -> None:
+        self._url = url
+        self._ok: Optional[bool] = None  # lazily probed
+
+    # ------------------------------------------------------------------
+    def _scrape(self) -> Optional[float]:
+        """Return host total energy in microjoules, or None on any failure."""
+        try:
+            req = urllib.request.Request(
+                self._url,
+                headers={"User-Agent": "greencode-energy-sensor/1.0"},
+            )
+            with urllib.request.urlopen(req, timeout=self._TIMEOUT) as resp:
+                body = resp.read().decode("utf-8", "replace")
+        except (urllib.error.URLError, OSError, Exception):
+            return None
+        m = _SCAPH_ENERGY_RE.search(body)
+        if not m:
+            return None
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+
+    @property
+    def available(self) -> bool:
+        if self._ok is None:
+            self._ok = self._scrape() is not None
+        return self._ok
+
+    def read(self) -> Optional["ScaphandrePoint"]:
+        """Point-in-time reading: timestamp + microjoules from the exporter.
+
+        Returns ``None`` if the exporter is unreachable, so the caller can
+        fall through to the model tier rather than presenting a broken figure.
+        """
+        uj = self._scrape()
+        if uj is None:
+            return None
+        return ScaphandrePoint(timestamp=time.monotonic(), host_uj=uj)
+
+    @staticmethod
+    def joules_between(
+        a: "ScaphandrePoint", b: "ScaphandrePoint"
+    ) -> Dict[str, float]:
+        """Energy consumed between two readings.
+
+        The exporter emits a monotonically increasing counter, so the delta is
+        simply the difference (counter resets are very rare on running hardware
+        but are guarded by the >= 0 clamp).
+        """
+        delta_uj = max(0.0, b.host_uj - a.host_uj)
+        total_j = delta_uj / 1_000_000.0
+        # Scaphandre exposes package-level energy only; we report it all as
+        # cpu_joules to stay compatible with the rest of the pipeline.
+        return {
+            "cpu_joules": total_j,
+            "memory_joules": 0.0,
+            "total_joules": total_j,
+        }
+
+    def describe(self) -> Dict[str, Any]:
+        return {"backend": "scaphandre", "url": self._url}
+
+
+@dataclass
+class ScaphandrePoint:
+    """Snapshot from the Scaphandre Prometheus endpoint."""
+    timestamp: float
+    host_uj: float  # scaph_host_energy_microjoules
+
+
+def scaphandre_available(url: str = SCAPHANDRE_URL) -> bool:
+    """True when a Scaphandre exporter is reachable and returning RAPL data."""
+    return ScaphhandreMeter(url).available
+
+
 def select_meter(prefer: Optional[str] = None):
-    """Return the best available energy meter, or None if only the model works."""
+    """Return the best available energy meter, or None if only the model works.
+
+    Priority: RAPL (direct sysfs) → Scaphandre (HTTP sidecar) → Battery.
+    The model fallback is handled by the caller, not here, so this returns
+    None rather than a fake meter when nothing real is reachable.
+    """
     if prefer in (None, "rapl"):
         try:
             meter = RaplMeter()
+            if meter.available:
+                return meter
+        except Exception:
+            pass
+    if prefer in (None, "scaphandre"):
+        try:
+            meter = ScaphhandreMeter()
             if meter.available:
                 return meter
         except Exception:
@@ -340,24 +494,25 @@ def probe_capabilities() -> Dict[str, Any]:
     """Report what this host can genuinely measure. Surfaced by /api/health."""
     try:
         rapl_domains = [d.__dict__ for d in discover_rapl_domains()]
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive
         rapl_domains = []
 
     battery = battery_discharge_watts()
     perf_ok = perf_available()
+    scaph_ok = scaphandre_available()
 
     return {
         "platform": platform.system().lower(),
         "rapl": {"supported": bool(rapl_domains), "domains": rapl_domains},
+        "scaphandre": {"supported": scaph_ok, "url": SCAPHANDRE_URL},
         "perf": {"supported": perf_ok},
         "battery": {"supported": battery is not None, "watts": battery},
         "modelled_fallback": True,
         "best_available": (
             "rapl" if rapl_domains
+            else "scaphandre" if scaph_ok
             else "perf" if perf_ok
             else "battery" if battery
             else "model"
         ),
     }
-
-

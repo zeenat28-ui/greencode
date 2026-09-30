@@ -1,0 +1,267 @@
+{
+  "name": "GreenCode Reality Verification Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "greencode-evidence",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "Webhook (CI / Wazuh / Runner)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalise the incoming payload into a GreenCode evidence record.\n// The webhook accepts CI runners, Wazuh alerts and the GitHub Actions gate;\n// all of them are mapped onto one evidence shape here so the API never has to\n// guess which sender it is talking to.\nconst crypto = require('crypto');\n\nconst out = [];\nfor (const item of $input.all()) {\n  const b = item.json.body ?? item.json;\n\n  // GitHub Actions runners already report kWh; the API speaks joules.\n  const rawJoules = b.energy_joules ?? b.energy ?? b.it_energy_joules ?? 0;\n  const joules = b.energy_kwh !== undefined\n    ? Number(b.energy_kwh) * 3.6e9\n    : Number(rawJoules);\n\n  out.push({\n    json: {\n      event_id: b.event_id || ('n8n_' + crypto.randomUUID()),\n      claim_id: b.claim_id || 'unlinked',\n      evidence_id: b.evidence_id || b.run_id || ('run_' + Date.now()),\n      energy_joules: joules,\n      duration_seconds: Number(b.duration_seconds ?? b.duration ?? 1),\n      functional_unit: Number(b.functional_unit ?? b.requests ?? b.R ?? 1),\n      measurement_method: b.measurement_method || b.method || 'model',\n      carbon_intensity: Number(b.carbon_intensity ?? b.grid_intensity ?? 380),\n      source: b.source || 'n8n',\n      metadata: {\n        received_from: 'n8n',\n        repository: b.repository ?? b.repo ?? null,\n        alert_level: b.alert_level ?? b.severity ?? null,\n      },\n    },\n  });\n}\n\nreturn out;\n"
+      },
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "name": "Code: Normalise Evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8000/api/pipeline/evidence",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "name": "HTTP Request: File Evidence",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-contradicted",
+              "leftValue": "={{ $json.verdict }}",
+              "rightValue": "CONTRADICTED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "name": "If: Claim Contradicted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-verified",
+              "leftValue": "={{ $json.verdict }}",
+              "rightValue": "VERIFIED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "name": "If1: Verified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.GREENCODE_SLACK_WEBHOOK }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '\ud83d\udea8 *GreenCode: claim CONTRADICTED*\\\\nClaim: ' + ($json.ledger_entry?.claim_id || 'n/a') + '\\\\n' + ($json.ledger_entry?.summary || '') }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "name": "Send a message (alert)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        60
+      ],
+      "webhookId": "b6a1b1a1-0000-4000-8000-000000000006"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.GREENCODE_SLACK_WEBHOOK }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '\u2705 *GreenCode: claim VERIFIED*\\\\nClaim: ' + ($json.ledger_entry?.claim_id || 'n/a') + '\\\\n' + ($json.ledger_entry?.summary || '') }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000007",
+      "name": "Send a message1 (confirmed)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        300
+      ],
+      "webhookId": "b6a1b1a1-0000-4000-8000-000000000007"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.GREENCODE_SLACK_WEBHOOK }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '\ud83d\udfe1 *GreenCode: claim needs more evidence*\\\\nClaim: ' + ($json.ledger_entry?.claim_id || 'n/a') + '\\\\n' + ($json.ledger_entry?.summary || '') }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000008",
+      "name": "Send a message2 (pending)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        500
+      ],
+      "webhookId": "b6a1b1a1-0000-4000-8000-000000000008"
+    }
+  ],
+  "connections": {
+    "Webhook (CI / Wazuh / Runner)": {
+      "main": [
+        [
+          {
+            "node": "Code: Normalise Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Normalise Evidence": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request: File Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request: File Evidence": {
+      "main": [
+        [
+          {
+            "node": "If: Claim Contradicted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Claim Contradicted?": {
+      "main": [
+        [
+          {
+            "node": "Send a message (alert)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If1: Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1: Verified?": {
+      "main": [
+        [
+          {
+            "node": "Send a message1 (confirmed)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message2 (pending)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "instanceId": "greencode-reality-pipeline"
+  },
+  "tags": [
+    {
+      "name": "greencode"
+    },
+    {
+      "name": "carbon"
+    },
+    {
+      "name": "verification"
+    }
+  ],
+  "pinData": {}
+}

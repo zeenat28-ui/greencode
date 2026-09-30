@@ -32,12 +32,18 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from fnmatch import fnmatch
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.energy_sensors import probe_capabilities
+from app.energy_sensors import probe_capabilities, select_meter
 from app.sci import carbon_equivalents, compute_sci, sci_grade
+
+# Marks containers this module created, so crash cleanup can reap exactly its
+# own leftovers and never touch an operator's containers.
+OWNER_LABEL = "com.greencode.analysis"
 
 try:
     import docker
@@ -268,6 +274,11 @@ class DynamicAnalyzer:
                 ],
             )
 
+        # A previous process killed between create() and cleanup can strand a
+        # container. Reap those before adding more, so repeated crashes degrade
+        # instead of accumulating dead containers on the host.
+        self.reap_stale_containers(client)
+
         entries = self.discover_entry_points(workdir)
         if not entries:
             return DynamicAnalysisResult(
@@ -379,6 +390,7 @@ class DynamicAnalyzer:
                 user="65534:65534",                # nobody:nogroup
                 tmpfs={"/tmp": "rw,size=64m,noexec,nosuid"},
                 environment={"PYTHONDONTWRITEBYTECODE": "1", "HOME": "/tmp"},
+                labels={OWNER_LABEL: "1"},
                 detach=True,
                 stdin_open=False,
                 tty=False,
@@ -396,11 +408,17 @@ class DynamicAnalyzer:
         stderr_bytes = b""
         timed_out = False
         exit_code = -1
+        container_warnings: List[str] = []
 
         try:
             container.start()
             try:
-                raw_out, raw_err = container.wait(timeout=timeout_sec)
+                # `Container.wait()` returns a single mapping
+                # ``{"StatusCode": int, "Error": str|None}``, not a
+                # ``(stdout, stderr)`` pair. Unpacking it as a pair yielded the
+                # *keys* as strings, so the exit-code conversion raised and
+                # every successful run was reported as a timeout.
+                wait_result = container.wait(timeout=timeout_sec)
             except Exception:
                 # wait() raises on timeout; the container is still running.
                 timed_out = True
@@ -408,10 +426,22 @@ class DynamicAnalyzer:
                     container.kill()
                 except Exception:
                     pass
-                raw_out, raw_err = b"", b""
+                wait_result = {"StatusCode": -1, "Error": "timeout"}
 
             duration = time.perf_counter() - t0
-            exit_code = int((raw_out or {}).get("StatusCode", -1) or 0) if isinstance(raw_out, dict) else int(raw_out or 0)
+
+            if isinstance(wait_result, dict):
+                exit_code = int(wait_result.get("StatusCode", -1) or 0)
+                wait_error = wait_result.get("Error")
+            elif isinstance(wait_result, (tuple, list)) and wait_result:
+                # Older SDKs returned a (status, error) pair.
+                exit_code = int(wait_result[0] or 0)
+                wait_error = wait_result[1] if len(wait_result) > 1 else None
+            else:
+                exit_code = int(wait_result or 0)
+                wait_error = None
+            if wait_error and not timed_out:
+                container_warnings.append(f"container error: {wait_error}")
 
             # Truncated deliberately: a malicious repo can print unbounded output.
             try:
@@ -426,13 +456,16 @@ class DynamicAnalyzer:
                 pass
 
         finally:
+            # BaseException, not Exception: an interrupt or a hard exit between
+            # create() and here would otherwise strand a container holding
+            # memory and pids for as long as the daemon lives.
             try:
                 container.remove(force=True)
-            except Exception:
+            except BaseException:
                 pass
             self._cleanup_probe(workdir, language)
 
-        return self._finalise(
+        result = self._finalise(
             workdir=workdir,
             before=before,
             meter=meter,
@@ -448,6 +481,67 @@ class DynamicAnalyzer:
             grid_intensity=grid_intensity,
             functional_unit=functional_unit,
         )
+        result.warnings.extend(container_warnings)
+        return result
+
+    @staticmethod
+    def _created_epoch(container: Any) -> Optional[float]:
+        """Seconds-since-epoch for a container's creation time.
+
+        The Docker API returns ``Created`` as an RFC3339 string with up to
+        nanosecond precision (``2026-09-27T10:11:12.123456789Z``). Comparing
+        that against a float raises, so it is parsed rather than cast. Returns
+        ``None`` when the value is missing or unparseable, which makes the
+        caller skip the container instead of guessing its age.
+        """
+        raw = getattr(container, "attrs", {}).get("Created")
+        if raw is None:
+            return None
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        text = str(raw).strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        # Trim sub-microsecond digits, which fromisoformat rejects on 3.10.
+        if "." in text:
+            head, _, tail = text.partition(".")
+            digits = "".join(ch for ch in tail if ch.isdigit())[:6]
+            offset = tail[len(digits):]
+            text = f"{head}.{digits}{offset}" if digits else head
+        try:
+            return datetime.fromisoformat(text).timestamp()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def reap_stale_containers(client: Any, max_age_seconds: int = 900) -> int:
+        """Remove leftover analysis containers older than ``max_age_seconds``.
+
+        Only containers carrying :data:`OWNER_LABEL` are touched, so an
+        operator's own `docker run` containers are never at risk. The age guard
+        exists so a concurrently running analysis is never reaped out from under
+        itself.
+        """
+        try:
+            cutoff = time.time() - max_age_seconds
+            stale = client.containers.list(
+                all=True, filters={"label": OWNER_LABEL}
+            )
+            removed = 0
+            for container in stale:
+                created = DynamicAnalyzer._created_epoch(container)
+                if created is None or created >= cutoff:
+                    # Unknown age, or young enough to still be in use.
+                    continue
+                try:
+                    container.remove(force=True)
+                    removed += 1
+                except Exception:
+                    pass
+            return removed
+        except Exception:
+            # Reaping is housekeeping; never let it fail an analysis.
+            return 0
 
     @staticmethod
     def _cleanup_probe(workdir: str, language: str) -> None:
@@ -477,21 +571,32 @@ class DynamicAnalyzer:
         functional_unit: float,
     ) -> DynamicAnalysisResult:
         """Read the energy counter delta, parse the probe, and compute SCI."""
-        after = meter.read() if meter is not None and hasattr(meter, "read") else None
+        after = meter.read() if meter is not None else None
 
         cpu_j = mem_j = 0.0
         method = "model"
         warnings: List[str] = []
 
-        if meter is not None and before is not None and after is not None:
-            method = meter.describe().get("backend", "model")
-            deltas = meter._delta(before, after)  # noqa: SLF001 - same-package access
-            for name, d_uj in deltas.items():
-                kind = meter._kinds.get(name, "uncore")  # noqa: SLF001
-                if kind in meter.PACKAGE_KINDS:
-                    cpu_j += d_uj / 1_000_000.0
-                elif kind in meter.MEMORY_KINDS:
-                    mem_j += d_uj / 1_000_000.0
+        # Only a domain-differencing meter (RAPL) yields a real measurement.
+        # A battery meter reports a whole-system average and returns None from
+        # read(), so it correctly falls through to the model rather than
+        # presenting an average as a measurement of this container.
+        backend = meter.describe().get("backend") if meter is not None else None
+        can_measure = (
+            meter is not None
+            and before is not None
+            and after is not None
+            and hasattr(meter, "joules_between")
+        )
+
+        if can_measure:
+            joules = meter.joules_between(before, after)
+            cpu_j = float(joules.get("cpu_joules", 0.0))
+            mem_j = float(joules.get("memory_joules", 0.0))
+            if cpu_j + mem_j > 0:
+                method = backend or "rapl"
+            else:
+                can_measure = False
         else:
             warnings.append(
                 "No hardware energy counter is reachable on this host. Energy was "
@@ -549,7 +654,7 @@ class DynamicAnalyzer:
             language=language,
             sandbox="docker-isolated",
             measurement_method=method,
-            measurement_is_hardware=method in ("rapl", "perf", "battery"),
+            measurement_is_hardware=method in ("rapl", "scaphandre", "perf", "battery"),
             exit_code=exit_code,
             duration_seconds=round(duration, 4),
             peak_memory_mb=round(peak_mb, 2),

@@ -25,17 +25,30 @@ greencode/
 │   ├── llm_refactor.py     # LLM refactoring + behaviour-preserving verification gate
 │   ├── audit_intel.py      # Deterministic root-cause grouping & remediation planning
 │   ├── optimizer.py        # Electricity Maps client + rule-based refactor engine
-│   └── database.py         # SQLite + SQLAlchemy historic ledger & metrics persistence
+│   ├── database.py         # SQLite + SQLAlchemy historic ledger & metrics persistence
+│   └── pipeline/           # Reality Verification Pipeline (claim vs. real hardware)
+│       ├── config.py       # Environment-driven policy, channels, prod safety checks
+│       ├── signing.py      # HMAC authentication + replay rejection for evidence
+│       ├── verifier.py     # Claim/evidence comparison -> VERIFIED..CONTRADICTED
+│       ├── ledger.py       # Hash-chained, tamper-evident decision records
+│       ├── notifier.py     # Slack / Teams / email delivery of verdicts
+│       ├── engine.py       # Orchestrator: idempotent intake, verify, record
+│       ├── n8n.py          # Generator for the importable n8n workflow
+│       └── n8n_workflow.json
 ├── samples/
 │   ├── heavy_pipeline.py   # Benchmark script exhibiting all 4 GSF anti-patterns (Score: 47/100)
 │   └── eco_pipeline.py     # Refactored script conforming to Green Computing standards (Score: 100/100)
+├── scripts/
+│   ├── measure_and_file_evidence.py # Measure real energy -> file evidence -> get a verdict
+│   └── demo_pipeline.py    # Live end-to-end demo of the whole pipeline
 ├── tests/
 │   ├── test_greencode.py   # Comprehensive unit test suite (AST, DB, Grid, Profiler, Refactoring)
 │   ├── test_energy.py      # Counter wrap-around, domain precedence, SCI arithmetic
 │   ├── test_energy_tracer.py # Function-level energy attribution
 │   ├── test_llm_refactor.py# Verification gate: what is allowed through, and what is not
 │   ├── test_dynamic_analysis.py # Sandbox posture, archive safety, entry-point discovery
-│   └── test_api.py         # FastAPI REST endpoint integration tests
+│   ├── test_api.py         # FastAPI REST endpoint integration tests
+│   └── test_pipeline.py    # Verification verdicts, ledger integrity, intake security
 ├── action.yml              # Native GitHub Action manifest for CI/CD blocker
 ├── ui.py                   # Streamlit green dashboard with side-by-side diffs & SCI charts
 └── requirements.txt        # Production dependency specifications
@@ -295,7 +308,214 @@ jobs:
           repo-path: "."
           green-score-threshold: "75.0"
           target-zone: "US-CAL-CISO"
-          electricity-maps-token: ${{ secrets.ELECTRICITY_MAPS_TOKEN }}
-          huggingface-token: ${{ secrets.HUGGINGFACE_TOKEN }}
+---
+
+## 🔬 Reality Verification Pipeline — *"did it actually work?"*
+
+Static analysis tells you a pattern is expensive. It does not tell you whether
+your fix delivered. This pipeline closes that loop: it files your **claim**
+("this refactor cuts energy 50%"), collects real **evidence** measured on real
+hardware, and returns a signed verdict.
+
 ```
+   CLAIM                EVIDENCE                        VERDICT
+   "50% less energy"    RAPL counter readings  ──▶   VERIFIED  /  CONTRADICTED
+   (a prediction)       from a CI runner              (backed by a ledger)
+```
+
+### The one rule that matters
+
+**Modelled energy can never verify a claim.** Only a hardware counter
+(`rapl` / `perf` / `battery`) can. This is the same distinction `app.sci`
+already draws, enforced in code rather than in a footnote — a TDP estimate
+corroborating a TDP estimate returns `UNVERIFIED` with a reason telling you
+exactly what to do next.
+
+### Verdicts
+
+| Verdict | Meaning |
+| --- | --- |
+| `VERIFIED` | Hardware-measured energy moved as predicted, inside tolerance |
+| `PARTIALLY_VERIFIED` | Reality improved, but less than advertised (or the sample was too noisy) |
+| `UNVERIFIED` | No evidence, no baseline, or only modelled data — **not** a smaller "confirmed" number |
+| `CONTRADICTED` | Energy went **up**. Severity `HIGH`. Something is wrong with the refactor |
+| `INVALID_EVIDENCE` | Evidence referenced a claim that does not exist |
+
+Every verdict carries a `confidence`, the `reasons` behind it, and `gaps` — what
+is still missing to close it.
+
+### Quick start
+
+```bash
+# 1. See the whole thing work, live, against a real server:
+python scripts/demo_pipeline.py
+
+# 2. Or measure a real workload and file the evidence yourself:
+python scripts/measure_and_file_evidence.py \
+    --claim-id refactor-1042 \
+    --baseline-joules 1000 \
+    --command "python -m samples.heavy_pipeline" \
+    --runs 3
+```
+
+### API
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/pipeline/claim` | File a prediction (authenticated) |
+| `POST` | `/api/pipeline/evidence` | File a measurement (HMAC-signed) → returns a verdict |
+| `GET` | `/api/pipeline/claim/{id}` | Current verdict, re-evaluated |
+| `GET` | `/api/pipeline/ledger` | The hash-chained decision record |
+| `GET` | `/api/pipeline/ledger/verify` | Re-verify history; `409` if tampered |
+| `GET` | `/api/pipeline/status` | Intake readiness, policy, channels (public) |
+| `GET` | `/api/pipeline/n8n-workflow` | Export the importable n8n workflow |
+
+```bash
+# File a claim
+curl -X POST http://localhost:8000/api/pipeline/claim \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"claim_id":"refactor-1042","repo":"zeenat28-ui/greencode",
+       "predicted_reduction_pct":50.0,"baseline_energy_joules":1000.0}'
+
+# File real evidence (unsigned is fine in development; see Security below)
+curl -X POST http://localhost:8000/api/pipeline/evidence \
+  -H "Content-Type: application/json" \
+  -d '{"claim_id":"refactor-1042","energy_joules":500.0,"functional_unit":1.0,
+       "measurement_method":"rapl","source":"ci-runner"}'
+# -> {"verdict": "PARTIALLY_VERIFIED", ...}   (VERIFIED once 3 samples are in)
+```
+
+### Security
+
+Evidence intake is authenticated with **HMAC-SHA256** over
+`"<timestamp>.<raw body>"`, because the senders are machines:
+
+```
+X-GreenCode-Signature: sha256=<hex>
+X-GreenCode-Timestamp: <unix seconds>
+```
+
+- Replays are rejected (timestamp outside the skew window).
+- Every failure returns a **specific** reason (`missing_timestamp`,
+  `signature_mismatch`, `stale_timestamp`) rather than a generic 403, so an
+  operator knows whether to fix a header or investigate a forgery.
+- Re-delivering an `event_id` returns the original record with
+  `duplicate: true` — a retry is a success, not a contradiction. This is what
+  makes an at-least-once queue safe to point at the endpoint.
+- `GET /api/pipeline/status` reports misconfiguration (no secret, unsigned
+  intake, no notification channel) and is safe to expose: it returns *whether*
+  a secret exists, never its value.
+
+### The ledger is tamper-evident
+
+Every decision is appended to a chain where each entry commits to its
+predecessor:
+
+```
+entry_hash = SHA256(seq | prev_hash | canonical_json(entry))
+```
+
+Edit or delete any historical record and every hash after it fails to verify.
+`/api/pipeline/ledger/verify` re-walks the chain from genesis and names the
+**first broken sequence number**, so tampering is located, not merely detected.
+This is what makes the record useful to an auditor six months later.
+
+### n8n integration
+
+The same topology as a SOAR pipeline — `Webhook → Code → HTTP Request → If →
+If1 → Send message` — with one deliberate difference: the classification is
+computed by GreenCode, not by JavaScript in the canvas. A decision about
+whether a carbon claim is real belongs in the audited, hash-chained ledger, not
+in a workflow where nobody can tell what ran.
+
+```bash
+curl http://localhost:8000/api/pipeline/n8n-workflow -o workflow.json
+# n8n -> Workflows -> Import from File
+# Set GREENCODE_SLACK_WEBHOOK in n8n to route the three branches.
+```
+
+The workflow also ships as `app/pipeline/n8n_workflow.json`, and its branches
+mirror the verdict table: contradicted → alert, verified → confirmation,
+anything else → "needs more evidence".
+
+### Sandboxed dynamic analysis
+
+`POST /api/dynamic/analyze` runs a repository's own code in a locked-down
+container and measures what it actually costs: network disabled, read-only
+rootfs, `cap_drop=ALL`, `no-new-privileges`, non-root user, 512 MB / 1 CPU /
+128 PID caps, tmpfs `/tmp`, hard timeout.
+
+**Host-level execution is deliberately not a fallback.** Without Docker the
+endpoint returns `sandbox_unavailable` and no numbers — a static denylist of
+dangerous calls is bypassed trivially, so a missing daemon is reported rather
+than worked around.
+
+To run it locally, start Docker Desktop and check:
+
+```bash
+docker version                 # both client and server must answer
+python -c "from app.dynamic_analysis import DynamicAnalyzer; print(DynamicAnalyzer.status())"
+```
+
+Energy measurement is a separate question from sandboxing. The container gives
+a real, safe place to execute code; it does **not** create a power counter. On
+Linux with RAPL exposed, the host counter spans the container run and the
+result is flagged `measurement_is_hardware: true`. On Windows or macOS hosts —
+and inside a WSL2 VM that does not pass through `/sys/class/powercap` — the
+figure is modelled and labelled `model`, because a model must never be
+presented as a measurement.
+
+#### Container lifecycle
+
+Every container is removed in a `finally` that covers `start()`, not just the
+run itself, so a failure while launching cannot strand one holding its memory
+and PID reservation. Containers also carry the `com.greencode.analysis` label,
+and each run first reaps any container with that label older than 15 minutes —
+the recovery path for a host process that was killed outright.
+
+```bash
+# Confirm nothing is left behind
+docker ps -a --filter "label=com.greencode.analysis"
+```
+
+### Exercising the whole system
+
+Two scripts drive a real end-to-end run. Both execute production code paths —
+no mocks, real sockets, real database, real ledger.
+
+```bash
+# Run every subsystem and report per-step pass/fail (exit code = failure count)
+python scripts/exercise_everything.py
+python scripts/exercise_everything.py --json      # machine-readable events
+
+# Render that run to a video (needs imageio-ffmpeg, already a transitive dep)
+python scripts/record_demo.py
+python scripts/record_demo.py --skip-tests       # faster cut
+```
+
+`exercise_everything.py` covers static analysis, SCI arithmetic, the hardware
+counter probe, the refactor engine, grid telemetry, the CLI quality gate, the
+full pipeline lifecycle, ledger tamper-detection, the n8n graph, HMAC signing,
+the live HTTP API, and the whole pytest suite.
+
+### CI/CD
+
+`.github/workflows/reality-verification.yml` runs the workload on a
+RAPL-capable Linux runner, measures it with the project's own
+`app.energy_sensors` backends, files the evidence, and writes the verdict to the
+job summary:
+
+```yaml
+- uses: actions/workflow_dispatch@v1
+  with:
+    claim_id: refactor-1042
+    baseline_joules: 1000
+    command: python -m samples.heavy_pipeline
+```
+
+The workflow never fabricates a reading. On a runner with no counter it emits a
+warning and the verdict stays `UNVERIFIED` — the correct outcome, not a problem
+to paper over.
+
+
 

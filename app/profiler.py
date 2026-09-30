@@ -336,6 +336,9 @@ class DynamicExecutionProfiler:
             pids_limit=64,                                  # Prevent fork-bombs
             tmpfs={"/tmp": "rw,noexec,nosuid,size=64m"},    # Ephemeral scratch memory for compilers
             working_dir="/workspace",
+            # Same ownership label the analyzer uses, so a crash in either
+            # runner leaves something the reaper can clean up.
+            labels={"com.greencode.analysis": "1"},
         )
 
         cpu_samples: List[float] = []
@@ -375,34 +378,42 @@ class DynamicExecutionProfiler:
         monitor_thread = threading.Thread(target=monitor_stats, daemon=True)
 
         start_time = time.perf_counter()
-        container.start()
-        monitor_thread.start()
-
-        exit_code = 0
-        timed_out = False
+        # Everything from start() onwards is bracketed so the container is
+        # always torn down. `start()` used to sit outside any removal
+        # guarantee, so a failure there stranded a container in "created"
+        # state for the lifetime of the daemon, holding its memory and pid
+        # reservation.
         try:
-            res = container.wait(timeout=timeout_sec)
-            exit_code = res.get("StatusCode", 0)
-        except Exception:
-            timed_out = True
+            container.start()
+            monitor_thread.start()
+
+            exit_code = 0
+            timed_out = False
             try:
-                container.kill()
+                res = container.wait(timeout=timeout_sec)
+                exit_code = res.get("StatusCode", 0) if isinstance(res, dict) else int(res or 0)
             except Exception:
-                pass
-            exit_code = 124
-        finally:
-            end_time = time.perf_counter()
-            is_running = False
+                timed_out = True
+                try:
+                    container.kill()
+                except Exception:
+                    pass
+                exit_code = 124
+            finally:
+                end_time = time.perf_counter()
+                is_running = False
 
-        duration = max(0.001, end_time - start_time)
-        try:
-            logs = container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace")
-        except Exception:
-            logs = ""
-        try:
-            container.remove(force=True)
-        except Exception:
-            pass
+            duration = max(0.001, end_time - start_time)
+            try:
+                logs = container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace")
+            except Exception:
+                logs = ""
+        finally:
+            try:
+                container.remove(force=True)
+            except BaseException:
+                pass
+            is_running = False
 
         avg_cpu = sum(cpu_samples) / len(cpu_samples) if cpu_samples else 25.0
         peak_mem = max(mem_samples_mb) if mem_samples_mb else 35.0

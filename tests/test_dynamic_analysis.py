@@ -114,6 +114,454 @@ class TestSandboxPosture(unittest.TestCase):
             self.assertIn(key, s)
 
 
+class TestContainerResultHandling(unittest.TestCase):
+    """The Docker result path must be testable without a Docker daemon.
+
+    Every other sandbox test stubs `_get_client`, so nothing ever executed the
+    code between "container started" and "SCI computed". Three defects lived in
+    exactly that gap and shipped unnoticed:
+
+      * `select_meter` was called but never imported (NameError),
+      * the meter was read through a `read()` method no meter implemented, so
+        the RAPL branch was unreachable and the model fallback was permanent,
+      * `Container.wait()` returns a mapping, and unpacking it as a pair turned
+        the exit-code conversion into a ValueError that surfaced as a bogus
+        "timeout" for runs that had actually succeeded.
+    """
+
+    def _finalise(self, **overrides):
+        kwargs = dict(
+            workdir=".", before=None, meter=None, duration=1.0, exit_code=0,
+            timed_out=False, stdout_bytes=b"", stderr_bytes=b"",
+            repo_slug="a/b", ref="main", entry="main.py", language="python",
+            grid_intensity=280.0, functional_unit=1.0,
+        )
+        kwargs.update(overrides)
+        return DynamicAnalyzer()._finalise(**kwargs)
+
+    def test_01_select_meter_is_imported_and_resolvable(self):
+        """`select_meter` was called inside the container path but not imported."""
+        import app.dynamic_analysis as da
+
+        self.assertTrue(hasattr(da, "select_meter"))
+        meter = da.select_meter()
+        self.assertTrue(meter is None or hasattr(meter, "read"))
+
+    def test_02_no_meter_falls_back_to_model_with_a_warning(self):
+        r = self._finalise(meter=None, before=None)
+        self.assertEqual(r.measurement_method, "model")
+        self.assertFalse(r.measurement_is_hardware)
+        self.assertTrue(any("not measured" in w for w in r.warnings))
+        self.assertGreater(r.it_energy_joules, 0.0)
+
+    def test_03_rapl_reading_is_used_when_available(self):
+        """A real counter delta must beat the model and be labelled as hardware."""
+        from app.energy_sensors import EnergySample
+
+        class FakeRapl:
+            def __init__(self):
+                self.t = 0
+
+            def describe(self):
+                return {"backend": "rapl"}
+
+            def read(self):
+                self.t += 1
+                # 1 second of package energy at 10 W == 10 joules.
+                return EnergySample(
+                    timestamp=float(self.t),
+                    per_domain_uj={"package": self.t * 10_000_000},
+                )
+
+            def joules_between(self, a, b):
+                delta = (b.per_domain_uj["package"] - a.per_domain_uj["package"]) / 1e6
+                return {"cpu_joules": delta, "memory_joules": 0.0, "total_joules": delta}
+
+        meter = FakeRapl()
+        r = self._finalise(meter=meter, before=meter.read(), duration=1.0)
+        self.assertEqual(r.measurement_method, "rapl")
+        self.assertTrue(r.measurement_is_hardware)
+        self.assertAlmostEqual(r.it_energy_joules, 10.0, places=3)
+
+    def test_04_battery_meter_is_not_treated_as_a_measurement(self):
+        """A whole-system average must not masquerade as a per-run counter."""
+        from app.energy_sensors import BatteryMeter
+
+        meter = BatteryMeter.__new__(BatteryMeter)
+        meter._baseline = 12.0
+        self.assertIsNone(meter.read())
+        r = self._finalise(meter=meter, before=None, duration=1.0)
+        self.assertEqual(r.measurement_method, "model")
+        self.assertFalse(r.measurement_is_hardware)
+
+    def test_05_rapl_delta_respects_domain_precedence(self):
+        """`core` is a subset of `package`; summing both would double count."""
+        from app.energy_sensors import EnergySample, RaplMeter
+
+        m = RaplMeter.__new__(RaplMeter)
+        m._kinds = {"package": "package", "core": "core", "dram": "dram"}
+        m._ranges = {"package": 10_000_000}
+        a = EnergySample(0.0, {"package": 1_000_000, "core": 500_000, "dram": 100_000})
+        b = EnergySample(1.0, {"package": 3_100_000, "core": 900_000, "dram": 300_000})
+        j = m.joules_between(a, b)
+        self.assertAlmostEqual(j["cpu_joules"], 2.1, places=6)
+        self.assertAlmostEqual(j["memory_joules"], 0.2, places=6)
+        self.assertTrue(hasattr(m, "read"))
+
+
+class TestContainerWaitSemantics(unittest.TestCase):
+    """`Container.wait()` returns a mapping, not a (stdout, stderr) pair.
+
+    Unpacking it as a pair produced the dict *keys* as strings, so the exit-code
+    conversion raised a ValueError and every successful run was reported as a
+    timeout - the feature looked broken on any machine that actually had Docker.
+    """
+
+    class _FakeImages:
+        @staticmethod
+        def get(image):
+            return object()
+
+        @staticmethod
+        def pull(image):  # pragma: no cover - get() short-circuits
+            return object()
+
+    class _FakeContainer:
+        wait_result = None
+        removed = False
+
+        def start(self):
+            pass
+
+        def wait(self, timeout=None):
+            return self.wait_result
+
+        def logs(self, stdout=False, stderr=False, tail=None):
+            return b""
+
+        def remove(self, force=False):
+            type(self).removed = True
+
+    def _run_with(self, wait_result):
+        analyzer = DynamicAnalyzer(docker_client=object())
+        container = self._FakeContainer()
+        container.wait_result = wait_result
+        type(container).removed = False
+
+        client = type("C", (), {
+            "images": self._FakeImages,
+            "containers": type(
+                "CC", (), {"create": staticmethod(lambda **kw: container)})(),
+        })()
+        analyzer._get_client = lambda: client
+
+        with tempfile.TemporaryDirectory() as workdir:
+            open(os.path.join(workdir, "main.py"), "w").close()
+            r = analyzer._run_in_container(
+                client, workdir, "main.py", "python", "python:3.12-slim",
+                ["python", "-u", "main.py"], 30.0, "a/b", "main", 280.0, 1.0,
+            )
+        return r, container
+
+    def test_01_mapping_return_yields_status_code_and_ok(self):
+        r, container = self._run_with({"StatusCode": 0, "Error": None})
+        self.assertTrue(r.ok, f"clean run reported as failed: {r.reason}")
+        self.assertEqual(r.reason, "ok")
+        self.assertEqual(r.exit_code, 0)
+        self.assertTrue(container.removed, "container must always be removed")
+
+    def test_02_mapping_return_with_nonzero_code_is_reported(self):
+        r, _ = self._run_with({"StatusCode": 2, "Error": None})
+        self.assertEqual(r.exit_code, 2)
+        self.assertFalse(r.ok)
+
+    def test_03_legacy_tuple_return_is_still_accepted(self):
+        r, container = self._run_with((3, "some error"))
+        self.assertEqual(r.exit_code, 3)
+        self.assertTrue(any("some error" in w for w in r.warnings))
+        self.assertTrue(container.removed)
+
+
+class TestStaleContainerReaping(unittest.TestCase):
+    """A process killed between create() and cleanup must not strand containers.
+
+    Containers are labelled so reaping can never touch an operator's own.
+    """
+
+    class _FakeContainer:
+        def __init__(self, created):
+            self.attrs = {"Created": created}
+            self.removed = False
+
+        def remove(self, force=False):
+            self.removed = True
+
+    class _FakeContainers:
+        def __init__(self, items):
+            self._items = items
+            self.queried_label = None
+
+        def list(self, all=False, filters=None):
+            self.queried_label = (filters or {}).get("label")
+            return list(self._items)
+
+    def _client(self, items):
+        containers = self._FakeContainers(items)
+        return type("C", (), {"containers": containers})(), containers
+
+    def test_01_created_timestamp_is_an_rfc3339_string(self):
+        """Docker returns a string here; comparing it to a float silently reaped nothing."""
+        self.assertAlmostEqual(
+            DynamicAnalyzer._created_epoch(self._FakeContainer("2026-01-01T00:00:00Z")),
+            1767225600.0, places=0,
+        )
+
+    def test_02_nanosecond_precision_is_tolerated(self):
+        epoch = DynamicAnalyzer._created_epoch(
+            self._FakeContainer("2026-01-01T00:00:00.123456789Z")
+        )
+        self.assertIsNotNone(epoch)
+        self.assertAlmostEqual(epoch, 1767225600.123456, places=3)
+
+    def test_03_unparseable_age_means_skip_not_delete(self):
+        self.assertIsNone(DynamicAnalyzer._created_epoch(self._FakeContainer("nonsense")))
+        self.assertIsNone(DynamicAnalyzer._created_epoch({}))
+
+        old = self._FakeContainer("nonsense")
+        client, _ = self._client([old])
+        removed = DynamicAnalyzer.reap_stale_containers(client, max_age_seconds=0)
+        self.assertEqual(removed, 0)
+        self.assertFalse(old.removed, "unknown age must not be a licence to delete")
+
+    def test_04_stale_is_reaped_and_fresh_is_kept(self):
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).timestamp()
+        old = self._FakeContainer(datetime.fromtimestamp(now - 4000, timezone.utc))
+        fresh = self._FakeContainer(datetime.fromtimestamp(now, timezone.utc))
+        client, containers = self._client([old, fresh])
+
+        removed = DynamicAnalyzer.reap_stale_containers(client, max_age_seconds=900)
+        self.assertEqual(removed, 1)
+        self.assertTrue(old.removed)
+        self.assertFalse(fresh.removed, "a running analysis must not be reaped")
+        self.assertEqual(containers.queried_label, "com.greencode.analysis")
+
+    def test_05_reaper_failure_never_breaks_an_analysis(self):
+        class Exploding:
+            @property
+            def containers(self):
+                raise RuntimeError("daemon gone")
+
+        self.assertEqual(DynamicAnalyzer.reap_stale_containers(Exploding()), 0)
+
+
+class TestScaphhandreMeter(unittest.TestCase):
+    """ScaphhandreMeter reads real RAPL counters via the Scaphandre HTTP sidecar.
+
+    All tests mock urllib.request so no network is required.  The assertions
+    focus on the three things that must be true for production correctness:
+      1. The regex extracts the right metric line from a Prometheus payload.
+      2. Connectivity failures are silent (returns None, not an exception).
+      3. joules_between() computes a correct positive delta.
+      4. select_meter() prefers RAPL, then Scaphandre, never battery when both
+         are present.
+    """
+
+    # Minimal Prometheus payload with a host energy counter.
+    _PROM_BODY = (
+        "# HELP scaph_host_energy_microjoules Host energy in microjoules\n"
+        "# TYPE scaph_host_energy_microjoules counter\n"
+        "scaph_host_energy_microjoules 12345678.0\n"
+        "scaph_process_power_consumption_microwatts{pid=\"1\"} 500.0\n"
+    )
+
+    def _meter(self, body: str):
+        """Return a ScaphhandreMeter whose HTTP call returns ``body``."""
+        from app.energy_sensors import ScaphhandreMeter
+
+        meter = ScaphhandreMeter(url="http://fake-scaphandre:8080/metrics")
+        meter._ok = None  # force lazy probe
+
+        class _FakeResponse:
+            def read(self):
+                return body.encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                pass
+
+        with mock.patch("urllib.request.urlopen", return_value=_FakeResponse()):
+            _ = meter.available  # trigger probe
+
+        return meter
+
+    def test_01_prometheus_body_parsed_correctly(self):
+        """The regex must extract the host energy counter value."""
+        from app.energy_sensors import ScaphhandreMeter
+
+        meter = ScaphhandreMeter.__new__(ScaphhandreMeter)
+        meter._url = "http://fake:8080/metrics"
+
+        class _FakeResponse:
+            def read(self):
+                return self._PROM_BODY.encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                pass
+
+        _FakeResponse._PROM_BODY = self._PROM_BODY
+        with mock.patch("urllib.request.urlopen", return_value=_FakeResponse()):
+            val = meter._scrape()
+
+        self.assertIsNotNone(val)
+        self.assertAlmostEqual(val, 12345678.0, places=1)
+
+    def test_02_connection_failure_returns_none_not_exception(self):
+        """An unreachable sidecar must never crash the analysis path."""
+        from app.energy_sensors import ScaphhandreMeter
+
+        meter = ScaphhandreMeter.__new__(ScaphhandreMeter)
+        meter._url = "http://fake:8080/metrics"
+        meter._ok = None
+
+        import urllib.error
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("connection refused"),
+        ):
+            result = meter._scrape()
+
+        self.assertIsNone(result)
+
+    def test_03_available_is_false_when_sidecar_unreachable(self):
+        """available must be False, not raise, when the sidecar is down."""
+        from app.energy_sensors import ScaphhandreMeter
+
+        meter = ScaphhandreMeter.__new__(ScaphhandreMeter)
+        meter._url = "http://fake:8080/metrics"
+        meter._ok = None
+
+        import urllib.error
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("refused"),
+        ):
+            self.assertFalse(meter.available)
+
+    def test_04_read_returns_scaphandre_point_with_correct_uj(self):
+        """read() must return a ScaphandrePoint carrying the scraped value."""
+        from app.energy_sensors import ScaphhandreMeter, ScaphandrePoint
+
+        meter = ScaphhandreMeter.__new__(ScaphhandreMeter)
+        meter._url = "http://fake:8080/metrics"
+
+        class _FakeResponse:
+            def read(self):
+                return (
+                    "scaph_host_energy_microjoules 99000000.0\n"
+                ).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                pass
+
+        with mock.patch("urllib.request.urlopen", return_value=_FakeResponse()):
+            point = meter.read()
+
+        self.assertIsInstance(point, ScaphandrePoint)
+        self.assertAlmostEqual(point.host_uj, 99_000_000.0, places=1)
+
+    def test_05_joules_between_computes_correct_delta(self):
+        """A 10 MJ counter increment = 10 J total, all reported as cpu_joules."""
+        from app.energy_sensors import ScaphhandreMeter, ScaphandrePoint
+
+        a = ScaphandrePoint(timestamp=0.0, host_uj=100_000_000.0)
+        b = ScaphandrePoint(timestamp=1.0, host_uj=110_000_000.0)  # +10 MJ = 10 J
+
+        j = ScaphhandreMeter.joules_between(a, b)
+        self.assertAlmostEqual(j["total_joules"], 10.0, places=6)
+        self.assertAlmostEqual(j["cpu_joules"], 10.0, places=6)
+        self.assertAlmostEqual(j["memory_joules"], 0.0, places=6)
+
+    def test_06_joules_between_clamps_negative_delta(self):
+        """Counter resets (very rare) must not produce negative energy."""
+        from app.energy_sensors import ScaphhandreMeter, ScaphandrePoint
+
+        a = ScaphandrePoint(timestamp=0.0, host_uj=200_000_000.0)
+        b = ScaphandrePoint(timestamp=1.0, host_uj=10_000.0)  # apparent reset
+
+        j = ScaphhandreMeter.joules_between(a, b)
+        self.assertGreaterEqual(j["total_joules"], 0.0)
+
+    def test_07_select_meter_prefers_rapl_over_scaphandre(self):
+        """RAPL direct access beats the HTTP sidecar tier."""
+        from app.energy_sensors import RaplMeter, ScaphhandreMeter, select_meter
+
+        fake_rapl = mock.MagicMock(spec=RaplMeter)
+        fake_rapl.available = True
+
+        with mock.patch("app.energy_sensors.RaplMeter", return_value=fake_rapl):
+            meter = select_meter()
+
+        self.assertIsInstance(meter, type(fake_rapl))
+
+    def test_08_select_meter_falls_to_scaphandre_when_no_rapl(self):
+        """When RAPL is absent, Scaphandre is chosen before battery/model."""
+        from app.energy_sensors import ScaphhandreMeter, select_meter
+
+        fake_scaph = mock.MagicMock(spec=ScaphhandreMeter)
+        fake_scaph.available = True
+
+        with (
+            mock.patch("app.energy_sensors.RaplMeter", side_effect=RuntimeError("no rapl")),
+            mock.patch("app.energy_sensors.ScaphhandreMeter", return_value=fake_scaph),
+        ):
+            meter = select_meter()
+
+        self.assertIsInstance(meter, type(fake_scaph))
+
+    def test_09_scaphandre_measurement_is_labelled_hardware_true(self):
+        """Scaphandre reads real hardware; measurement_is_hardware must be True."""
+        from app.energy_sensors import ScaphandrePoint
+
+        # _finalise receives `before` (already read outside) and calls
+        # meter.read() once more for the `after` snapshot. We provide a meter
+        # whose single read() call returns the "after" point (+5 J).
+        before_point = ScaphandrePoint(timestamp=0.0, host_uj=100_000_000.0)
+        after_point = ScaphandrePoint(timestamp=1.0, host_uj=105_000_000.0)
+
+        class FixedScaph:
+            def describe(self):
+                return {"backend": "scaphandre"}
+
+            def read(self):
+                # Called exactly once by _finalise for the "after" snapshot.
+                return after_point
+
+            def joules_between(self, a, b):
+                delta = max(0.0, b.host_uj - a.host_uj) / 1e6
+                return {"cpu_joules": delta, "memory_joules": 0.0, "total_joules": delta}
+
+        r = DynamicAnalyzer()._finalise(
+            workdir=".", before=before_point, meter=FixedScaph(), duration=1.0,
+            exit_code=0, timed_out=False, stdout_bytes=b"", stderr_bytes=b"",
+            repo_slug="a/b", ref="main", entry="main.py", language="python",
+            grid_intensity=280.0, functional_unit=1.0,
+        )
+        self.assertEqual(r.measurement_method, "scaphandre")
+        self.assertTrue(r.measurement_is_hardware)
+        self.assertAlmostEqual(r.it_energy_joules, 5.0, places=3)
+
+
+
 class TestArchiveSafety(unittest.TestCase):
     def test_traversal_entry_is_rejected(self):
         d = tempfile.mkdtemp()

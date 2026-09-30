@@ -640,7 +640,11 @@ def _refactor_nested_loop_code(snippet: str) -> str:
     loop_iters = []
     body_lines = []
     in_body = False
-    base_indent = ""
+    # `None` rather than `""` to mean "not captured yet": an empty string is a
+    # legitimate indentation for a top-level loop, and testing it for truthiness
+    # kept re-capturing until the first *indented* line, which emitted the whole
+    # rewritten block indented and produced an IndentationError.
+    base_indent: Optional[str] = None
 
     for line in lines:
         stripped = line.strip()
@@ -648,13 +652,16 @@ def _refactor_nested_loop_code(snippet: str) -> str:
             continue
         m = re.match(r"^for\s+([a-zA-Z0-9_,\s\(\)]+)\s+in\s+(.+?):$", stripped)
         if m and not in_body:
-            if not base_indent:
+            if base_indent is None:
                 base_indent = line[: len(line) - len(line.lstrip())]
             loop_vars.append(m.group(1).strip())
             loop_iters.append(m.group(2).strip())
         else:
             in_body = True
             body_lines.append(line)
+
+    if base_indent is None:
+        base_indent = ""
 
     if len(loop_vars) >= 2 and loop_iters:
         joined_vars = ", ".join(loop_vars)

@@ -1,0 +1,92 @@
+name: "Reality Verification Pipeline"
+
+# Closes the loop on GreenCode's own claims. The static analyser says a pattern
+# is expensive; this workflow actually runs the optimised code on a
+# RAPL-capable Linux runner and reports the measured energy back to the
+# pipeline, which returns a signed, hash-chained verdict.
+#
+# The verdict is written to the job summary, so the answer to "did that refactor
+# save what we said it would?" is visible without anyone profiling by hand.
+
+on:
+  workflow_dispatch:
+    inputs:
+      claim_id:
+        description: "Claim to file evidence against (e.g. 'refactor-1042')"
+        required: true
+        type: string
+      baseline_joules:
+        description: "Measured energy of the unoptimised path, in joules"
+        required: true
+        type: string
+      command:
+        description: "Command that exercises the workload"
+        required: true
+        default: "python -m samples.heavy_pipeline"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: "Measure real energy and verify the claim"
+    # RAPL counters are exposed under /sys/class/powercap on Intel/AMD cloud
+    # runners. macOS and Windows runners have no hardware counter, so they are
+    # excluded rather than silently producing modelled numbers.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Probe the hardware energy counter
+        id: counter
+        run: |
+          set -euo pipefail
+          # Never fabricate a reading. Without a counter the pipeline is told
+          # the truth and will refuse to verify - which is the correct outcome,
+          # not a failure to work around.
+          if [ -d /sys/class/powercap ]; then
+            echo "rapl_available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rapl_available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No RAPL counters on this runner; the claim cannot be verified."
+          fi
+
+      - name: Measure energy across repeated runs and file the evidence
+        id: measure
+        env:
+          INPUT_CLAIM_ID: ${{ inputs.claim_id }}
+          INPUT_BASELINE: ${{ inputs.baseline_joules }}
+          INPUT_COMMAND: ${{ inputs.command }}
+          RAPL_AVAILABLE: ${{ steps.counter.outputs.rapl_available }}
+          GREENCODE_PIPELINE_WEBHOOK_SECRET: ${{ secrets.GREENCODE_PIPELINE_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          python scripts/measure_and_file_evidence.py \
+            --claim-id "$INPUT_CLAIM_ID" \
+            --baseline-joules "$INPUT_BASELINE" \
+            --command "$INPUT_COMMAND" \
+            --runs 3 \
+            --api-url "${GREENCODE_API_URL:-http://localhost:8000}"
+
+      - name: Publish the verdict
+        run: |
+          {
+            echo "### Reality Verification Pipeline"
+            echo ""
+            if [ -f evidence-result.md ]; then
+              cat evidence-result.md
+            else
+              echo "No verdict was returned. Check that the API URL and claim id are correct."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

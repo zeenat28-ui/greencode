@@ -18,7 +18,8 @@ from datetime import datetime, timedelta, timezone
 import jwt
 import logging
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -66,6 +67,12 @@ from app.optimizer import (
     refactor_repository_code,
 )
 from app.parser import audit_repository
+from app.pipeline import engine as pipeline_engine
+from app.pipeline import ledger as pipeline_ledger
+from app.pipeline import n8n as pipeline_n8n
+from app.pipeline.config import PipelineConfig
+from app.pipeline.signing import SIGNATURE_HEADER, TIMESTAMP_HEADER
+from app.pipeline.verifier import Claim, ClaimError, Evidence
 from app.profiler import DynamicExecutionProfiler
 from app.sarif import generate_sarif_report
 from app.scanner import (
@@ -151,6 +158,64 @@ class GitHubPRRequest(BaseModel):
     energy_reduction_pct: float = Field(50.0, ge=0.0, le=100.0, description="Estimated percentage energy saved")
     carbon_saved_10k: float = Field(30.0, ge=0.0, description="Estimated carbon saved per 10k runs")
     token: Optional[str] = Field(None, min_length=10, max_length=200, description="Optional GitHub token override")
+
+
+# ---------------------------------------------------------------------------
+# REALITY VERIFICATION PIPELINE
+#
+# Static analysis says a pattern is expensive. This pipeline answers the
+# follow-up question nobody usually asks: did the fix actually work on real
+# hardware? A claim is filed, measurements are filed against it, and the
+# pipeline returns a signed verdict recorded in a hash-chained ledger.
+# ---------------------------------------------------------------------------
+class PipelineClaimRequest(BaseModel):
+    claim_id: str = Field(
+        ..., min_length=3, max_length=128,
+        description="Stable identifier used to correlate evidence, e.g. 'refactor-1042'",
+    )
+    repo: str = Field(..., min_length=3, max_length=255, description="Repository as 'owner/repo'")
+    predicted_reduction_pct: float = Field(
+        ..., ge=0.0, le=100.0,
+        description="Energy reduction the refactor is expected to deliver, in percent",
+    )
+    baseline_energy_joules: Optional[float] = Field(
+        None, gt=0.0,
+        description=(
+            "Measured energy of the unoptimised code path. Without it a reduction "
+            "percentage is arithmetic, not measurement, and the claim stays UNVERIFIED."
+        ),
+    )
+    baseline_sci: Optional[float] = Field(
+        None, gt=0.0, description="Pre-refactor SCI in gCO2e per functional unit"
+    )
+    source: str = Field("refactor", max_length=64, description="Origin: refactor, audit, ci-gate")
+    zone: str = Field("US-CAL-CISO", max_length=64, description="Electricity Maps grid zone")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelineEvidenceRequest(BaseModel):
+    claim_id: str = Field(..., min_length=3, max_length=128, description="Claim this measurement belongs to")
+    energy_joules: float = Field(..., ge=0.0, description="Measured IT energy for this run, in joules")
+    evidence_id: Optional[str] = Field(
+        None, max_length=128, description="Run identifier; generated when omitted"
+    )
+    event_id: Optional[str] = Field(
+        None, max_length=128,
+        description="Idempotency key. Re-delivering the same event_id returns the original verdict.",
+    )
+    duration_seconds: float = Field(1.0, ge=0.0, le=86400.0, description="Wall-clock duration of the run")
+    functional_unit: float = Field(
+        1.0, gt=0.0, le=1e12,
+        description="R in the SCI formula: requests served, jobs processed, etc.",
+    )
+    measurement_method: str = Field(
+        "model", max_length=32,
+        description="'rapl', 'perf' or 'battery' for real hardware counters; 'model' for a TDP estimate",
+    )
+    carbon_intensity: float = Field(380.0, ge=0.0, le=2000.0, description="Grid intensity, gCO2e/kWh")
+    source: str = Field("unknown", max_length=64, description="Which runner produced this measurement")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
 
 
 @asynccontextmanager
@@ -1084,6 +1149,193 @@ def get_audit_context_endpoint(
         raise HTTPException(status_code=403, detail="You cannot access this repository's report.")
 
     return build_remediation_plan(_build_audit_context(details))
+
+
+# ---------------------------------------------------------------------------
+# REALITY VERIFICATION PIPELINE ENDPOINTS
+# ---------------------------------------------------------------------------
+
+def _pipeline_config() -> PipelineConfig:
+    """Resolve pipeline configuration fresh, so env changes apply without a restart."""
+    return PipelineConfig.from_env()
+
+
+@app.get("/api/pipeline/status", tags=["Verification Pipeline"])
+def pipeline_status_endpoint():
+    """Report pipeline readiness: intake authentication, policy and channels.
+
+    Public and unauthenticated by design - a load balancer or uptime check needs
+    to know whether evidence intake will be accepted, and this response contains
+    no secrets, only whether they are configured.
+    """
+    cfg = _pipeline_config()
+    chain = pipeline_ledger.verify_chain()
+    return {
+        "service": "GreenCode Reality Verification Pipeline",
+        "ready": bool(cfg.webhook_secret) and not chain.reason,
+        "configuration": cfg.public_status(),
+        "ledger": chain.to_dict(),
+        "tracked_claims": len(pipeline_engine.list_claims()),
+    }
+
+
+@app.post("/api/pipeline/claim", tags=["Verification Pipeline"])
+@maybe_limit("30/minute")
+def file_claim_endpoint(
+    req: PipelineClaimRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Register a prediction that the pipeline will later hold reality to."""
+    try:
+        claim = Claim.from_dict(
+            {
+                "claim_id": req.claim_id,
+                "repo": req.repo,
+                "predicted_reduction_pct": req.predicted_reduction_pct,
+                "baseline_energy_joules": req.baseline_energy_joules,
+                "baseline_sci": req.baseline_sci,
+                "source": req.source,
+                "zone": req.zone,
+                "metadata": {**req.metadata, "filed_by_user_id": current_user["id"]},
+            }
+        )
+    except ClaimError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return pipeline_engine.file_claim(claim, cfg=_pipeline_config())
+
+
+@app.post("/api/pipeline/evidence", tags=["Verification Pipeline"])
+@maybe_limit("120/minute")
+def file_evidence_endpoint(
+    req: PipelineEvidenceRequest,
+    request: Request,
+):
+    """Accept a measured run, re-verify its claim, record and notify.
+
+    This is the endpoint the n8n workflow, a CI job or a Wazuh integration posts
+    to. It is authenticated by HMAC signature over the raw request body when a
+    secret is configured, rather than by a user token, because the senders are
+    machines.
+
+    Returns 200 for both a fresh verdict and a duplicate delivery: a retry is a
+    success from the sender's point of view, and answering 409 would make every
+    at-least-once queue retry forever.
+    """
+    cfg = _pipeline_config()
+
+    # The signature covers the exact bytes received, not the re-serialised model,
+    # so a proxy that re-encodes JSON cannot invalidate a valid sender. FastAPI
+    # caches the body on the request, so this does not re-read the socket.
+    body = getattr(request, "_body", b"") or b""
+
+    auth = pipeline_engine.authenticate(
+        body,
+        request.headers.get(SIGNATURE_HEADER),
+        request.headers.get(TIMESTAMP_HEADER),
+        cfg,
+    )
+    if not auth.ok:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Evidence intake rejected: {auth.reason}.",
+        )
+
+    try:
+        item = Evidence.from_dict(
+            {
+                "evidence_id": req.evidence_id or pipeline_engine.new_event_id("run"),
+                "claim_id": req.claim_id,
+                "energy_joules": req.energy_joules,
+                "duration_seconds": req.duration_seconds,
+                "functional_unit": req.functional_unit,
+                "measurement_method": req.measurement_method,
+                "carbon_intensity": req.carbon_intensity,
+                "source": req.source,
+                "metadata": req.metadata,
+            }
+        )
+    except ClaimError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    result = pipeline_engine.file_evidence(
+        item,
+        event_id=req.event_id,
+        signature_verified=cfg.signature_enforced,
+        cfg=cfg,
+    )
+    if result.get("error") == "unknown_claim":
+        # Recorded in the ledger, but the caller sent something we cannot verify.
+        result["http_status"] = 404
+    return result
+
+
+@app.get("/api/pipeline/claim/{claim_id}", tags=["Verification Pipeline"])
+def get_pipeline_claim_endpoint(claim_id: str):
+    """Return a claim and its current verdict, re-evaluated against all evidence."""
+    claim = pipeline_engine.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim '{claim_id}' not found.")
+
+    verdict = pipeline_engine.check_claim(claim_id, cfg=_pipeline_config())
+    return {
+        "claim": claim,
+        "verdict": verdict.to_dict() if verdict else None,
+    }
+
+
+@app.get("/api/pipeline/claims", tags=["Verification Pipeline"])
+def list_pipeline_claims_endpoint():
+    """List every claim currently tracked by the pipeline."""
+    claims = pipeline_engine.list_claims()
+    return {"count": len(claims), "claims": claims}
+
+
+@app.get("/api/pipeline/ledger", tags=["Verification Pipeline"])
+def pipeline_ledger_endpoint(
+    limit: int = Query(25, ge=1, le=200),
+    repo: Optional[str] = Query(None, description="Filter by repository"),
+    verdict: Optional[str] = Query(None, description="Filter by verdict, e.g. CONTRADICTED"),
+):
+    """Return the hash-chained decision ledger, newest first.
+
+    Each entry carries the hash that commits to its predecessor, so the sequence
+    is independently checkable by anyone holding the data - see
+    `/api/pipeline/ledger/verify`.
+    """
+    return {
+        "entries": pipeline_ledger.recent(limit=limit, repo=repo, verdict=verdict),
+        "chain": pipeline_ledger.verify_chain().to_dict(),
+    }
+
+
+@app.get("/api/pipeline/ledger/verify", tags=["Verification Pipeline"])
+def verify_pipeline_ledger_endpoint():
+    """Re-verify the whole ledger from genesis.
+
+    This is the endpoint an auditor points at to confirm the record of past
+    decisions has not been altered. A failure names the first broken sequence
+    number rather than just returning false.
+    """
+    report = pipeline_ledger.verify_chain()
+    if not report.ok:
+        return JSONResponse(
+            status_code=409,
+            content={"error": "ledger_integrity_failure", **report.to_dict()},
+        )
+    return report.to_dict()
+
+
+@app.get("/api/pipeline/n8n-workflow", tags=["Verification Pipeline"])
+def export_n8n_workflow_endpoint(
+    api_url: str = Query("http://localhost:8000", description="Base URL n8n should post to"),
+):
+    """Export the importable n8n workflow that mirrors this pipeline.
+
+    Import it via n8n -> Workflows -> Import from File. Set the
+    `GREENCODE_SLACK_WEBHOOK` environment variable in n8n to route the three
+    branches (contradicted / verified / pending) to your channel.
+    """
+    return pipeline_n8n.build_workflow(api_url=api_url)
 
 
 

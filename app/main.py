@@ -222,16 +222,46 @@ class PipelineEvidenceRequest(BaseModel):
 async def lifespan(app: FastAPI):
     """Initialize database tables on startup and dispose async connections on shutdown."""
     init_db()
-    if not os.environ.get("JWT_SECRET") or JWT_SECRET == DEFAULT_INSECURE_JWT_SECRET:
+
+    # Rate limiting used to be an optional import that vanished without a word
+    # when slowapi was absent, leaving a production service with no request
+    # throttling. Treat it as the misconfiguration it is.
+    if not SLOWAPI_OK:
         message = (
-            "JWT_SECRET is not configured or still uses the insecure default. "
-            "Set a strong JWT_SECRET before deploying to production."
+            "slowapi is not importable, so no endpoint is rate limited. "
+            "Install it with: pip install -r requirements.txt"
         )
-        # Fail loudly in production, warn once in development.
-        if os.environ.get("ENV", "development").lower() in ("production", "prod", "staging"):
-            logger.critical(message)
-        else:
-            logger.warning(message)
+        if is_production_environment():
+            raise RuntimeError(message)
+        logger.warning(message)
+
+    # Storing GitHub personal access tokens unencrypted is the same class of
+    # failure as a weak signing key: the service runs, looks healthy, and quietly
+    # writes credentials in the clear.
+    from app.database import secrets_encryption_blockers
+
+    crypto_faults = secrets_encryption_blockers()
+    if crypto_faults:
+        detail = " ".join(crypto_faults)
+        if is_production_environment():
+            raise RuntimeError(
+                f"Refusing to start: {detail} Generate one with: "
+                'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+            )
+        logger.warning("Insecure credential storage (development only): %s", detail)
+
+    # A service that signs access tokens with a repository-published key is not
+    # authenticated, it is merely decorated. Refuse to serve in that state.
+    secret_faults = jwt_secret_blockers()
+    if secret_faults:
+        detail = " ".join(secret_faults)
+        if is_production_environment():
+            raise RuntimeError(
+                f"Refusing to start: {detail} Generate one with: "
+                'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+            )
+        logger.warning("Insecure JWT configuration (development only): %s", detail)
+
     try:
         yield
     finally:
@@ -261,9 +291,59 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
 )
 
+# A published literal is worse than no check at all: it invites operators to
+# believe the deployment is protected while every access token in the fleet is
+# signed with a key that is in the repository's history.
 DEFAULT_INSECURE_JWT_SECRET = "greencode-production-jwt-secret-key-2026"
 JWT_SECRET = os.environ.get("JWT_SECRET", DEFAULT_INSECURE_JWT_SECRET)
 JWT_ALGORITHM = "HS256"
+
+# Weak secrets make JWTs forgeable in practice, not just theoretically.
+_MIN_JWT_SECRET_LENGTH = 32
+_WEAK_JWT_SECRETS = {
+    DEFAULT_INSECURE_JWT_SECRET,
+    "change-me-at-least-64-chars-long-crypto-random",
+    "secret",
+    "changeme",
+}
+
+PRODUCTION_ENVIRONMENTS = {"production", "prod", "staging"}
+
+
+def is_production_environment() -> bool:
+    """True when the process believes it is serving real traffic."""
+    return os.environ.get("ENV", "development").strip().lower() in PRODUCTION_ENVIRONMENTS
+
+
+def jwt_secret_blockers() -> List[str]:
+    """Configuration faults that make access tokens forgeable.
+
+    Returned as a list rather than raised inline so the same function backs the
+    startup guard and the /api/health diagnostic, which means a misconfigured
+    host can never pass startup and then look healthy.
+    """
+    blockers: List[str] = []
+    raw = os.environ.get("JWT_SECRET")
+    if not raw:
+        blockers.append(
+            "JWT_SECRET is not set. Every access token is signed with a key that "
+            "is published in this repository, so any unauthenticated party can "
+            "mint a valid token."
+        )
+        return blockers
+    if raw == DEFAULT_INSECURE_JWT_SECRET:
+        blockers.append(
+            "JWT_SECRET still uses the insecure default value that is committed "
+            "to version control."
+        )
+    if raw in _WEAK_JWT_SECRETS:
+        blockers.append("JWT_SECRET is a known placeholder value.")
+    elif len(raw) < _MIN_JWT_SECRET_LENGTH:
+        blockers.append(
+            f"JWT_SECRET is only {len(raw)} characters; at least "
+            f"{_MIN_JWT_SECRET_LENGTH} are required for an HS256 key."
+        )
+    return blockers
 
 ACCESS_TOKEN_EXPIRE = timedelta(minutes=15)
 
@@ -278,11 +358,24 @@ else:
 
 
 def maybe_limit(limit_value: str):
-    """Conditionally apply a slowapi rate limit if slowapi is available."""
+    """Apply a slowapi rate limit, refusing to disguise its absence.
+
+    This used to be a conditional no-op, which meant that a missing slowapi
+    silently produced a service with no request throttling at all - and the
+    decorator never actually ran in this codebase, because none of the endpoints
+    declared the ``request`` argument slowapi requires. Rate limiting that looks
+    present in the source but is inert is worse than none, because a reviewer
+    marks it as covered. It is now a hard dependency (requirements.txt) and the
+    decorator raises if it cannot do its job.
+    """
     def decorator(func):
-        if SLOWAPI_OK and limiter is not None:
-            return limiter.limit(limit_value)(func)
-        return func
+        if not SLOWAPI_OK or limiter is None:
+            raise RuntimeError(
+                f"Cannot apply rate limit {limit_value!r} to "
+                f"{getattr(func, '__name__', func)!r}: slowapi is unavailable. "
+                "Install it with: pip install -r requirements.txt"
+            )
+        return limiter.limit(limit_value)(func)
     return decorator
 
 
@@ -538,12 +631,32 @@ def health_check():
     hf = get_hf_client()
     deps["huggingface"] = "ok" if hf.configured else "not_configured"
 
+    # Configuration faults are reported rather than hidden. A host that is
+    # running on the published default JWT key is reachable and answering, but
+    # its access tokens are forgeable, so it must not report itself as healthy.
+    from app.database import secrets_encryption_blockers
+
+    secret_faults = jwt_secret_blockers()
+    crypto_faults = secrets_encryption_blockers()
+    deps["jwt_secret"] = "insecure" if secret_faults else "ok"
+    deps["credential_encryption"] = "insecure" if crypto_faults else "ok"
+    if secret_faults or crypto_faults:
+        overall = "degraded"
+
     return {
         "status": overall,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": "GreenCode Auditor",
         "version": "1.1.0",
         "deps": deps,
+        "security": {
+            "environment": "production" if is_production_environment() else "development",
+            "jwt_secret_configured": not secret_faults,
+            "jwt_secret_blockers": secret_faults,
+            "credential_encryption_configured": not crypto_faults,
+            "credential_encryption_blockers": crypto_faults,
+            "rate_limiting_active": SLOWAPI_OK,
+        },
         "capabilities": {
             "dynamic_analysis": dyn["dynamic_analysis_available"],
             "dynamic_analysis_blockers": dyn["blockers"],
@@ -665,6 +778,7 @@ def _repo_root(workdir: str) -> str:
 @app.post("/api/scan/github", tags=["GitHub Scanning"])
 @maybe_limit("30/minute")
 def scan_github_repository_endpoint(
+    request: Request,
     req: GitHubScanRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
@@ -717,6 +831,7 @@ def scan_github_repository_endpoint(
 @app.post("/api/scan/github/async", tags=["GitHub Scanning"])
 @maybe_limit("30/minute")
 def scan_github_repository_async_endpoint(
+    request: Request,
     req: GitHubScanRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
@@ -784,6 +899,7 @@ def list_profile_benchmarks_endpoint(
 @app.post("/api/profile", tags=["Runtime Profiler"])
 @maybe_limit("20/minute")
 def profile_code_endpoint(
+    request: Request,
     req: ProfileRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
@@ -820,6 +936,7 @@ def profile_code_endpoint(
 @app.post("/api/refactor", tags=["Refactoring"])
 @maybe_limit("20/minute")
 def refactor_code_endpoint(
+    request: Request,
     req: RefactorRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
@@ -1025,7 +1142,7 @@ def logout_endpoint(
 
 @app.post("/api/auth/github", tags=["Authentication"])
 @maybe_limit("10/minute")
-def github_auth_endpoint(req: GitHubAuthRequest):
+def github_auth_endpoint(request: Request, req: GitHubAuthRequest):
     """Sign in (or auto-provision) using a GitHub Personal Access Token.
 
     This is the only authentication method. The token is verified against
@@ -1182,6 +1299,7 @@ def pipeline_status_endpoint():
 @app.post("/api/pipeline/claim", tags=["Verification Pipeline"])
 @maybe_limit("30/minute")
 def file_claim_endpoint(
+    request: Request,
     req: PipelineClaimRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
@@ -1428,6 +1546,7 @@ def inspect_github_repository_endpoint(
 @app.post("/github/pull-request", tags=["GitHub Integration"])
 @maybe_limit("10/minute")
 def create_github_pull_request_endpoint(
+    request: Request,
     req: GitHubPRRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):

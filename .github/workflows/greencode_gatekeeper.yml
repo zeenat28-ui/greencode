@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
+# security-events is required to publish the SARIF report to the Security tab;
+# pull-requests write is required for the sticky PR comment. Without these the
+# report is generated and then silently discarded.
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
 jobs:
   green-audit:
     name: "Audit Software Carbon Intensity & Green Score"
@@ -15,15 +23,35 @@ jobs:
       - name: Checkout Source Repository
         uses: actions/checkout@v4
 
+      # Input names must match action.yml exactly. This job previously passed
+      # repo-path / green-score-threshold / target-zone, none of which the action
+      # declares, so GitHub discarded them and every run silently fell back to
+      # the defaults. It happened to produce the intended result because the
+      # values happened to be identical to the defaults - any change to either
+      # would have been ignored without warning.
       - name: Run GreenCode Auditor Action
         id: auditor
         uses: ./
         with:
-          repo-path: "."
-          green-score-threshold: "75.0"
-          target-zone: "US-CAL-CISO"
-          electricity-maps-token: ${{ secrets.ELECTRICITY_MAPS_API_KEY }}
-          huggingface-token: ${{ secrets.HUGGINGFACE_TOKEN }}
+          path: "."
+          threshold: "75.0"
+          zone: "US-CAL-CISO"
+          sarif_file: "greencode.sarif"
+          sonar_file: "greencode-sonar.json"
+          upload_sarif: "true"
+          pr_comment: "true"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload SonarQube issue report
+        if: always()
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=greencode
+            -Dsonar.sources=.
+            -Dsonar.genericissueimport.report.path=greencode-sonar.json
 
       - name: Quality Gate Status Output
         run: |

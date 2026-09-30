@@ -3,9 +3,44 @@
 [![CI Gatekeeper](https://img.shields.io/badge/CI%2FCD-Active%20Quality%20Gate-success)](action.yml)
 [![Green Computing](https://img.shields.io/badge/Standard-Green%20Software%20Foundation-brightgreen)](https://greensoftware.foundation)
 [![SCI Standard](https://img.shields.io/badge/Specification-SCI%20v1.0-blue)](https://greensoftware.foundation)
-[![ISO Compliant](https://img.shields.io/badge/Standard-ISO%2014064--1-emerald)](https://iso.org)
+[![Tests](https://img.shields.io/badge/tests-238%20passing-success)](tests/)
 
-**GreenCode Auditor** is an industry-grade platform designed to enforce Green Computing standards across modern software engineering workflows. It audits multi-language GitHub and local codebases for architectural and algorithmic energy anti-patterns using Concrete and Abstract Syntax Tree (CST/AST) parsing, dynamically profiles execution inside isolated sandboxes to measure hardware TDP draw in Watt-hours, queries live regional grid carbon telemetry via Electricity Maps, automatically refactors inefficient code using GreenCode AI synthesis under Green Software Foundation (GSF) standards, and enforces non-breaking CI/CD quality gate blockers via a native GitHub Action.
+**GreenCode Auditor** is a platform for enforcing Green Computing standards across
+software engineering workflows. It audits multi-language GitHub and local
+codebases for architectural and algorithmic energy anti-patterns using
+Concrete and Abstract Syntax Tree (CST/AST) parsing, dynamically profiles
+execution inside isolated sandboxes, queries live regional grid carbon telemetry
+via Electricity Maps, refactors inefficient code under Green Software Foundation
+(GSF) standards, and enforces non-breaking CI/CD quality gate blockers via a
+native GitHub Action.
+
+> ### ⚠️ Measurement honesty - read this first
+>
+> **Energy is reported in Joules, not Watt-hours.**
+>
+> **Whether a number is a real measurement depends entirely on the host.**
+> Every result carries a `measurement_method` and a `measurement_is_hardware`
+> flag, and there is no code path that reports an estimate as a measurement.
+>
+> | `measurement_method` | `is_hardware` | What it means |
+> |---|---|---|
+> | `rapl` | `true` | Direct read of Intel/AMD `/sys/class/powercap` counters |
+> | `scaphandre` | `true` | Same hardware counters, read over the Scaphandre sidecar |
+> | `perf` | `true` | PMU `power/energy-*` events via `perf stat` |
+> | `battery` | `true` | Whole-system discharge rate (coarse, not per-process) |
+> | `model` | `false` | **TDP/load estimate. Not a measurement.** |
+>
+> Real hardware measurement requires a **native Linux host** with RAPL exposed.
+> On Windows or WSL2 the counters are absent at the hypervisor level, so results
+> are correctly reported as `model` with an explicit warning. This was verified
+> on this project's host: `find /sys/class/powercap -name energy_uj | wc -l`
+> returns `0` in a privileged container, with a read-only bind mount, and inside
+> the WSL2 VM itself. See [Energy Measurement Tiers](#energy-measurement-tiers).
+>
+> **This project does not claim ISO 14064-1 certification.** It implements the
+> GSF SCI formula and reports provenance for every figure; certification is an
+> independent audit that has not been performed.
+
 
 ---
 
@@ -37,7 +72,7 @@ greencode/
 │       └── n8n_workflow.json
 ├── samples/
 │   ├── heavy_pipeline.py   # Benchmark script exhibiting all 4 GSF anti-patterns (Score: 47/100)
-│   └── eco_pipeline.py     # Refactored script conforming to Green Computing standards (Score: 100/100)
+│   └── eco_pipeline.py     # Refactored script free of the four GSF anti-patterns
 ├── scripts/
 │   ├── measure_and_file_evidence.py # Measure real energy -> file evidence -> get a verdict
 │   └── demo_pipeline.py    # Live end-to-end demo of the whole pipeline
@@ -48,14 +83,109 @@ greencode/
 │   ├── test_llm_refactor.py# Verification gate: what is allowed through, and what is not
 │   ├── test_dynamic_analysis.py # Sandbox posture, archive safety, entry-point discovery
 │   ├── test_api.py         # FastAPI REST endpoint integration tests
-│   └── test_pipeline.py    # Verification verdicts, ledger integrity, intake security
+│   ├── test_pipeline.py    # Verification verdicts, ledger integrity, intake security
+│   └── test_production_readiness.py # Fail-closed config guards, compose hygiene, CI wiring
+├── alembic/                # Schema migrations (alembic upgrade head)
+├── frontend/               # React + Vite product UI, built by frontend/Dockerfile
 ├── action.yml              # Native GitHub Action manifest for CI/CD blocker
 ├── ui.py                   # Streamlit green dashboard with side-by-side diffs & SCI charts
-└── requirements.txt        # Production dependency specifications
+└── requirements.txt        # Pinned production dependency specifications
 ```
 
 ---
 
+## 🚀 Quick Start
+
+### 1. Configure secrets (required)
+
+The compose file **refuses to start** without these, so there is no
+silently-insecure default left to inherit.
+
+```bash
+cp .env.example .env
+```
+
+Then generate the four secrets and paste them into `.env`:
+
+```bash
+python -c "import secrets; print('JWT_SECRET=' + secrets.token_urlsafe(48))"
+python -c "import secrets; print('POSTGRES_PASSWORD=' + secrets.token_urlsafe(32))"
+python -c "import secrets; print('REDIS_PASSWORD=' + secrets.token_urlsafe(32))"
+python -c "import secrets; print('SECRETS_ENCRYPTION_KEY=' + secrets.token_urlsafe(48))"
+```
+
+### 2. Start
+
+```bash
+docker compose up -d --build
+```
+
+| Service | URL | Notes |
+|---|---|---|
+| React web UI | http://localhost:3000 | nginx, proxies `/api` to the backend |
+| FastAPI | http://localhost:8000 | `/api/health` reports security state |
+| Streamlit dashboard | http://localhost:8501 | optional secondary UI |
+| Postgres / Redis | loopback only | not exposed off-box |
+
+All published ports bind to `127.0.0.1` by default. Set `*_BIND=0.0.0.0` only
+behind a firewall.
+
+### 3. Verify
+
+```bash
+curl http://localhost:8000/api/health | python -m json.tool
+```
+
+A healthy deployment reports `"status": "healthy"`. If it reports `degraded`,
+the `security` block names the exact configuration fault.
+
+### Local development without Docker
+
+```bash
+pip install -r requirements.txt
+python -m pytest tests/          # 238 tests
+ENV=development python -m app.main --path . --threshold 75
+```
+
+---
+
+## 🔋 Energy Measurement Tiers
+
+`select_meter()` picks the highest-fidelity tier the host actually supports.
+It never fabricates a reading, and returns `None` rather than a fake meter when
+nothing real is reachable.
+
+| Tier | Source | `is_hardware` | Availability |
+|---|---|---|---|
+| 1. `rapl` | `/sys/class/powercap/intel-rapl:*/energy_uj` | `true` | Linux + Intel/AMD |
+| 2. `scaphandre` | Prometheus sidecar over HTTP | `true` | Linux, Docker hosts |
+| 3. `perf` | `perf stat -e power/energy-pkg/` | `true` | Linux with PMU access |
+| 4. `battery` | `/sys/class/power_supply/BAT*/power_now` | `true` | Discharging laptops |
+| 5. `model` | TDP + load model | **`false`** | Anywhere |
+
+RAPL counters are 32-bit and wrap at `max_energy_range_uj`. `wrap_delta()`
+handles the wrap; a naive `end - start` produces a catastrophically negative
+figure that silently corrupts every downstream result.
+
+### Enabling the Scaphandre sidecar (Linux only)
+
+```bash
+docker compose --profile rapl up -d
+curl http://localhost:8080/metrics | grep scaph_host_energy
+```
+
+Opt-in because on Windows/WSL2 it reports zero domains (measured, not assumed).
+See the evidence in `docker-compose.yml`.
+
+### Windows / WSL2
+
+Real hardware measurement is **not possible**. The WSL2 hypervisor does not pass
+host RAPL MSRs through, so `/sys/class/powercap` is empty at the VM level, not
+merely hidden from the container. Results are reported as `model` with
+`measurement_is_hardware=false` and an explicit warning. That is the correct
+outcome, not a bug.
+
+---
 ## ⚡ Green Software Foundation (GSF) Patterns Enforced
 
 1. **Deep Nested Iteration (`NESTED_LOOPS_DEPTH_3+`)**:
@@ -276,7 +406,7 @@ service is meaningless. The API warns when `R` is left at 1.
    - Ready-to-embed Markdown and HTML snippets provided directly in the dashboard for repositories to display their Green Score globally on GitHub.
 
 2. **🌍 Tangible Real-World Environmental Impact Calculator**:
-   - Translates abstract Joules and Watt-hours into tangible everyday equivalencies using United States Environmental Protection Agency (EPA) standards:
+   - Translates Joules (and the derived Watt-hours, J/3600) into tangible everyday equivalencies using United States Environmental Protection Agency (EPA) standards:
      - 🌳 **Urban Trees Preserved**: $21.77\text{ kg CO}_2\text{/tree/year}$
      - 📱 **Smartphones Charged**: $8.22\text{ Wh/charge}$
      - 💵 **Cloud Hosting Costs Saved**: AWS/GCP compute & cooling billing reduction.

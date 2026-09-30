@@ -54,3 +54,22 @@ Thumbs.db
 *.tmp
 temp/
 
+# Agent / editor scratch directories. .kilo/worktrees holds a full stale copy of
+# the application; committing it duplicates every module and makes search results
+# ambiguous about which copy is authoritative.
+.kilo/
+.bob/
+.cline/
+
+# Generated reports and recordings. These are build output, not source: they are
+# reproducible from a run and only bloat the history.
+greencode.sarif
+greencode-sonar.json
+*.sarif
+ibm_bob_report.json
+*.mp4
+
+# Alembic
+alembic/versions/__pycache__/
+
+

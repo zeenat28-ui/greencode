@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ----------------------------------------------------
   # 1. PostgreSQL Database Service
@@ -9,15 +7,19 @@ services:
     container_name: greencode-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: greencode
-      POSTGRES_USER: greencode_user
-      POSTGRES_PASSWORD: greencode_secure_pass
+      POSTGRES_DB: ${POSTGRES_DB:-greencode}
+      POSTGRES_USER: ${POSTGRES_USER:-greencode_user}
+      # Quoted because the `:?` message contains colons, which YAML would
+      # otherwise parse as a nested mapping.
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env - see .env.example}"
+    # Bound to loopback only. Publishing 5432 on 0.0.0.0 hands the database to
+    # every host that can route to this machine.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U greencode_user -d greencode"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -29,12 +31,19 @@ services:
     image: redis:7-alpine
     container_name: greencode-redis
     restart: unless-stopped
+    # Loopback only, and password-protected: an unauthenticated Redis on a
+    # routable interface is a remote-code-execution waiting to happen.
+    command: >
+      sh -c 'redis-server --appendonly yes
+      --requirepass "$${REDIS_PASSWORD:-greencode_redis_change_me}"'
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env - see .env.example}"
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -48,16 +57,25 @@ services:
       dockerfile: Dockerfile
     container_name: greencode-backend
     restart: unless-stopped
-    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # No --reload in a deployed image: it forks a watcher that silently stops
+    # applying migrations and re-reads code that a rolling restart would have
+    # replaced anyway.
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
-      - "8000:8000"
+      - "${BACKEND_BIND:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://greencode_user:greencode_secure_pass@postgres:5432/greencode
-      - SYNC_DATABASE_URL=postgresql://greencode_user:greencode_secure_pass@postgres:5432/greencode
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - ENV=${ENV:-production}
+      # JWT signing key. Required: the service refuses to start without a strong
+      # value, so there is no working default left to leak.
+      - JWT_SECRET="${JWT_SECRET:?set JWT_SECRET in .env - see .env.example}"
+      - SECRETS_ENCRYPTION_KEY="${SECRETS_ENCRYPTION_KEY:?set SECRETS_ENCRYPTION_KEY in .env - see .env.example}"
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-greencode_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-greencode}
+      - SYNC_DATABASE_URL=postgresql://${POSTGRES_USER:-greencode_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-greencode}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
       # Point at the opt-in Scaphandre RAPL sidecar (profile: rapl).
       # On Linux this yields real hardware counters; on Windows/WSL2 the
       # sidecar cannot reach /sys/class/powercap at all, so it stays off by
@@ -65,6 +83,10 @@ services:
       - SCAPHANDRE_URL=http://scaphandre:8080/metrics
     volumes:
       - .:/app
+      # Root-equivalent on the host. Justified because dynamic analysis must run
+      # untrusted repositories in isolation, and mitigated by the loopback-only
+      # bind above plus mandatory JWT_SECRET: an auth bypass here means host
+      # root, so this socket must never be reachable from off-box.
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
@@ -88,11 +110,14 @@ services:
     restart: unless-stopped
     command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
     environment:
-      - DATABASE_URL=postgresql+asyncpg://greencode_user:greencode_secure_pass@postgres:5432/greencode
-      - SYNC_DATABASE_URL=postgresql://greencode_user:greencode_secure_pass@postgres:5432/greencode
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - ENV=${ENV:-production}
+      - JWT_SECRET="${JWT_SECRET:?set JWT_SECRET in .env - see .env.example}"
+      - SECRETS_ENCRYPTION_KEY="${SECRETS_ENCRYPTION_KEY:?set SECRETS_ENCRYPTION_KEY in .env - see .env.example}"
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-greencode_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-greencode}
+      - SYNC_DATABASE_URL=postgresql://${POSTGRES_USER:-greencode_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-greencode}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SCAPHANDRE_URL=http://scaphandre:8080/metrics
     volumes:
       - .:/app
@@ -113,16 +138,43 @@ services:
     restart: unless-stopped
     command: streamlit run ui.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
     ports:
-      - "8501:8501"
+      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-8501}:8501"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://greencode_user:greencode_secure_pass@postgres:5432/greencode
-      - SYNC_DATABASE_URL=postgresql://greencode_user:greencode_secure_pass@postgres:5432/greencode
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-greencode_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-greencode}
+      - SYNC_DATABASE_URL=postgresql://${POSTGRES_USER:-greencode_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-greencode}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - BACKEND_API_URL=http://backend:8000
     volumes:
       - .:/app
     depends_on:
       - backend
+
+  # ----------------------------------------------------
+  # 5b. React + Vite Web Frontend
+  #
+  # This is the real product UI (frontend/: pages, AuthContext, ProtectedRoute).
+  # It was previously present in the repository but built and served by nothing,
+  # so it could never have worked in a deployment. Multi-stage build: node
+  # compiles and type-checks, nginx serves the static bundle and reverse-proxies
+  # /api to the backend so the browser sees a single origin.
+  # ----------------------------------------------------
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: greencode-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/healthz >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ----------------------------------------------------
   # 6. Scaphandre - Real RAPL Energy Exporter (OPT-IN)

@@ -10,6 +10,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import os
+from pathlib import Path
 import secrets
 import sys
 import time
@@ -21,6 +22,21 @@ try: from cryptography.fernet import Fernet, InvalidToken; FERNET_OK=True
 except ImportError: FERNET_OK=False
 
 import bcrypt
+
+# Schema versioning. Optional so a slimmed runtime image or a unit test that
+# stubs the database can still import this module; init_db() reports the
+# fallback loudly rather than pretending the schema is current.
+try:
+    from alembic import command
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    ALEMBIC_OK = True
+except ImportError:  # pragma: no cover - exercised only on a broken install
+    command = None  # type: ignore[assignment]
+    Config = None  # type: ignore[assignment]
+    ScriptDirectory = None  # type: ignore[assignment]
+    ALEMBIC_OK = False
 
 from sqlalchemy import (
     Boolean,
@@ -47,6 +63,37 @@ from sqlalchemy.orm import declarative_base, relationship, scoped_session, sessi
 
 # FERNET COLUMN ENCRYPTION for secrets at rest
 _ENCRYPTION_KEY_RAW = os.environ.get("SECRETS_ENCRYPTION_KEY")
+
+
+def secrets_encryption_blockers() -> List[str]:
+    """Reasons credential columns would be stored unencrypted.
+
+    Without this key, every GitHub personal access token a user saves is written
+    to the database verbatim. A database backup, a read replica, or a stolen
+    dump then hands over every account the service can act as, so this is a
+    deployment blocker rather than a recommendation.
+    """
+    blockers: List[str] = []
+    if not FERNET_OK:
+        blockers.append(
+            "cryptography is not installed, so credential columns cannot be "
+            "encrypted. Install it with: pip install -r requirements.txt"
+        )
+    if not _ENCRYPTION_KEY_RAW:
+        blockers.append(
+            "SECRETS_ENCRYPTION_KEY is not set. GitHub personal access tokens "
+            "would be stored in PLAINTEXT in the database."
+        )
+    elif _ENCRYPTION_KEY_RAW.strip().lower() in {"changeme", "change-me", "secret"}:
+        blockers.append("SECRETS_ENCRYPTION_KEY is a placeholder value.")
+    elif len(_ENCRYPTION_KEY_RAW.strip()) < 32:
+        blockers.append(
+            f"SECRETS_ENCRYPTION_KEY is only {len(_ENCRYPTION_KEY_RAW.strip())} "
+            "characters; at least 32 are required."
+        )
+    return blockers
+
+
 if _ENCRYPTION_KEY_RAW and FERNET_OK:
     import base64, hashlib
     _key_bytes = hashlib.sha256(_ENCRYPTION_KEY_RAW.encode()).digest()
@@ -55,7 +102,6 @@ if _ENCRYPTION_KEY_RAW and FERNET_OK:
 else:
     _fernet = None
     if not _ENCRYPTION_KEY_RAW:
-        _ENCRYPTION_WARNED = True
         import logging as _logging
         _logging.getLogger("greencode.db").warning(
             "SECRETS_ENCRYPTION_KEY is not set - GitHub tokens are being stored in "
@@ -335,8 +381,50 @@ _REPOSITORY_ADDITIVE_COLUMNS: List[Any] = [
 # ---------------------------------------------------------------------------
 # INITIALIZATION & CONTEXT MANAGERS WITH RETRY LOGIC
 # ---------------------------------------------------------------------------
-def init_db() -> None:
-    """Initialize relational database tables across sync and async engines."""
+def run_migrations() -> Optional[str]:
+    """Bring the schema up to date with Alembic.
+
+    Returns None on success, or a human-readable reason the upgrade could not
+    run. A deployment must treat that reason as fatal: starting an API against
+    a schema it does not expect produces wrong answers rather than errors, which
+    is far harder to detect.
+
+    ``alembic upgrade head`` is the supported upgrade path for a live database.
+    ``create_all`` only ever CREATEs missing tables, so on its own it cannot add
+    a column to a table that already exists.
+    """
+    if not ALEMBIC_OK:
+        return "alembic is not installed; install requirements.txt to version the schema"
+    if not Path("alembic.ini").is_file():
+        return "alembic.ini is missing; schema cannot be versioned"
+    try:
+        cfg = Config(str(Path("alembic.ini").resolve()))
+        cfg.set_main_option("sqlalchemy.url", SYNC_DB_URL)
+        command.upgrade(cfg, "head")
+    except Exception as exc:
+        return f"alembic upgrade head failed: {type(exc).__name__}: {exc}"
+    return None
+
+
+def init_db(*, use_alembic: bool = True) -> None:
+    """Initialize relational database tables across sync and async engines.
+
+    ``use_alembic`` defaults to True so a deployed service cannot come up
+    against an unversioned schema. Tests and one-off scripts pass False to get
+    the lightweight ``create_all`` path.
+    """
+    if use_alembic:
+        failure = run_migrations()
+        if failure:
+            # Fall back rather than crash: a missing alembic directory (a slimmed
+            # image, a test fixture) should not stop the service from starting.
+            # The message is loud so the gap is not mistaken for a clean schema.
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning(
+                "Falling back to create_all: %s", failure
+            )
+
     Base.metadata.create_all(bind=sync_engine)
     if "sqlite" in SYNC_DB_URL:
         try:

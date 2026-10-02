@@ -264,6 +264,213 @@ class TestComposeHasNoLiteralCredentials(unittest.TestCase):
             self.assertNotIn("--reload", line, f"hot reload in deployment: {line}")
 
 
+class TestPlaintextSecretMigration(unittest.TestCase):
+    """Re-encrypting credentials saved before a key existed.
+
+    Setting SECRETS_ENCRYPTION_KEY protects new writes and does nothing for the
+    rows already stored in the clear. A backup or a stolen dump taken after the
+    fix still hands over every account, so the old rows have to be migrated too.
+    """
+
+    TOKEN = "ghp_" + "a1b2c3d4e5" * 4
+
+    @classmethod
+    def setUpClass(cls):
+        # These tests insert users directly, so they must not depend on some
+        # other test file having created the schema first. Without this, running
+        # this class on its own fails with "no such table: users" - precisely
+        # the order-dependence this suite was hardened against.
+        database.init_db()
+
+    def _fernet_for(self, raw: str = "k" * 48):
+        import base64
+        import hashlib
+
+        from cryptography.fernet import Fernet
+
+        key = base64.urlsafe_b64encode(hashlib.sha256(raw.encode()).digest())
+        return Fernet(key)
+
+    def _insert_plaintext_user(self, email: str, token: str) -> int:
+        from app.database import SessionLocal, User, hash_password
+
+        db = SessionLocal()
+        try:
+            user = User(
+                email=email,
+                username=email.split("@")[0],
+                password_hash=hash_password("Sup3rSecret!Pass"),
+                github_token=token,  # stored raw, as a pre-key deployment would
+            )
+            db.add(user)
+            db.commit()
+            uid = user.id
+            return uid
+        finally:
+            db.close()
+
+    def _stored_token(self, user_id: int) -> str:
+        from app.database import SessionLocal, User
+
+        db = SessionLocal()
+        try:
+            return db.query(User).filter(User.id == user_id).first().github_token
+        finally:
+            db.close()
+
+    def _delete_user(self, user_id: int) -> None:
+        from app.database import SessionLocal, User
+
+        db = SessionLocal()
+        try:
+            db.query(User).filter(User.id == user_id).delete()
+            db.commit()
+        finally:
+            db.close()
+
+    def test_fernet_ciphertext_is_recognised(self):
+        self.assertTrue(database.is_encrypted_secret("gAAAAABm" + "x" * 40))
+        self.assertFalse(database.is_encrypted_secret("ghp_realtoken"))
+        self.assertFalse(database.is_encrypted_secret(""))
+        self.assertFalse(database.is_encrypted_secret(None))
+
+    def test_a_real_ciphertext_is_detected_not_guessed(self):
+        """The classifier must agree with what encrypt_secret actually produces."""
+        token = self._fernet_for().encrypt(self.TOKEN.encode()).decode()
+        self.assertTrue(database.is_encrypted_secret(token))
+
+    def test_dry_run_reports_but_writes_nothing(self):
+        uid = self._insert_plaintext_user("dry@example.com", self.TOKEN)
+        try:
+            with patch.object(database, "_fernet", self._fernet_for()):
+                report = database.encrypt_plaintext_secrets(dry_run=True)
+            # Counts are global - other test files legitimately leave plaintext
+            # rows behind, so assert the floor, not an exact total. The
+            # invariant that matters is that this row was NOT written.
+            self.assertGreaterEqual(report["migrated"], 1)
+            self.assertEqual(
+                self._stored_token(uid), self.TOKEN, "a dry run must not write"
+            )
+        finally:
+            self._delete_user(uid)
+
+    def test_migration_encrypts_and_preserves_the_token(self):
+        uid = self._insert_plaintext_user("migrate@example.com", self.TOKEN)
+        fernet = self._fernet_for()
+        try:
+            with patch.object(database, "_fernet", fernet):
+                report = database.encrypt_plaintext_secrets(dry_run=False)
+            self.assertGreaterEqual(report["migrated"], 1)
+
+            stored = self._stored_token(uid)
+            self.assertNotEqual(stored, self.TOKEN, "must not stay in plaintext")
+            self.assertTrue(database.is_encrypted_secret(stored))
+            # The whole point: the token still works after migration.
+            self.assertEqual(fernet.decrypt(stored.encode()).decode(), self.TOKEN)
+        finally:
+            self._delete_user(uid)
+
+    def test_running_twice_does_not_double_encrypt(self):
+        """Idempotence is a safety property, not a convenience.
+
+        Re-encrypting an already-encrypted value would permanently lock the
+        account out: decrypt_secret returns undecryptable input unchanged, so the
+        failure would surface only as a GitHub 401 on a later scan.
+        """
+        uid = self._insert_plaintext_user("twice@example.com", self.TOKEN)
+        fernet = self._fernet_for()
+        try:
+            with patch.object(database, "_fernet", fernet):
+                first = database.encrypt_plaintext_secrets(dry_run=False)
+                after_first = self._stored_token(uid)
+                second = database.encrypt_plaintext_secrets(dry_run=False)
+
+            self.assertGreaterEqual(first["migrated"], 1)
+            self.assertEqual(second["migrated"], 0, "a second run must change nothing")
+            self.assertGreaterEqual(second["already_encrypted"], 1)
+            self.assertEqual(self._stored_token(uid), after_first)
+            self.assertEqual(fernet.decrypt(after_first.encode()).decode(), self.TOKEN)
+        finally:
+            self._delete_user(uid)
+
+    def test_a_row_that_fails_verification_is_left_alone(self):
+        """A credential that cannot be read back is worse than a plaintext one."""
+        uid = self._insert_plaintext_user("verify@example.com", self.TOKEN)
+        try:
+            with patch.object(database, "_fernet", self._fernet_for()):
+                # Simulate a corrupt write: verification cannot reproduce the
+                # original, so nothing may be persisted.
+                with patch.object(
+                    database._fernet, "decrypt", side_effect=ValueError("boom")
+                ):
+                    report = database.encrypt_plaintext_secrets(dry_run=False)
+            self.assertGreaterEqual(report["failed"], 1)
+            self.assertEqual(report["migrated"], 0)
+            self.assertEqual(
+                self._stored_token(uid), self.TOKEN, "an unverifiable row must survive"
+            )
+        finally:
+            self._delete_user(uid)
+
+    def test_health_reports_tokens_still_pending(self):
+        uid = self._insert_plaintext_user("health@example.com", self.TOKEN)
+        try:
+            with patch.object(database, "_fernet", self._fernet_for()):
+                self.assertGreaterEqual(database.count_plaintext_secrets(), 1)
+                database.encrypt_plaintext_secrets(dry_run=False)
+                # Must stay INSIDE the patch. Once `_fernet` is restored to
+                # None, count_plaintext_secrets() returns 0 because encryption is
+                # switched off - which would make this assertion pass even if the
+                # migration had done nothing at all.
+                self.assertEqual(
+                    database.count_plaintext_secrets(),
+                    0,
+                    "nothing pending after migration",
+                )
+        finally:
+            self._delete_user(uid)
+
+    def test_count_is_zero_when_encryption_is_off(self):
+        with patch.object(database, "_fernet", None):
+            self.assertEqual(database.count_plaintext_secrets(), 0)
+
+
+class TestSuiteIsHermetic(unittest.TestCase):
+    """The suite must never run against the developer's real database.
+
+
+    It used to. `TestLedgerIntegrity` asserts the hash chain is intact before it
+    deliberately corrupts a row, so any leftover damage - from a crashed run or
+    simply from running the suite in a different order - failed that test for a
+    reason unrelated to the code. The failure was intermittent and could not be
+    reproduced by running the file alone, which is the hardest kind of bug to
+    diagnose and the easiest to ship by accident.
+    """
+
+    def test_database_url_points_at_a_temporary_file(self):
+        url = database.SYNC_DB_URL
+        self.assertTrue(
+            url.startswith("sqlite:///"),
+            f"tests must use a throwaway SQLite file, got: {url}",
+        )
+
+    def test_the_real_development_database_is_untouched(self):
+        """The guard that matters: the shipped dev DB must not be the test DB."""
+        real_db = os.path.join(REPO_ROOT, "greencode.db")
+        self.assertNotIn(
+            os.path.realpath(real_db).lower(),
+            os.path.realpath(database.SYNC_DB_URL.replace("sqlite:///", "")).lower(),
+            "the test suite is pointed at the development database",
+        )
+
+    def test_conftest_exists_to_provide_that_isolation(self):
+        """Isolation is a single deleted file away; assert the file is present."""
+        self.assertTrue(
+            os.path.isfile(os.path.join(REPO_ROOT, "conftest.py")),
+            "conftest.py is what redirects DATABASE_URL for the suite",
+        )
+
+
 class TestFrontendIsActuallyDeployable(unittest.TestCase):
     """frontend/ existed in the repository but nothing built or served it."""
 

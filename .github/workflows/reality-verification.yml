@@ -55,11 +55,20 @@ jobs:
           # Never fabricate a reading. Without a counter the pipeline is told
           # the truth and will refuse to verify - which is the correct outcome,
           # not a failure to work around.
-          if [ -d /sys/class/powercap ]; then
+          #
+          # This counts *readable* energy_uj files, not the existence of
+          # /sys/class/powercap. The directory is present on hosts where the
+          # counters are not exposed to the guest - inside most containers and
+          # on WSL2 - so testing with `[ -d ... ]` would announce a working RAPL
+          # counter on a machine that has none, and the evidence filed below
+          # would be an estimate labelled as a measurement.
+          count=$(find /sys/class/powercap -name energy_uj -readable 2>/dev/null | wc -l)
+          echo "readable energy_uj counters: $count"
+          if [ "$count" -gt 0 ]; then
             echo "rapl_available=true" >> "$GITHUB_OUTPUT"
           else
             echo "rapl_available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::No RAPL counters on this runner; the claim cannot be verified."
+            echo "::warning::No readable RAPL counters on this runner; the claim cannot be verified."
           fi
 
       - name: Measure energy across repeated runs and file the evidence

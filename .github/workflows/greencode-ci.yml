@@ -93,6 +93,48 @@ jobs:
       - name: Lint
         run: npm run lint
 
+  hardware-measurement:
+    name: Hardware Energy Counter
+    # Runs the project's own sensor code against real silicon. Every other test
+    # injects a fake counter, which is the right way to test the arithmetic and
+    # the wrong way to test the central claim: that a number labelled as a
+    # measurement actually came from hardware.
+    #
+    # ubuntu-latest only. RAPL counters do not exist on the macOS and Windows
+    # runners, so running this there would prove nothing.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Exposes the powercap counters inside the runner VM. Without this the
+      # probe would report `model` and the job would pass without ever having
+      # exercised a real counter.
+      - name: Show raw counter presence
+        run: |
+          echo "powercap entries: $(find /sys/class/powercap -name energy_uj 2>/dev/null | wc -l)"
+          ls -1 /sys/class/powercap 2>/dev/null || echo "no /sys/class/powercap on this runner"
+
+      # Never fabricates a reading. On a runner with no counter this reports the
+      # truth and still passes, because "correctly says it cannot measure" is
+      # the property under test. It fails only when the code and the hardware
+      # disagree - which is the bug that would let an estimate be reported as a
+      # measurement.
+      - name: Probe the counter and measure a real workload
+        run: python scripts/ci_hardware_probe.py
+
   compose:
     name: Compose Configuration Valid
     runs-on: ubuntu-latest

@@ -651,7 +651,7 @@ def health_check():
     # Configuration faults are reported rather than hidden. A host that is
     # running on the published default JWT key is reachable and answering, but
     # its access tokens are forgeable, so it must not report itself as healthy.
-    from app.database import secrets_encryption_blockers
+    from app.database import count_plaintext_secrets, secrets_encryption_blockers
 
     secret_faults = jwt_secret_blockers()
     crypto_faults = secrets_encryption_blockers()
@@ -659,6 +659,20 @@ def health_check():
     deps["credential_encryption"] = "insecure" if crypto_faults else "ok"
     if secret_faults or crypto_faults:
         overall = "degraded"
+
+    # A key protects new writes but does nothing for tokens saved before it
+    # existed. Reporting the outstanding count turns "we set the key" into
+    # "the key is set AND the old rows are encrypted", which are different
+    # claims - only the second one is true.
+    plaintext_tokens = count_plaintext_secrets()
+    if plaintext_tokens:
+        overall = "degraded"
+        deps["credential_encryption"] = "insecure"
+        crypto_faults = list(crypto_faults) + [
+            f"{plaintext_tokens} GitHub token(s) are still stored in plaintext from "
+            "before the encryption key was configured. Run: "
+            "python scripts/migrate_plaintext_secrets.py --apply"
+        ]
 
     return {
         "status": overall,
@@ -672,6 +686,7 @@ def health_check():
             "jwt_secret_blockers": secret_faults,
             "credential_encryption_configured": not crypto_faults,
             "credential_encryption_blockers": crypto_faults,
+            "plaintext_tokens_pending_migration": plaintext_tokens,
             "rate_limiting_active": SLOWAPI_OK,
             "carbon_intensity_providers": ci_status,
         },

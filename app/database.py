@@ -122,6 +122,51 @@ def decrypt_secret(ciphertext: Optional[str]) -> Optional[str]:
     try: return _fernet.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
     except (InvalidToken, Exception): return ciphertext
 
+
+# A Fernet token is version byte 0x80 followed by a 64-byte nonce and the
+# ciphertext, all base64url-encoded - so every genuine ciphertext begins "gAAAA".
+# That marker is what makes the migration below idempotent: without it, running
+# the migration twice would encrypt an already-encrypted value and lock the
+# account out permanently, because decrypt_secret() returns undecryptable input
+# unchanged and the failure would surface only as a confusing GitHub 401.
+FERNET_TOKEN_PREFIX = "gAAAA"
+
+
+def is_encrypted_secret(value: Optional[str]) -> bool:
+    """True when `value` is already a Fernet ciphertext rather than a raw secret.
+
+    Cheap and structural - it inspects the encoding, not the plaintext - so it
+    never needs the key to classify a value.
+    """
+    return bool(value) and str(value).startswith(FERNET_TOKEN_PREFIX)
+
+
+def count_plaintext_secrets() -> int:
+    """How many users still have a GitHub token stored in the clear.
+
+    Surfaced on /api/health so an operator can see, without running a query,
+    whether the database still holds credentials an attacker could use verbatim
+    from a backup or a stolen dump.
+    """
+    if _fernet is None:
+        return 0  # encryption is off entirely; nothing is "pending"
+    try:
+        init_db()
+        db = SessionLocal()
+        try:
+            rows = db.query(User.github_token).filter(
+                User.github_token.isnot(None), User.github_token != ""
+            ).all()
+            return sum(
+                1 for (value,) in rows if value and not is_encrypted_secret(value)
+            )
+        finally:
+            db.close()
+    except Exception:
+        # A health check must never raise; an unreadable count is reported as 0
+        # and the operator sees the encryption guard separately.
+        return 0
+
 # PASSWORD POLICY: min 12 chars, 3 of 4 classes (upper, lower, digit, special)
 _BCRYPT_ROUNDS = int(os.environ.get("BCRYPT_ROUNDS", "12"))
 def validate_password_policy(password: str) -> None:
@@ -1308,6 +1353,113 @@ def create_password_reset_token(email: str) -> Optional[Dict[str, Any]]:
         }
     finally:
         db.close()
+
+
+
+# ---------------------------------------------------------------------------
+# ONE-TIME MIGRATION: encrypt credentials written before the key was set
+# ---------------------------------------------------------------------------
+def encrypt_plaintext_secrets(*, dry_run: bool = False) -> Dict[str, Any]:
+    """Re-encrypt GitHub tokens that were stored before a key existed.
+
+    THE PROBLEM
+    -----------
+    `encrypt_secret` is a no-op when `SECRETS_ENCRYPTION_KEY` is unset, so every
+    token saved before the key was configured is sitting in the database in the
+    clear. Setting the key stops the *next* write from being plaintext; it does
+    nothing about the rows already there. A backup, a replica, or a stolen dump
+    taken after the fix still hands over every account.
+
+    WHY THIS IS SAFE TO RUN TWICE
+    ------------------------------
+    Values are classified by their Fernet encoding (`is_encrypted_secret`), never
+    blindly re-encrypted. That distinction matters more than it looks: if this
+    function encrypted an already-encrypted value, `decrypt_secret` would later
+    return the ciphertext unchanged (it swallows `InvalidToken` and passes the
+    input through), the user would be permanently locked out, and the only
+    symptom would be an unexplained GitHub 401 on every scan. So the function
+    is idempotent by construction, not by convention.
+
+    EVERY WRITE IS VERIFIED FIRST
+    -----------------------------
+    Each candidate is encrypted and immediately decrypted again; the value is
+    only persisted if the round trip reproduces the original token exactly. A
+    row that fails the check is left untouched and reported, because a partial
+    write of a credential column is far worse than a skipped one - the user
+    keeps a working token instead of an unusable one.
+
+    Args:
+        dry_run: report what would change without writing anything. This is the
+            default for the CLI, because mutating a production credential column
+            should be a decision someone makes on purpose.
+    """
+    report: Dict[str, Any] = {
+        "dry_run": dry_run,
+        "encryption_enabled": _fernet is not None,
+        "scanned": 0,
+        "already_encrypted": 0,
+        "migrated": 0,
+        "skipped": 0,
+        "failed": 0,
+        "errors": [],
+    }
+
+    if _fernet is None:
+        report["errors"].append(
+            "SECRETS_ENCRYPTION_KEY is not set, so there is no key to encrypt "
+            "with. Set it first, then re-run. See: python -c \"import secrets; "
+            "print('SECRETS_ENCRYPTION_KEY=' + secrets.token_urlsafe(48))\""
+        )
+        return report
+
+    init_db()
+    db = SessionLocal()
+    try:
+        users = (
+            db.query(User)
+            .filter(User.github_token.isnot(None), User.github_token != "")
+            .all()
+        )
+        for user in users:
+            report["scanned"] += 1
+            current = user.github_token
+            if not current:
+                continue
+            if is_encrypted_secret(current):
+                report["already_encrypted"] += 1
+                continue
+
+            encrypted = _fernet.encrypt(current.encode("utf-8")).decode("utf-8")
+            # Verify before writing. A credential that cannot be read back is
+            # worse than a plaintext one: the account is simply broken.
+            try:
+                if _fernet.decrypt(encrypted.encode("utf-8")).decode("utf-8") != current:
+                    raise ValueError("round trip did not reproduce the original token")
+            except Exception as exc:  # noqa: BLE001
+                report["failed"] += 1
+                report["errors"].append(
+                    f"user {user.id}: verification failed, left as plaintext ({exc})"
+                )
+                continue
+
+            if dry_run:
+                report["migrated"] += 1
+                continue
+
+            user.github_token = encrypted
+            report["migrated"] += 1
+
+        if not dry_run and report["migrated"]:
+            db.commit()
+        elif not dry_run:
+            db.rollback()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        report["errors"].append(f"migration aborted, nothing committed: {exc}")
+    finally:
+        db.close()
+
+    return report
 
 
 def reset_password_with_token(token: str, new_password: str) -> Dict[str, Any]:

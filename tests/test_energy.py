@@ -10,14 +10,72 @@ import unittest
 from unittest import mock
 
 from app.energy_sensors import (
+    HARDWARE_METHODS,
     RaplDomain,
     RaplMeter,
+    ScaphandreMeter,
+    ScaphhandreMeter,
     discover_rapl_domains,
+    is_hardware_method,
     is_linux,
     model_power_watts,
     wrap_delta,
 )
 from app.sci import carbon_equivalents, compute_sci, sci_grade
+
+
+class TestHardwareMethodClassification(unittest.TestCase):
+    """One definition of "this is a measurement", shared by every consumer.
+
+    These guard a real regression: `scaphandre` was missing from the verifier's
+    and SCI's hardware sets, so genuine RAPL counters relayed over the sidecar -
+    the documented production path for Docker-on-Linux - were reported as
+    estimates and could never confirm a claim.
+    """
+
+    def test_every_documented_backend_is_hardware(self):
+        for method in ("rapl", "scaphandre", "perf", "battery"):
+            with self.subTest(method=method):
+                self.assertIn(method, HARDWARE_METHODS)
+                self.assertTrue(is_hardware_method(method))
+
+    def test_model_is_never_hardware(self):
+        self.assertFalse(is_hardware_method("model"))
+        self.assertNotIn("model", HARDWARE_METHODS)
+
+    def test_unknown_and_missing_methods_default_to_not_hardware(self):
+        """An unrecognised label must never be promoted to a measurement."""
+        for value in ("", "   ", None, "bogus", "rapl2", "estimated"):
+            with self.subTest(value=value):
+                self.assertFalse(is_hardware_method(value))
+
+    def test_classification_is_case_and_whitespace_insensitive(self):
+        self.assertTrue(is_hardware_method("  RAPL "))
+        self.assertTrue(is_hardware_method("Scaphandre"))
+
+    def test_sci_agrees_with_the_shared_definition(self):
+        for method in sorted(HARDWARE_METHODS):
+            with self.subTest(method=method):
+                r = compute_sci(
+                    energy_joules=1e6, duration_seconds=1,
+                    carbon_intensity_gco2_per_kwh=400, functional_unit=1000.0,
+                    measurement_method=method,
+                )
+                self.assertTrue(r.measurement_is_hardware)
+                self.assertEqual(r.warnings, [], "a measured figure needs no model warning")
+
+    def test_sci_still_warns_for_a_modelled_figure(self):
+        r = compute_sci(
+            energy_joules=1e6, duration_seconds=1,
+            carbon_intensity_gco2_per_kwh=400, functional_unit=1000.0,
+            measurement_method="model",
+        )
+        self.assertFalse(r.measurement_is_hardware)
+        self.assertTrue(any("hardware" in w for w in r.warnings))
+
+    def test_original_misspelling_still_imports(self):
+        """`ScaphhandreMeter` shipped as public API; the rename must not break it."""
+        self.assertIs(ScaphhandreMeter, ScaphandreMeter)
 
 
 class TestCounterArithmetic(unittest.TestCase):

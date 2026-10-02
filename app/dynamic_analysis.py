@@ -38,7 +38,7 @@ from datetime import datetime
 from fnmatch import fnmatch
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.energy_sensors import probe_capabilities, select_meter
+from app.energy_sensors import is_hardware_method, probe_capabilities, select_meter
 from app.sci import carbon_equivalents, compute_sci, sci_grade
 
 # Marks containers this module created, so crash cleanup can reap exactly its
@@ -654,7 +654,7 @@ class DynamicAnalyzer:
             language=language,
             sandbox="docker-isolated",
             measurement_method=method,
-            measurement_is_hardware=method in ("rapl", "scaphandre", "perf", "battery"),
+            measurement_is_hardware=is_hardware_method(method),
             exit_code=exit_code,
             duration_seconds=round(duration, 4),
             peak_memory_mb=round(peak_mb, 2),

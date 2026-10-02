@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from fastapi.testclient import TestClient
 
 from app.database import init_db
+from app.energy_sensors import HARDWARE_METHODS
 from app.main import app
 from app.pipeline import engine, ledger
 from app.pipeline.config import PipelineConfig
@@ -96,6 +97,34 @@ class TestVerifierLogic(unittest.TestCase):
         self.assertEqual(verdict.verdict, VERDICT_CONTRADICTED)
         self.assertEqual(verdict.severity, "HIGH")
         self.assertLess(verdict.observed_reduction_pct, 0)
+
+    def test_04b_every_hardware_backend_can_verify_a_claim(self):
+        """A real counter is a real counter, whichever tier delivered it.
+
+        Regression guard. `scaphandre` was missing from the verifier's hardware
+        set, so a genuine RAPL reading relayed over the Prometheus sidecar - the
+        exact deployment the README recommends for Docker-on-Linux - was silently
+        downgraded to UNVERIFIED. The tool could not confirm its own flagship
+        measurement path.
+        """
+        for method in sorted(HARDWARE_METHODS):
+            with self.subTest(method=method):
+                claim, evidence = _case(f"hw-{method}", 500.0, method=method)
+                verdict = verify(claim, evidence)
+                self.assertEqual(verdict.verdict, VERDICT_VERIFIED)
+                self.assertTrue(verdict.measurement_is_hardware)
+
+    def test_04c_an_unrecognised_method_is_never_treated_as_hardware(self):
+        """Forward compatibility must fail closed, not open.
+
+        A backend name this build has never heard of is not evidence of a
+        measurement. Treating it as one would let any caller mint a VERIFIED
+        verdict by inventing a method string.
+        """
+        claim, evidence = _case("unknown-tier", 500.0, method="totally_made_up")
+        verdict = verify(claim, evidence)
+        self.assertNotEqual(verdict.verdict, VERDICT_VERIFIED)
+        self.assertFalse(verdict.measurement_is_hardware)
 
     def test_05_shortfall_is_partial_not_verified(self):
         """A 20% saving against a 50% claim is real, but it is not the claim."""

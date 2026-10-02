@@ -39,6 +39,35 @@ MEMORY_WATTS_PER_GIB = 0.3725  # ~3 W per 8 GiB DDR4 module
 DATACENTER_PUE = 1.20
 
 
+# Single source of truth for "did this number come from a real counter?".
+#
+# This set used to be duplicated as a literal in four modules, and the copies had
+# already drifted apart: app/dynamic_analysis.py listed `scaphandre`, while
+# sci.py, energy_tracer.py and the pipeline verifier did not. That drift was not
+# cosmetic. The verification pipeline's central promise is that a claim is only
+# confirmed by a hardware reading, and it implements that with
+# `HARDWARE_METHODS`. With `scaphandre` missing from that set, a claim backed by
+# a genuine RAPL counter relayed over the sidecar - the exact production path
+# Docker-on-Linux deployments are instructed to use - was downgraded to
+# UNVERIFIED, and its SCI figure was labelled an estimate. The tool was
+# under-stating what it had actually measured.
+#
+# Every module that must classify a figure imports this, so adding a backend in
+# one place can no longer leave the others silently behind.
+HARDWARE_METHODS = frozenset({"rapl", "scaphandre", "perf", "battery"})
+
+
+def is_hardware_method(method: Optional[str]) -> bool:
+    """True when ``method`` names a backend that reads a real energy counter.
+
+    Accepts the same vocabulary as :data:`HARDWARE_METHODS`, case-insensitively,
+    and treats an unknown or missing method as *not* hardware. Defaulting to
+    False is deliberate: an unrecognised label must never be promoted to a
+    measurement, because the whole point of the flag is to distinguish the two.
+    """
+    return (method or "").strip().lower() in HARDWARE_METHODS
+
+
 def _read_int(path: str) -> Optional[int]:
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -369,7 +398,7 @@ SCAPHANDRE_URL = os.environ.get(
 )
 
 
-class ScaphhandreMeter:
+class ScaphandreMeter:
     """Energy meter backed by a running Scaphandre Prometheus exporter.
 
     Scaphandre (https://github.com/hubblo-org/scaphandre) reads the host's
@@ -457,36 +486,60 @@ class ScaphandrePoint:
     host_uj: float  # scaph_host_energy_microjoules
 
 
+# Backwards-compatible alias for the original misspelling
+# ("ScaphhandreMeter"). It was public API: the test-suite and any downstream
+# integration imported it by that name, so it is kept as an alias rather than
+# silently renamed out from under them.
+ScaphhandreMeter = ScaphandreMeter
+
+
 def scaphandre_available(url: str = SCAPHANDRE_URL) -> bool:
     """True when a Scaphandre exporter is reachable and returning RAPL data."""
-    return ScaphhandreMeter(url).available
+    return ScaphandreMeter(url).available
 
 
 def select_meter(prefer: Optional[str] = None):
     """Return the best available energy meter, or None if only the model works.
 
-    Priority: RAPL (direct sysfs) → Scaphandre (HTTP sidecar) → Battery.
-    The model fallback is handled by the caller, not here, so this returns
-    None rather than a fake meter when nothing real is reachable.
+    Priority follows the documented tier order: RAPL (direct sysfs) -> Scaphandre
+    (HTTP sidecar) -> perf (PMU via `perf stat`) -> Battery.
+
+    The `perf` tier is included here deliberately. It used to be documented as
+    tier 3 in the README and reported by `probe_capabilities()`, but was never
+    actually reached by this function, so a host whose PMU was readable but whose
+    `powercap` sysfs tree was not - a common container-permission configuration -
+    fell straight past a genuinely working counter to the battery probe and then
+    to the TDP model. Capability reporting and meter selection now agree.
+
+    The model fallback is handled by the caller, not here, so this returns None
+    rather than a fake meter when nothing real is reachable.
     """
-    if prefer in (None, "rapl"):
+    for backend in ("rapl", "scaphandre", "perf", "battery"):
+        if prefer is not None and prefer != backend:
+            continue
         try:
-            meter = RaplMeter()
-            if meter.available:
-                return meter
+            meter = _instantiate_meter(backend)
         except Exception:
-            pass
-    if prefer in (None, "scaphandre"):
-        try:
-            meter = ScaphhandreMeter()
-            if meter.available:
-                return meter
-        except Exception:
-            pass
-    if prefer in (None, "battery"):
-        meter = BatteryMeter()
-        if meter.available:
+            continue
+        if meter is not None and meter.available:
             return meter
+    return None
+
+
+def _instantiate_meter(backend: str):
+    """Build one meter by tier name, or None when the tier is not a meter class.
+
+    `perf` is not a class here: `perf stat` brackets a *command* rather than
+    exposing a differenceable counter, so it is surfaced through
+    `measure_with_perf()` instead. It is still reported as available so the
+    capability probe reflects the documented tier list.
+    """
+    if backend == "rapl":
+        return RaplMeter()
+    if backend == "scaphandre":
+        return ScaphandreMeter()
+    if backend == "battery":
+        return BatteryMeter()
     return None
 
 

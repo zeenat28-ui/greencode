@@ -27,6 +27,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List
 
+from app.energy_sensors import is_hardware_method
+
 # Amortised embodied carbon of server hardware, per Boavizta / SCI reference data.
 # The manufacturing footprint of a physical machine spread over its lifetime and
 # allocated per second of use.
@@ -125,7 +127,7 @@ def compute_sci(
         sci_gco2_per_functional_unit=sci,
         pue=pue,
         measurement_method=measurement_method,
-        measurement_is_hardware=measurement_method in ("rapl", "perf", "battery"),
+        measurement_is_hardware=is_hardware_method(measurement_method),
         it_energy_joules=it_joules,
         cpu_joules=max(0.0, cpu_joules),
         memory_joules=max(0.0, memory_joules),

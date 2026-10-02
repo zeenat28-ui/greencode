@@ -515,18 +515,31 @@ class TestScaphhandreMeter(unittest.TestCase):
 
     def test_08_select_meter_falls_to_scaphandre_when_no_rapl(self):
         """When RAPL is absent, Scaphandre is chosen before battery/model."""
-        from app.energy_sensors import ScaphhandreMeter, select_meter
+        from app.energy_sensors import ScaphandreMeter, select_meter
 
-        fake_scaph = mock.MagicMock(spec=ScaphhandreMeter)
+        fake_scaph = mock.MagicMock(spec=ScaphandreMeter)
         fake_scaph.available = True
 
         with (
             mock.patch("app.energy_sensors.RaplMeter", side_effect=RuntimeError("no rapl")),
-            mock.patch("app.energy_sensors.ScaphhandreMeter", return_value=fake_scaph),
+            mock.patch("app.energy_sensors.ScaphandreMeter", return_value=fake_scaph),
         ):
             meter = select_meter()
 
         self.assertIsInstance(meter, type(fake_scaph))
+
+    def test_10_select_meter_never_reports_a_backend_it_cannot_use(self):
+        """`perf` brackets a command, not a counter, so it is not a meter class.
+
+        select_meter() walks the documented tier list, but `perf` must resolve to
+        None rather than being faked into an object. Returning a stub here would
+        hand callers a meter whose `read()` returns nothing, and the sandbox would
+        quietly fall through to the TDP model while claiming a perf measurement.
+        """
+        from app.energy_sensors import _instantiate_meter
+
+        self.assertIsNone(_instantiate_meter("perf"))
+        self.assertIsNone(_instantiate_meter("model"))
 
     def test_09_scaphandre_measurement_is_labelled_hardware_true(self):
         """Scaphandre reads real hardware; measurement_is_hardware must be True."""

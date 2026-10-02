@@ -32,6 +32,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from app.energy_sensors import is_hardware_method
+
 # Path fragments whose frames must never be billed to the user's code.
 _EXCLUDED_PATH_PARTS = (
     "site-packages",
@@ -310,7 +312,7 @@ class EnergyTracer:
             all_functions = list(self._functions.values())
 
         backend = self._meter.describe().get("backend", "model") if self._meter else "model"
-        is_hardware = backend in ("rapl", "perf", "battery")
+        is_hardware = is_hardware_method(backend)
 
         # With a hardware counter, energy is the meaningful ranking key. Without
         # one every joules figure is 0.0 and ranking by it would return an

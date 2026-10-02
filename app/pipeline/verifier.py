@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.energy_sensors import HARDWARE_METHODS as HARDWARE_METHOD_SET
 from app.pipeline.config import PipelineConfig
 from app.sci import carbon_equivalents, compute_sci, sci_grade
 
@@ -38,8 +39,12 @@ VERDICTS = (
     VERDICT_INVALID,
 )
 
-# Only a hardware counter counts as proof. Mirrors app.sci's measurement tiers.
-HARDWARE_METHODS = frozenset({"rapl", "perf", "battery"})
+# Only a hardware counter counts as proof. Mirrors app.sci's measurement tiers,
+# and is imported from one place so the two can never disagree about what counts
+# as a measurement. `scaphandre` belongs here: it reads the same RAPL hardware,
+# just over HTTP instead of sysfs, so excluding it meant a real counter reading
+# could never confirm a claim.
+HARDWARE_METHODS = frozenset(HARDWARE_METHOD_SET)
 
 # Below this many samples a comparison is anecdote, not evidence.
 DEFAULT_MIN_SAMPLES = 3

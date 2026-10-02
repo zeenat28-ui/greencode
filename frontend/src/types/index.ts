@@ -316,16 +316,21 @@ export const VIOLATION_SEVERITY_COLOR: Record<Severity, string> = {
 /**
  * How the energy figure was obtained.
  *
- * `rapl` / `perf` / `battery` are real hardware measurements. `model` is a
- * calibrated TDP estimate, which is meaningfully less trustworthy and must never
- * be presented as if it were measured.
+ * `rapl` / `scaphandre` / `perf` / `battery` are real hardware measurements.
+ * `model` is a calibrated TDP estimate, which is meaningfully less trustworthy
+ * and must never be presented as if it were measured.
+ *
+ * `scaphandre` is the same RAPL hardware as `rapl`, read over an HTTP sidecar
+ * instead of sysfs - the production path for Docker-on-Linux hosts.
  */
-export type MeasurementMethod = 'rapl' | 'perf' | 'battery' | 'model';
+export type MeasurementMethod = 'rapl' | 'scaphandre' | 'perf' | 'battery' | 'model';
 
 export interface EnergyMeasurementCapabilities {
   /** Which backends this host can actually reach right now. */
   best_available: MeasurementMethod;
   rapl: { supported: boolean; domains: Array<{ name: string; kind: string; max_range_uj: number }> };
+  /** Prometheus exporter reading the same RAPL counters over HTTP. */
+  scaphandre?: { supported: boolean; url: string };
   perf: { supported: boolean };
   battery: { supported: boolean; watts: number | null };
   /** Always true: a TDP model is always available as a last resort. */

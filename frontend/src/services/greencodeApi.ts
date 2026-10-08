@@ -190,6 +190,61 @@ export const auditService = {
   getHealth: () => api.get<HealthStatus>('/api/health'),
 };
 
+// ---------------------------------------------------------------------------
+// Enterprise Scope 1-3 GHG Accounting (CSRD ESRS-E1 & SBTi ICT)
+// ---------------------------------------------------------------------------
+export const scopeService = {
+  calculateInventory: (params: {
+    energy_joules: number;
+    duration_seconds?: number;
+    grid_intensity_gco2_per_kwh?: number;
+    runs_per_year?: number;
+    team_size?: number;
+    dev_hours?: number;
+    cloud_provider?: string;
+    vcpu_count?: number;
+    memory_gb?: number;
+    data_transfer_gb?: number;
+    grid_zone?: string;
+    renewable_rec_pct?: number;
+  }) => api.post('/api/scope/inventory', params),
+};
+
+// ---------------------------------------------------------------------------
+// Machine Learning & Cloud Carbon Telemetry (PyTorch, H100/A100)
+// ---------------------------------------------------------------------------
+export const mlService = {
+  auditCode: (sourceCode: string, filePath?: string) =>
+    api.post('/api/ml/audit', { source_code: sourceCode, file_path: filePath }),
+
+  calculateTokens: (params: {
+    parameter_count_b: number;
+    token_count: number;
+    hardware: string;
+    grid_intensity_gco2_per_kwh: number;
+    runs_per_year: number;
+  }) => api.post('/api/ml/tokens', params),
+};
+
+// ---------------------------------------------------------------------------
+// Energy SLA & Budget Policy Engine
+// ---------------------------------------------------------------------------
+export const slaService = {
+  evaluate: (params: {
+    total_joules: number;
+    green_score: number;
+    sci_gco2e?: number;
+    config_path?: string;
+  }) => api.post('/api/sla/evaluate', params),
+};
+
+// ---------------------------------------------------------------------------
+// Commercial Licensing & Quotas
+// ---------------------------------------------------------------------------
+export const pricingService = {
+  getTiers: () => api.get('/api/pricing/tiers'),
+};
+
 export default {
   authService,
   scanService,
@@ -199,5 +254,10 @@ export default {
   refactorService,
   dynamicService,
   auditService,
+  scopeService,
+  mlService,
+  slaService,
+  pricingService,
 };
+
 

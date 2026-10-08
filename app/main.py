@@ -19,7 +19,8 @@ import jwt
 import logging
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -89,12 +90,17 @@ from app.sla import EnergySLAEngine
 from app.pricing import PricingManager
 
 try:
-    from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+    from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST, REGISTRY
     PROMETHEUS_AVAILABLE = True
-    METRIC_REQUESTS_TOTAL = Counter("greencode_http_requests_total", "Total HTTP requests served", ["method", "endpoint"])
-    METRIC_AUDITS_TOTAL = Counter("greencode_audits_total", "Total code audits conducted", ["type"])
+    try:
+        METRIC_REQUESTS_TOTAL = Counter("greencode_http_requests_total", "Total HTTP requests served", ["method", "endpoint"])
+        METRIC_AUDITS_TOTAL = Counter("greencode_audits_total", "Total code audits conducted", ["type"])
+    except Exception:
+        METRIC_REQUESTS_TOTAL = REGISTRY._names_to_collectors.get("greencode_http_requests_total")
+        METRIC_AUDITS_TOTAL = REGISTRY._names_to_collectors.get("greencode_audits_total")
 except ImportError:
     PROMETHEUS_AVAILABLE = False
+
 
 
 logging.basicConfig(
@@ -518,6 +524,16 @@ BENCHMARK_SCRIPTS: Dict[str, Dict[str, str]] = {
         "label": "Heavy Pipeline (GreenCode Refactor)",
         "description": "Auto-synthesized eco-refactor of the heavy pipeline baseline.",
     },
+    "llm_inference": {
+        "file": "llm_inference_pipeline.py",
+        "label": "AI/LLM Inference (Unquantized FP32 Baseline)",
+        "description": "Simulates unquantized FP32 transformer forward passes and matrix operations.",
+    },
+    "llm_inference_refactored": {
+        "file": "llm_inference_pipeline_refactored.py",
+        "label": "AI/LLM Inference (INT8 Quantized & Batched)",
+        "description": "Quantized INT8 weights with batched integer GEMM and hoisted lookups.",
+    },
 }
 
 SAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "samples")
@@ -585,8 +601,14 @@ def resolve_github_token(user_id: int, explicit: Optional[str] = None) -> str:
     return fallback
 
 
-@app.get("/")
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+
+
+@app.get("/", include_in_schema=False)
 def read_root():
+    index_file = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.isfile(index_file):
+        return FileResponse(index_file)
     return {
         "service": "GreenCode Auditor API",
         "version": "1.0.0",
@@ -1726,6 +1748,25 @@ def prometheus_metrics_endpoint():
     if not PROMETHEUS_AVAILABLE:
         return Response(content="# Prometheus client not installed\n", media_type="text/plain")
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+# ---------------------------------------------------------------------------
+# Enterprise React Frontend SPA Mounting
+# ---------------------------------------------------------------------------
+if os.path.isdir(FRONTEND_DIST):
+    assets_dir = os.path.join(FRONTEND_DIST, "assets")
+    if os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend-assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa_frontend(full_path: str):
+        file_path = os.path.join(FRONTEND_DIST, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_file = os.path.join(FRONTEND_DIST, "index.html")
+        if os.path.isfile(index_file):
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Not Found")
 
 
 

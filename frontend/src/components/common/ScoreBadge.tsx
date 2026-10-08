@@ -11,7 +11,7 @@ export default function ScoreBadge({ score, size = 'md' }: ScoreBadgeProps) {
     score >= 60 ? 'C'  : 'F';
 
   const strokeColor =
-    score >= 80 ? '#22c55e' :
+    score >= 80 ? '#384c3b' :
     score >= 60 ? '#d97706' : '#dc2626';
 
   const dim   = size === 'lg' ? 120 : size === 'md' ? 80 : 56;

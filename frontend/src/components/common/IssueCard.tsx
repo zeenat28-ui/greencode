@@ -32,9 +32,9 @@ export function IssueCard({ violation, onClick, isSelected = false }: IssueCardP
   return (
     <div
       onClick={onClick}
-      className={`card p-4 cursor-pointer transition-all duration-150 ${
+      className={`card p-4 cursor-pointer transition-all duration-150 overflow-hidden max-w-full ${
         isSelected
-          ? 'border-mint-500 ring-2 ring-mint-100 shadow-md'
+          ? 'border-olive-500 ring-2 ring-olive-100 shadow-md'
           : 'hover:border-slate-300 hover:shadow-md'
       }`}
     >
@@ -46,7 +46,7 @@ export function IssueCard({ violation, onClick, isSelected = false }: IssueCardP
             {ruleCode}
           </code>
           {violation.language && (
-            <span className="px-1.5 py-0.5 bg-mint-50 text-mint-700 border border-mint-200 rounded text-xs font-semibold">
+            <span className="px-1.5 py-0.5 bg-olive-50 text-olive-800 border border-olive-200 rounded text-xs font-semibold">
               {violation.language}
             </span>
           )}
@@ -82,8 +82,8 @@ export function IssueCard({ violation, onClick, isSelected = false }: IssueCardP
 
       {/* Suggested fix */}
       {violation.suggested_fix && (
-        <div className="flex items-start gap-2 p-2.5 bg-mint-50 rounded-lg border border-mint-100">
-          <span className="text-mint-600 font-bold text-xs shrink-0 mt-px">Fix</span>
+        <div className="flex items-start gap-2 p-2.5 bg-olive-50 rounded-lg border border-olive-200">
+          <span className="text-olive-700 font-bold text-xs shrink-0 mt-px">Fix</span>
           <span className="text-xs text-slate-600 leading-relaxed">{violation.suggested_fix}</span>
         </div>
       )}

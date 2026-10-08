@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,70 +6,103 @@
 
 @layer base {
   :root {
-    --color-primary: #059669;
-    --color-primary-hover: #047857;
-    --color-dark: #0f172a;
-    --color-amber: #d97706;
-    --color-red: #dc2626;
-    --color-bg: #f8fafc;
+    --color-primary: #384c3b;
+    --color-primary-hover: #28352b;
+    --color-dark: #1e2920;
+    --color-bg: #f8f9fa;
   }
 
   html, body, #root {
     min-height: 100vh;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
 
   body {
-    @apply font-sans bg-slate-50 text-slate-800 antialiased selection:bg-emerald-100 selection:text-emerald-900;
+    @apply font-sans bg-[#F8F9FA] text-slate-900 antialiased selection:bg-olive-200 selection:text-olive-950;
+    overflow-x: hidden;
+    width: 100%;
+    position: relative;
   }
 }
 
 @layer components {
+  /* Primary Button: Deep Olive Enterprise */
   .btn-primary {
-    @apply bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold
-           py-2 px-4 rounded-xl transition-all duration-150 text-xs shadow-sm hover:shadow
-           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none inline-flex items-center justify-center;
+    @apply bg-olive-800 hover:bg-olive-900 active:bg-olive-950 text-white font-medium
+           py-2 px-3.5 rounded-lg transition-all duration-150 text-xs shadow-sm hover:shadow
+           border border-olive-900 hover:border-olive-950
+           disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center;
   }
 
+  /* Olive Accent Button */
+  .btn-olive {
+    @apply bg-olive-700 hover:bg-olive-800 active:bg-olive-900 text-white font-medium
+           py-2 px-3.5 rounded-lg transition-all duration-150 text-xs shadow-sm
+           border border-olive-700
+           disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center;
+  }
+
+  /* Alexa Voice & Agent Action Button */
+  .btn-alexa {
+    @apply bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium
+           py-2 px-3.5 rounded-lg transition-all duration-150 text-xs shadow-sm hover:shadow
+           border border-blue-600
+           disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center;
+  }
+
+  /* Clean Greyish-White Secondary Button */
   .btn-secondary {
-    @apply bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50
-           hover:border-slate-300 font-semibold py-2 px-4 rounded-xl
+    @apply bg-white border border-slate-300/90 text-slate-800 hover:bg-slate-50
+           hover:border-slate-400 font-medium py-2 px-3.5 rounded-lg
            transition-all duration-150 text-xs shadow-sm hover:shadow
            disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center;
   }
 
   .btn-ghost {
-    @apply text-slate-600 hover:text-slate-900 hover:bg-slate-100/80
-           font-semibold py-1.5 px-3 rounded-lg transition-colors duration-150 text-xs inline-flex items-center;
+    @apply text-slate-600 hover:text-slate-900 hover:bg-slate-200/60
+           font-medium py-1.5 px-2.5 rounded-md transition-colors duration-150 text-xs inline-flex items-center;
   }
 
+  /* Enterprise Cards */
   .card {
-    @apply bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:border-slate-300/80 transition-all duration-150;
+    @apply bg-white rounded-lg border border-slate-200/90 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all duration-150;
   }
 
   .card-inset {
-    @apply bg-slate-50/80 rounded-xl border border-slate-200/70;
+    @apply bg-[#F4F5F6] rounded-md border border-slate-200/80;
   }
 
   .input {
-    @apply w-full px-3.5 py-2.5 border border-slate-300/80 rounded-xl text-xs
-           focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20
-           transition-all duration-150 bg-white placeholder:text-slate-400 text-slate-800 shadow-sm;
+    @apply w-full px-3 py-2 border border-slate-300 rounded-lg text-xs
+           focus:outline-none focus:border-olive-700 focus:ring-1 focus:ring-olive-700
+           transition-all duration-150 bg-white placeholder:text-slate-400 text-slate-900 shadow-sm font-sans;
   }
 
+  /* Badges */
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide;
+    @apply inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide font-mono;
+  }
+
+  .badge-olive {
+    @apply bg-olive-50 text-olive-800 border border-olive-200;
+  }
+
+  .badge-alexa {
+    @apply bg-blue-50 text-blue-700 border border-blue-200;
   }
 
   .badge-critical {
-    @apply bg-red-50 text-red-700 border border-red-200;
+    @apply bg-rose-50 text-rose-700 border border-rose-200;
   }
 
   .badge-high {
-    @apply bg-orange-50 text-orange-700 border border-orange-200;
+    @apply bg-amber-50 text-amber-700 border border-amber-200;
   }
 
   .badge-medium {
-    @apply bg-amber-50 text-amber-700 border border-amber-200;
+    @apply bg-orange-50 text-orange-700 border border-orange-200;
   }
 
   .badge-low {
@@ -77,18 +110,30 @@
   }
 
   .badge-pass {
-    @apply bg-emerald-50 text-emerald-700 border border-emerald-200;
+    @apply bg-emerald-50 text-emerald-800 border border-emerald-200;
   }
 
   .badge-fail {
-    @apply bg-red-50 text-red-700 border border-red-200;
+    @apply bg-rose-50 text-rose-800 border border-rose-200;
   }
 
   .label {
-    @apply text-[11px] font-bold text-slate-500 uppercase tracking-wider;
+    @apply text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-mono;
   }
 
   .section-title {
-    @apply text-base font-bold text-slate-900 tracking-tight;
+    @apply text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2;
   }
 }
+
+/* Voice Waveform Animation for Alexa */
+@keyframes soundwave {
+  0%, 100% { height: 4px; }
+  50% { height: 18px; }
+}
+
+.voice-wave-1 { animation: soundwave 1.1s ease-in-out infinite 0.1s; }
+.voice-wave-2 { animation: soundwave 1.1s ease-in-out infinite 0.3s; }
+.voice-wave-3 { animation: soundwave 1.1s ease-in-out infinite 0.5s; }
+.voice-wave-4 { animation: soundwave 1.1s ease-in-out infinite 0.2s; }
+.voice-wave-5 { animation: soundwave 1.1s ease-in-out infinite 0.4s; }

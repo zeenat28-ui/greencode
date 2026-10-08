@@ -22,10 +22,10 @@ export default function CodeDiffViewer({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div className="space-y-4 max-w-full overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-full">
         {/* Original Code */}
-        <div>
+        <div className="min-w-0 max-w-full overflow-hidden">
           <div className="flex items-center justify-between mb-2 px-3 py-2 bg-red-50 border-b border-red-200 rounded-t-lg">
             <div className="flex items-center gap-2">
               <XCircle className="w-4 h-4 text-red-600" />
@@ -39,19 +39,19 @@ export default function CodeDiffViewer({
               <Copy size={14} />
             </button>
           </div>
-          <div className="border border-slate-200 rounded-b-lg overflow-hidden">
-            <pre className="text-xs font-mono text-slate-700 p-4 bg-slate-50 overflow-x-auto m-0">
+          <div className="border border-slate-200 rounded-b-lg overflow-hidden max-w-full">
+            <pre className="text-xs font-mono text-slate-700 p-4 bg-slate-50 overflow-x-auto m-0 max-w-full">
               <code>{originalCode}</code>
             </pre>
           </div>
         </div>
 
         {/* Refactored Code */}
-        <div>
-          <div className="flex items-center justify-between mb-2 px-3 py-2 bg-green-50 border-b border-green-200 rounded-t-lg">
+        <div className="min-w-0 max-w-full overflow-hidden">
+          <div className="flex items-center justify-between mb-2 px-3 py-2 bg-olive-50 border-b border-olive-200 rounded-t-lg">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-green-600" />
-              <span className="font-semibold text-green-800 text-sm">Eco-Refactored Code</span>
+              <CheckCircle2 className="w-4 h-4 text-olive-700" />
+              <span className="font-semibold text-olive-900 text-sm">Optimized Code</span>
             </div>
             <button
               onClick={() => handleCopy(refactoredCode)}
@@ -61,8 +61,8 @@ export default function CodeDiffViewer({
               <Copy size={14} />
             </button>
           </div>
-          <div className="border border-slate-200 rounded-b-lg overflow-hidden">
-            <pre className="text-xs font-mono text-slate-700 p-4 bg-slate-50 overflow-x-auto m-0">
+          <div className="border border-slate-200 rounded-b-lg overflow-hidden max-w-full">
+            <pre className="text-xs font-mono text-slate-700 p-4 bg-slate-50 overflow-x-auto m-0 max-w-full">
               <code>{refactoredCode}</code>
             </pre>
           </div>

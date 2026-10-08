@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import ScanRepository from './pages/ScanRepository';
 import Issues from './pages/Issues';
 import Profiler from './pages/Profiler';
+import CloudCarbon from './pages/CloudCarbon';
 import History from './pages/History';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
@@ -11,13 +12,7 @@ import ProtectedRoute from './components/layouts/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
 
 /**
- * Routes
- * ------
- * GitHub is the only identity provider and repositories are the only scan
- * target, so the surface is deliberately small:
- *
- *   /login  -> GitHub token connection
- *   /dashboard, /scan, /issues, /profiler, /history, /settings
+ * Enterprise Application Routing
  */
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -33,6 +28,7 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/scan" element={<ScanRepository />} />
           <Route path="/issues" element={<Issues />} />
+          <Route path="/cloud-carbon" element={<CloudCarbon />} />
           <Route path="/profiler" element={<Profiler />} />
           <Route path="/history" element={<History />} />
           <Route path="/settings" element={<Settings />} />

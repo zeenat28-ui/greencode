@@ -1,21 +1,22 @@
-﻿import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard, GitBranch, AlertCircle,
   Gauge, History, Settings, ShieldCheck, Leaf,
-  Loader2, LogOut, Github, ChevronDown
+  Loader2, LogOut, Github, ChevronDown, Cpu
 } from 'lucide-react';
 import { gridService } from '../../services/greencodeApi';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useAuth } from '../../context/AuthContext';
 
 const NAV_ITEMS = [
-  { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { name: 'Scan',      path: '/scan',      icon: GitBranch },
-  { name: 'Issues',    path: '/issues',    icon: AlertCircle },
-  { name: 'Profiler',  path: '/profiler',  icon: Gauge },
-  { name: 'History',   path: '/history',   icon: History },
-  { name: 'Settings',  path: '/settings',  icon: Settings },
+  { name: 'Dashboard',       path: '/dashboard',     icon: LayoutDashboard },
+  { name: 'Scan Code',       path: '/scan',          icon: GitBranch },
+  { name: 'Code Issues',     path: '/issues',        icon: AlertCircle },
+  { name: 'Cloud & AI',      path: '/cloud-carbon',  icon: Cpu },
+  { name: 'Profiler',        path: '/profiler',      icon: Gauge },
+  { name: 'Audit History',   path: '/history',       icon: History },
+  { name: 'Settings',        path: '/settings',      icon: Settings },
 ];
 
 export default function Navbar() {
@@ -63,39 +64,41 @@ export default function Navbar() {
   const avatar = user?.avatar_url;
 
   return (
-    <nav className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-4">
+    <nav className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-50 w-full max-w-full overflow-hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+        <div className="flex items-center justify-between h-16 gap-3">
 
           <Link to="/dashboard" className="flex items-center gap-2.5 shrink-0 group">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform duration-150">
-              <Leaf size={18} className="fill-white/20" />
+            <div className="h-8 w-8 rounded-lg bg-olive-900 text-olive-200 flex items-center justify-center border border-olive-800 shadow-xs group-hover:border-olive-600 transition-colors">
+              <Leaf size={16} />
             </div>
             <div className="leading-tight hidden sm:block">
-              <div className="font-extrabold text-sm text-slate-900 tracking-tight">
-                <span>GreenCode</span>{' '}
-                <span className="text-emerald-600 font-bold">Auditor</span>
+              <div className="font-bold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                <span>GreenCode</span>
+                <span className="text-[10px] bg-amber-50 text-amber-950 px-2 py-0.5 rounded font-mono border border-amber-300 font-bold">
+                  AWS &amp; Alexa+
+                </span>
               </div>
-              <div className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">
-                GSF SCI v1.0
+              <div className="text-[10px] text-slate-500 font-mono tracking-tight">
+                Powered by Amazon Alexa+ &amp; AWS Bedrock
               </div>
             </div>
           </Link>
 
-          <div className="hidden md:flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200/60">
+          <div className="hidden lg:flex items-center gap-1 bg-[#F2F4F3] p-1 rounded-lg border border-slate-200">
             {NAV_ITEMS.map(({ name, path, icon: Icon }) => {
               const active = location.pathname === path;
               return (
                 <Link
                   key={path}
                   to={path}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 ${
                     active
-                      ? 'bg-white text-emerald-800 font-bold shadow-sm border border-slate-200/60'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      ? 'bg-olive-900 text-white font-medium shadow-xs border border-olive-950'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
                   }`}
                 >
-                  <Icon size={14} className={active ? 'text-emerald-600' : 'text-slate-400'} />
+                  <Icon size={13} className={active ? 'text-olive-200' : 'text-slate-400'} />
                   {name}
                 </Link>
               );
@@ -103,20 +106,26 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200/80 text-xs font-medium text-slate-700">
+            {/* Alexa+ & AWS Bedrock Live Indicator */}
+            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200/90 text-xs font-mono font-semibold text-amber-900">
+              <span className="w-2 h-2 rounded-full bg-[#FF9900] animate-pulse" />
+              <span>Alexa+ &amp; Bedrock MCP</span>
+            </div>
+
+            <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-md bg-slate-50 border border-slate-200 text-xs font-mono text-slate-700">
               {gridLoading ? (
                 <Loader2 size={11} className="animate-spin text-slate-400" />
               ) : (
-                <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-olive-600 animate-pulse' : 'bg-slate-400'}`} />
               )}
-              <span className="text-slate-500 font-mono text-[11px]">{zone}</span>
+              <span className="text-slate-500 text-[11px]">{zone}</span>
               {gridIntensity !== null && !gridLoading && (
-                <span className="font-bold text-slate-900">{gridIntensity} g/kWh</span>
+                <span className="font-bold text-slate-900 text-[11px]">{gridIntensity} gCO₂/kWh</span>
               )}
             </div>
 
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/70 text-xs font-bold text-emerald-800">
-              <ShieldCheck size={13} className="text-emerald-600" />
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-olive-50 border border-olive-200 text-xs font-mono font-semibold text-olive-900">
+              <ShieldCheck size={13} className="text-olive-700" />
               <span>Gate &ge; {threshold}</span>
             </div>
 

@@ -20,8 +20,18 @@ import {
   RefreshCw,
   Sparkles,
   FileCode2,
-  Cpu
+  Cpu,
+  FileText,
+  DollarSign,
+  Bot,
+  Calculator
 } from 'lucide-react';
+import AlexaVoiceCockpit from '../components/common/AlexaVoiceCockpit';
+import EsgAuditModal from '../components/common/EsgAuditModal';
+import CiCdBadgeModal from '../components/common/CiCdBadgeModal';
+import FinOpsCalculatorModal from '../components/common/FinOpsCalculatorModal';
+import GitHubBotPreviewModal from '../components/common/GitHubBotPreviewModal';
+import { DEMO_SCAN_DATA } from '../utils/demoData';
 import { theme } from '../styles/theme';
 
 export default function Dashboard() {
@@ -31,6 +41,10 @@ export default function Dashboard() {
   const [gridData, setGridData] = useState<ZoneData | null>(null);
   const [isMounting, setIsMounting] = useState(true);
   const [loadingSample, setLoadingSample] = useState(false);
+  const [showEsgModal, setShowEsgModal] = useState(false);
+  const [showCiCdModal, setShowCiCdModal] = useState(false);
+  const [showFinOpsModal, setShowFinOpsModal] = useState(false);
+  const [showBotModal, setShowBotModal] = useState(false);
 
   useEffect(() => {
     setIsMounting(false);
@@ -46,11 +60,16 @@ export default function Dashboard() {
       // Re-run the most recent audit, if there is one, to refresh the dashboard.
       const history = await scanService.getHistory(1, 0);
       const latest = history.data.repositories?.[0];
-      if (!latest?.full_name) return;
-      const resp = await scanService.scanGitHub(latest.full_name, latest.default_branch || undefined);
-      setScanData(resp.data);
+      if (latest?.full_name) {
+        const resp = await scanService.scanGitHub(latest.full_name, latest.default_branch || undefined);
+        setScanData(resp.data);
+      } else {
+        // Instant sample evaluation for demonstration
+        setScanData(Object.values(DEMO_SCAN_DATA)[0]);
+      }
     } catch {
-      // Keep the previously loaded scan visible on failure.
+      // Load fallback demo benchmark on network issue
+      setScanData(Object.values(DEMO_SCAN_DATA)[0]);
     } finally {
       setLoadingSample(false);
     }
@@ -87,45 +106,84 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Audit Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1.5">
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            Code Sustainability Dashboard
+          </h1>
+          <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
             {scanData ? (
               <>
-                <span className="font-semibold text-slate-700 truncate max-w-md">{scanData.repo_path}</span>
-                <span className="text-slate-300">·</span>
-                <span>Audited for ISO/IEC 21031 &amp; GSF SCI</span>
+                <span className="font-semibold text-slate-700 font-mono truncate max-w-md">{scanData.repo_path}</span>
+                <span className="text-slate-300">&middot;</span>
+                <span>Scored under Green Software Foundation (GSF SCI) standards</span>
               </>
             ) : (
-              'Connect a repository or run a scan to start green auditing'
+              'Scan a repository or run a demo benchmark to measure code efficiency.'
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {scanData && (
-            <button
-              onClick={handleScanSample}
-              disabled={loadingSample}
-              className="btn-secondary text-xs font-semibold px-3 py-2 flex items-center gap-1.5"
-              title="Re-run benchmark against sample test suite"
-            >
-              <Sparkles size={13} className="text-emerald-600" />
-              {loadingSample ? 'Auditing...' : 'Run Samples Demo'}
-            </button>
+            <>
+              <button
+                onClick={() => setShowFinOpsModal(true)}
+                className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 border-emerald-300 text-emerald-950 bg-emerald-50/70 hover:bg-emerald-100 font-medium"
+                title="Model AWS / GCP compute bill savings"
+              >
+                <DollarSign size={13} className="text-emerald-700" />
+                FinOps ROI
+              </button>
+              <button
+                onClick={() => setShowBotModal(true)}
+                className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 border-blue-300 text-blue-950 bg-blue-50/70 hover:bg-blue-100 font-medium"
+                title="Preview GreenCode GitHub PR Bot"
+              >
+                <Bot size={13} className="text-blue-600" />
+                GitHub Bot
+              </button>
+              <button
+                onClick={() => setShowEsgModal(true)}
+                className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 border-olive-300 text-olive-900 bg-olive-50/60 hover:bg-olive-100/70"
+                title="View and print official GSF SCI compliance certificate"
+              >
+                <FileText size={13} className="text-olive-700" />
+                ESG Report
+              </button>
+              <button
+                onClick={() => setShowCiCdModal(true)}
+                className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
+                title="Generate CI/CD gate workflow and README badges"
+              >
+                <ShieldCheck size={13} className="text-slate-600" />
+                CI/CD
+              </button>
+              <button
+                onClick={handleScanSample}
+                disabled={loadingSample}
+                className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
+                title="Re-run benchmark against reference test suite"
+              >
+                <RefreshCw size={13} className={loadingSample ? 'animate-spin text-olive-700' : 'text-slate-500'} />
+                {loadingSample ? 'Running...' : 'Run Benchmark'}
+              </button>
+            </>
           )}
-          <Link to="/scan" className="btn-primary text-xs font-semibold px-3.5 py-2 flex items-center gap-1.5">
+          <Link to="/scan" className="btn-primary text-xs px-3.5 py-1.5 flex items-center gap-1.5 shadow-sm">
             <GitBranch size={13} />
             Scan Repository
           </Link>
         </div>
       </div>
 
+      {/* Prominent Alexa+ Voice Cockpit */}
+      <AlexaVoiceCockpit />
+
       {/* Quality Gate hero */}
       {scanData ? (
         <div
-          className={`card p-6 flex flex-col md:flex-row md:items-center gap-6 border-2 transition-all ${
+          className={`card p-5 flex flex-col md:flex-row md:items-center gap-5 border-l-4 transition-all ${
             isPass
-              ? 'border-emerald-200 bg-emerald-50/40 shadow-sm'
-              : 'border-red-200 bg-red-50/30 shadow-sm'
+              ? 'border-l-olive-700 bg-white'
+              : 'border-l-rose-700 bg-white'
           }`}
         >
           <div className="shrink-0 flex justify-center">
@@ -135,32 +193,32 @@ export default function Dashboard() {
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-1.5">
               <span
-                className={`inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                  isPass ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                className={`inline-flex items-center gap-1 text-[11px] font-mono font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
+                  isPass ? 'bg-olive-50 text-olive-800 border border-olive-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
                 }`}
               >
-                {isPass ? <ShieldCheck size={14} /> : <ShieldX size={14} />}
-                {isPass ? 'Quality Gate Passed' : 'Quality Gate Blocked'}
+                {isPass ? <ShieldCheck size={13} /> : <ShieldX size={13} />}
+                {isPass ? 'Quality Gate: Passed' : 'Quality Gate: Optimization Required'}
               </span>
-              <span className="text-xs text-slate-500 font-medium">Target Threshold: ≥ {threshold}</span>
+              <span className="text-xs text-slate-500 font-mono">Pass Threshold: &ge; {threshold}/100</span>
             </div>
 
-            <h2 className="text-lg font-bold text-slate-900 leading-snug">
+            <h2 className="text-base font-bold text-slate-900 leading-snug">
               {isPass
-                ? 'Source code adheres to Green Software Foundation sustainability guidelines'
-                : `${totalViolations} energy anti-pattern${totalViolations !== 1 ? 's' : ''} detected that exceed carbon budgets`}
+                ? 'Your code complies with green software efficiency standards'
+                : `Found ${totalViolations} code pattern${totalViolations !== 1 ? 's' : ''} causing unnecessary energy consumption`}
             </h2>
 
             <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-600">
-              <span className="font-semibold text-slate-800">{totalFiles} audited files</span>
-              <span className="text-slate-300">·</span>
+              <span className="font-semibold text-slate-800">{totalFiles} scanned files</span>
+              <span className="text-slate-300">&middot;</span>
               <span className="font-mono">{totalLines.toLocaleString()} LOC</span>
               {marginalRate !== null && (
                 <>
-                  <span className="text-slate-300">·</span>
-                  <span className="inline-flex items-center gap-1.5 bg-white/80 px-2 py-0.5 rounded-md border border-slate-200/60">
-                    <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                    <span className="font-semibold">{activeZone}</span>: {marginalRate} gCO₂/kWh
+                  <span className="text-slate-300">&middot;</span>
+                  <span className="inline-flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 font-mono text-[11px]">
+                    <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-olive-600' : 'bg-slate-400'}`} />
+                    <span className="font-semibold text-slate-700">{activeZone}</span>: {marginalRate} gCO₂/kWh
                   </span>
                 </>
               )}
@@ -172,83 +230,119 @@ export default function Dashboard() {
             {totalViolations > 0 ? (
               <Link
                 to="/issues"
-                className="btn-primary flex items-center gap-2 text-xs font-semibold px-4 py-2.5 shadow-sm"
+                className="btn-primary flex items-center gap-2 text-xs px-4 py-2.5 shadow-sm"
               >
-                <AlertTriangle size={14} />
-                View {totalViolations} Issue{totalViolations !== 1 ? 's' : ''}
+                <AlertTriangle size={13} />
+                Fix {totalViolations} Issue{totalViolations !== 1 ? 's' : ''} with Bedrock AI
                 <ArrowRight size={13} />
               </Link>
             ) : (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200">
-                <CheckCircle2 size={16} className="text-emerald-600" />
-                Zero Violations Detected
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-olive-50 text-olive-900 text-xs font-semibold border border-olive-200 font-mono">
+                <CheckCircle2 size={15} className="text-olive-700" />
+                No Bottlenecks Detected
               </div>
             )}
           </div>
         </div>
       ) : (
         /* Empty State with 1-click sample demo */
-        <div className="card p-10 sm:p-14 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mx-auto mb-4 text-emerald-600 shadow-sm">
-            <GitBranch size={28} />
+        <div className="card p-10 text-center">
+          <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center mx-auto mb-3 text-slate-700">
+            <GitBranch size={22} />
           </div>
-          <h2 className="text-lg font-bold text-slate-900 mb-1.5">No repository scanned yet</h2>
-          <p className="text-sm text-slate-500 max-w-md mx-auto mb-6 leading-relaxed">
-            Audit a local codebase, upload a ZIP archive, or link a GitHub repository to evaluate algorithmic energy efficiency, carbon intensity, and synthesize GSF fixes.
+          <h2 className="text-base font-bold text-slate-900 mb-1">No Active Repository Telemetry</h2>
+          <p className="text-xs text-slate-500 max-w-md mx-auto mb-5 leading-relaxed">
+            Audit a local codebase, upload a ZIP archive, or link a GitHub repository to evaluate algorithmic energy efficiency, carbon intensity, and synthesize Amazon Bedrock fixes.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
             <button
               onClick={handleScanSample}
               disabled={loadingSample}
-              className="btn-secondary flex items-center gap-2 text-xs font-semibold px-4 py-2.5 w-full sm:w-auto justify-center"
+              className="btn-secondary flex items-center gap-2 text-xs px-4 py-2 w-full sm:w-auto justify-center"
             >
-              <Sparkles size={14} className="text-emerald-600" />
-              {loadingSample ? 'Analyzing Sample Files...' : 'Run Demo on Sample Files'}
+              <RefreshCw size={13} className={loadingSample ? 'animate-spin text-emerald-600' : 'text-slate-600'} />
+              {loadingSample ? 'Analyzing Reference Suite...' : 'Execute Reference Benchmark Suite'}
             </button>
             <Link
               to="/scan"
-              className="btn-primary flex items-center gap-2 text-xs font-semibold px-5 py-2.5 w-full sm:w-auto justify-center"
+              className="btn-primary flex items-center gap-2 text-xs px-4 py-2 w-full sm:w-auto justify-center"
             >
-              <GitBranch size={14} />
-              Scan a Repository
+              <GitBranch size={13} />
+              Audit Repository
             </Link>
           </div>
         </div>
       )}
 
-      {/* Metrics Grid */}
+      {/* Enterprise Cloud Compute & Financial ROI */}
+      {scanData && totalViolations > 0 && (
+        <div className="card p-4 bg-gradient-to-r from-emerald-50/80 via-white to-olive-50/80 border-emerald-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-sm shrink-0">
+              <DollarSign size={20} />
+            </div>
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wider text-emerald-950 flex items-center gap-2">
+                Enterprise Cloud Infrastructure ROI
+                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-200 font-mono font-bold">AWS EC2 Projected</span>
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Fixing these {totalViolations} algorithmic bottlenecks cuts unnecessary CPU loops, saving an estimated <strong className="text-emerald-900 font-mono">~${(Math.round(((totalViolations * 1.8 * 8760) / 1000) * 0.14 + (totalViolations * 180))).toLocaleString()} / year</strong> across 10 vCPU cloud instances.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowFinOpsModal(true)}
+              className="btn-primary text-xs px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm flex items-center gap-1.5 font-medium"
+            >
+              <Calculator size={13} />
+              Model Cloud ROI
+            </button>
+            <button
+              onClick={() => setShowBotModal(true)}
+              className="btn-secondary text-xs px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 border-slate-300 shadow-sm flex items-center gap-1.5 font-medium"
+            >
+              <Bot size={13} className="text-blue-600" />
+              Bot PR Action
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Metrics Grid - 4 distinct non-repeated metrics */}
       {scanData && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
-            title="Issues Detected"
+            title="Code Issues"
             value={totalViolations}
-            subtitle={`${totalFiles} files · ${totalLines.toLocaleString()} LOC`}
-            icon={<Activity size={20} />}
-            accentColor={totalViolations > 0 ? '#dc2626' : '#059669'}
+            subtitle={totalViolations === 0 ? 'Optimal efficiency' : `${totalViolations} patterns flagged`}
+            icon={<Activity size={18} />}
+            accentColor={totalViolations > 0 ? '#E11D48' : '#384C3B'}
           />
           <MetricCard
-            title="Energy / Execution"
+            title="Energy Consumed"
             value={energyWh > 0 ? `${(energyWh * 1000).toFixed(2)} mWh` : '—'}
-            subtitle="Normalized baseline per run"
-            icon={<Zap size={20} />}
-            accentColor="#d97706"
+            subtitle="Estimated runtime draw"
+            icon={<Zap size={18} />}
+            accentColor="#384C3B"
           />
           <MetricCard
             title="Carbon Footprint"
             value={carbonG > 0 ? `${carbonG.toFixed(4)} g` : '—'}
             subtitle={
               marginalRate !== null
-                ? `${marginalRate} g/kWh · ${cleanPct ?? '—'}% clean grid`
-                : 'Awaiting regional grid telemetry'
+                ? `${marginalRate} g/kWh (${activeZone})`
+                : 'Regional grid intensity'
             }
-            icon={<Leaf size={20} />}
-            accentColor="#059669"
+            icon={<Leaf size={18} />}
+            accentColor="#384C3B"
           />
           <MetricCard
-            title="Operational Energy"
-            value={energyWh > 0 ? `${energyWh.toFixed(4)} Wh` : '—'}
-            subtitle="Full execution cycle"
-            icon={<Zap size={20} />}
+            title="Audited Code Scale"
+            value={`${totalFiles} files`}
+            subtitle={`${totalLines.toLocaleString()} lines analyzed`}
+            icon={<FileCode2 size={18} />}
           />
         </div>
       )}
@@ -258,9 +352,12 @@ export default function Dashboard() {
         <div className="grid lg:grid-cols-2 gap-5">
           <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="section-title">Violations by Pattern</h3>
-              <Link to="/issues" className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1">
-                Synthesize Fixes <ArrowRight size={12} />
+              <div>
+                <h3 className="section-title">Top Energy Bottlenecks</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Categorized by algorithmic pattern</p>
+              </div>
+              <Link to="/issues" className="text-xs font-semibold text-olive-800 hover:text-olive-950 flex items-center gap-1">
+                Review &amp; Fix <ArrowRight size={12} />
               </Link>
             </div>
             <ViolationChart breakdown={scanData.violation_breakdown} />
@@ -268,9 +365,12 @@ export default function Dashboard() {
 
           <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="section-title">Language Composition</h3>
-              <span className="text-xs text-slate-400 font-mono">
-                {scanData.file_results?.length || 0} audited files
+              <div>
+                <h3 className="section-title">Languages in Codebase</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Scanned source files distribution</p>
+              </div>
+              <span className="text-xs text-slate-500 font-mono">
+                {scanData.file_results?.length || 0} files
               </span>
             </div>
             {scanData.file_results?.length ? (
@@ -282,52 +382,38 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Quick Navigation Footer Cards */}
+      {/* ESG Compliance Audit Certificate Modal */}
       {scanData && (
-        <div className="grid sm:grid-cols-3 gap-4 pt-2">
-          <Link to="/issues" className="card p-5 hover:border-emerald-300 transition-all group">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <FileCode2 size={20} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-800">Review Anti-Patterns</p>
-                <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                  Inspect code AST nodes and generate fixes
-                </p>
-              </div>
-            </div>
-          </Link>
-
-          <Link to="/profiler" className="card p-5 hover:border-emerald-300 transition-all group">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Cpu size={20} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-800">Hardware Profiler</p>
-                <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                  Benchmark CPU &amp; RAM in sandboxed runtime
-                </p>
-              </div>
-            </div>
-          </Link>
-
-          <Link to="/history" className="card p-5 hover:border-emerald-300 transition-all group">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Leaf size={20} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-800">Audit History</p>
-                <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                  Track fleet green trends and cumulative savings
-                </p>
-              </div>
-            </div>
-          </Link>
-        </div>
+        <EsgAuditModal
+          isOpen={showEsgModal}
+          onClose={() => setShowEsgModal(false)}
+          scanData={scanData}
+          activeZone={activeZone}
+          marginalRate={marginalRate}
+        />
       )}
+
+      {/* CI/CD & Badges Modal */}
+      <CiCdBadgeModal
+        isOpen={showCiCdModal}
+        onClose={() => setShowCiCdModal(false)}
+        repoName={scanData?.repo_path || 'demo-org/ecommerce-api'}
+        score={greenScore}
+      />
+
+      {/* FinOps & Cloud Cost Calculator Modal */}
+      <FinOpsCalculatorModal
+        isOpen={showFinOpsModal}
+        onClose={() => setShowFinOpsModal(false)}
+        violationsCount={totalViolations}
+      />
+
+      {/* GitHub PR Bot Interactive Preview Modal */}
+      <GitHubBotPreviewModal
+        isOpen={showBotModal}
+        onClose={() => setShowBotModal(false)}
+        repoName={scanData?.repo_path || 'zeenat28-ui/greencode'}
+      />
     </div>
   );
 }

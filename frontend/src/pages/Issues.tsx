@@ -11,7 +11,7 @@ import {
   CheckCircle, Loader2, AlertCircle, ExternalLink, X, ArrowUpRight
 } from 'lucide-react';
 
-export function getFallbackSnippet(violationType: string, language: string = 'python'): string {
+function getFallbackSnippet(violationType: string, language: string = 'python'): string {
   const lang = (language || 'python').toLowerCase();
   const fallbacks: Record<string, Record<string, string>> = {
     'NESTED_LOOPS_DEPTH_3+': {
@@ -242,14 +242,14 @@ export default function Issues() {
   if (!scanData) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center mb-4 text-emerald-700 shadow-xs">
+        <div className="w-16 h-16 rounded-2xl bg-olive-50 border border-olive-200 flex items-center justify-center mb-4 text-olive-800 shadow-sm">
           <GitBranch size={28} />
         </div>
-        <h2 className="text-xl font-bold text-slate-900 mb-1">No Codebase Audited Yet</h2>
+        <h2 className="text-xl font-bold text-slate-900 mb-1">No Repository Scanned Yet</h2>
         <p className="text-xs text-slate-500 mb-6 max-w-sm">
-          Run an AST static analysis scan to detect algorithmic complexity escalations and energy anti-patterns.
+          Scan a repository to detect energy-wasting code patterns and generate automated AI fixes.
         </p>
-        <Link to="/scan" className="btn-primary inline-flex items-center gap-2 text-xs py-2.5 px-4 shadow-xs">
+        <Link to="/scan" className="btn-primary inline-flex items-center gap-2 text-xs py-2.5 px-4 shadow-sm">
           <RefreshCw size={14} /> Scan Repository
         </Link>
       </div>
@@ -260,28 +260,31 @@ export default function Issues() {
     <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200/80 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200/80 pb-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Code Issues &amp; Remediations</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            {violations.length} violation{violations.length !== 1 ? 's' : ''} detected across {scanData.total_files} audited file{scanData.total_files !== 1 ? 's' : ''}
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Code Issues &amp; AI Remediation</h1>
+            <span className="badge bg-olive-100 text-olive-900 border border-olive-200">Amazon Bedrock AI</span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Found {violations.length} energy bottleneck{violations.length !== 1 ? 's' : ''} across {scanData.total_files} files. Review code diffs below or apply AI fixes with 1-click.
           </p>
         </div>
         {sortedViolations.length > 0 && (
           <button
             onClick={handleBatchRefactor}
             disabled={batchRefactoring}
-            className="btn-primary flex items-center gap-2 text-xs font-semibold py-2.5 px-5 shadow-xs"
+            className="btn-primary flex items-center gap-2 text-xs font-semibold py-2 px-4 shadow-xs"
           >
             {batchRefactoring ? (
               <>
-                <Loader2 size={14} className="animate-spin" />
-                Synthesizing ({batchProgress?.done}/{batchProgress?.total})...
+                <Loader2 size={13} className="animate-spin text-olive-200" />
+                Orchestrating Bedrock ({batchProgress?.done}/{batchProgress?.total})...
               </>
             ) : (
               <>
-                <Zap size={14} />
-                Synthesize All Fixes
+                <Zap size={13} />
+                Remediate All via Amazon Bedrock
               </>
             )}
           </button>
@@ -364,10 +367,10 @@ export default function Issues() {
                       <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         <h3 className="font-bold text-xs uppercase tracking-wider text-slate-800">
-                          Synthesized Eco-Refactoring
+                          Automated Eco-Refactoring
                         </h3>
-                        <span className="text-[10px] bg-emerald-50 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200 font-bold">
-                          IBM Bob 2.0 Verified
+                        <span className="text-[10px] bg-slate-900 text-emerald-400 px-2 py-0.5 rounded font-mono border border-slate-800">
+                          Amazon Bedrock Converse
                         </span>
                       </div>
                       <button
@@ -482,7 +485,7 @@ export default function Issues() {
                   <div className="card p-4 ml-2 sm:ml-4 bg-slate-50 border-emerald-200 shadow-xs">
                     <div className="flex items-center gap-2.5 text-xs text-slate-700 font-medium">
                       <Loader2 size={15} className="animate-spin text-emerald-600" />
-                      <span>Synthesizing IBM Bob 2.0 eco-refactoring for {v.title}...</span>
+                      <span>Synthesizing Amazon Bedrock eco-refactoring for {v.title}...</span>
                     </div>
                   </div>
                 ) : (

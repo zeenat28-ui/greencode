@@ -26,11 +26,54 @@ from __future__ import annotations
 import ast
 import difflib
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.huggingface_client import LLMError, get_client
+
+
+def _select_client():
+    """Choose the model backend once, so the engine stays provider-agnostic.
+
+    Selection is made here, in one place, rather than by branching on a
+    provider name throughout the refactoring logic. That keeps the behaviour
+    of the verification gate below identical whichever backend produced the
+    candidate rewrite - a Claude proposal is checked exactly as strictly as a
+    Qwen one.
+
+    ``GREENCODE_LLM_PROVIDER`` overrides the choice and accepts ``bedrock``,
+    ``huggingface`` or ``auto``. An explicit request for a provider that is not
+    configured is honoured, so its classified error surfaces to the user
+    instead of being silently swapped for a different vendor.
+
+    The HuggingFace branch resolves ``get_client`` through the module global
+    rather than binding it locally. That keeps this module-level name the
+    single injection seam, which is what the existing test suite patches - a
+    second local alias would quietly bypass every test that fakes the model.
+    """
+    choice = (os.environ.get("GREENCODE_LLM_PROVIDER") or "auto").strip().lower()
+
+    if choice == "huggingface":
+        return get_client(), "huggingface"
+
+    if choice == "bedrock":
+        from app.bedrock_client import get_client as _bedrock_client
+
+        return _bedrock_client(), "aws_bedrock"
+
+    # auto: prefer Bedrock when it is configured, otherwise HuggingFace.
+    try:
+        from app.bedrock_client import get_client as _bedrock_client
+
+        bedrock = _bedrock_client()
+        if bedrock.configured:
+            return bedrock, "aws_bedrock"
+    except Exception:  # noqa: BLE001 - a missing optional backend is not fatal
+        logger.debug("Bedrock backend unavailable; falling back to HuggingFace")
+
+    return get_client(), "huggingface"
 
 logger = logging.getLogger("greencode.llm.refactor")
 
@@ -303,7 +346,7 @@ def refactor(
     user_prompt = "\n".join(parts)
 
     try:
-        client = get_client()
+        client, provider = _select_client()
         content, usage, model = client.chat(
             [
                 {"role": "system", "content": SYSTEM_PROMPT},

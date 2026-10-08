@@ -38,6 +38,10 @@ venv/
 env/
 ENV/
 
+# Unrelated 3rd-party audit sandbox (not part of the submission)
+security-hunt/
+
+
 # Streamlit Local Cache
 .streamlit/
 

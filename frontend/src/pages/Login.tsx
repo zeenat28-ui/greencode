@@ -1,7 +1,7 @@
-﻿import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Github, Leaf, Loader2, AlertCircle, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { Github, Leaf, Loader2, AlertCircle, Eye, EyeOff, ExternalLink, Sparkles } from 'lucide-react';
 
 const TOKEN_HELP_URL =
   'https://github.com/settings/tokens/new?scopes=repo&description=GreenCode%20Auditor';
@@ -9,7 +9,7 @@ const TOKEN_HELP_URL =
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { connectGitHub } = useAuth();
+  const { connectGitHub, loginAsDemo } = useAuth();
 
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
@@ -130,6 +130,21 @@ export default function Login() {
                   Connect GitHub
                 </>
               )}
+            </button>
+
+            <div className="relative flex py-2 items-center">
+              <div className="flex-grow border-t border-slate-200"></div>
+              <span className="flex-shrink mx-3 text-xs text-slate-400 font-medium uppercase tracking-wider">Or</span>
+              <div className="flex-grow border-t border-slate-200"></div>
+            </div>
+
+            <button
+              type="button"
+              onClick={loginAsDemo}
+              className="w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/60 text-slate-700 hover:text-emerald-800 font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-sm bg-slate-50/50"
+            >
+              <Sparkles size={16} className="text-emerald-600" />
+              Explore Enterprise Demo (1-Click Instant Preview)
             </button>
           </form>
 

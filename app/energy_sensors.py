@@ -20,11 +20,13 @@ Tiers (highest fidelity first):
 
 from __future__ import annotations
 
+import copy
 import glob
 import os
 import platform
 import re
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -543,8 +545,35 @@ def _instantiate_meter(backend: str):
     return None
 
 
-def probe_capabilities() -> Dict[str, Any]:
-    """Report what this host can genuinely measure. Surfaced by /api/health."""
+# Module-level cache for probe_capabilities(): the probes spawn subprocesses
+# and HTTP calls, so paying them once per TTL window rather than once per
+# request is the difference between an ~8 s and a sub-second tool call.
+_PROBE_CACHE: Optional[Tuple[float, Dict[str, Any]]] = None
+_PROBE_CACHE_LOCK = threading.Lock()
+_PROBE_CACHE_TTL = float(os.environ.get("GREENCODE_PROBE_TTL", "300"))
+
+
+def probe_capabilities(force: bool = False) -> Dict[str, Any]:
+    """Report what this host can genuinely measure. Surfaced by /api/health.
+
+    The answer is a property of the host, not of the request, but the probes
+    that produce it are expensive: the Windows battery tier spawns PowerShell
+    (6 s timeout), the Scaphandre tier waits on an HTTP probe, and the perf
+    tier can run a subprocess. Uncached that cost (~4.5 s here) was paid on
+    *every* measure_energy call, which is what made audit_and_score take ~8 s.
+
+    The result is therefore cached for GREENCODE_PROBE_TTL seconds (default
+    300). Pass force=True to re-probe immediately; set the TTL to 0 to disable
+    caching entirely.
+    """
+    global _PROBE_CACHE
+
+    if not force and _PROBE_CACHE_TTL > 0:
+        with _PROBE_CACHE_LOCK:
+            cached = _PROBE_CACHE
+        if cached is not None and (time.monotonic() - cached[0]) < _PROBE_CACHE_TTL:
+            return copy.deepcopy(cached[1])
+
     try:
         rapl_domains = [d.__dict__ for d in discover_rapl_domains()]
     except Exception:  # pragma: no cover - defensive
@@ -554,7 +583,7 @@ def probe_capabilities() -> Dict[str, Any]:
     perf_ok = perf_available()
     scaph_ok = scaphandre_available()
 
-    return {
+    result = {
         "platform": platform.system().lower(),
         "rapl": {"supported": bool(rapl_domains), "domains": rapl_domains},
         "scaphandre": {"supported": scaph_ok, "url": SCAPHANDRE_URL},
@@ -569,3 +598,7 @@ def probe_capabilities() -> Dict[str, Any]:
             else "model"
         ),
     }
+
+    with _PROBE_CACHE_LOCK:
+        _PROBE_CACHE = (time.monotonic(), copy.deepcopy(result))
+    return result

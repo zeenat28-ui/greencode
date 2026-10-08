@@ -1,0 +1,61 @@
+{
+  "manifestVersion": "1.0",
+  "storeListing": {
+    "distributionCountries": ["US"],
+    "name": {
+      "value": "GreenCode"
+    },
+    "shortDescription": "Audits source code for energy waste and returns a green score with a ranked fix plan.",
+    "fullDescription": "GreenCode measures the carbon cost of software. Ask it to audit a snippet or a GitHub repository and it returns a 0-100 green score, the exact energy anti-patterns it found (nested loops, quadratic string building, repeated allocations), Software Carbon Intensity against the live grid of your chosen region, and a ranked remediation plan. Every energy figure states whether it came from a hardware counter or a TDP model, and every carbon figure names its data source and freshness - so an answer can be defended in an audit, not just quoted. Tools: audit_code, audit_repository, audit_and_score, calculate_sci, measure_energy, get_grid_intensity, compare_regions, refactor_code.",
+    "examplePhrases": [
+      "Audit this Python function for energy waste",
+      "What is the green score of my code snippet?",
+      "Should we run this batch job in Ireland or Virginia?"
+    ],
+    "privacyAndCompliance": {
+      "privacyPolicyUrl": "https://episodes-blues-toward-mayor.trycloudflare.com/privacy",
+      "termsOfUseUrl": "https://episodes-blues-toward-mayor.trycloudflare.com/terms"
+    },
+    "mediaAssets": {
+      "icons": {
+        "light": [
+          { "size": "72x72", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-72x72.png" },
+          { "size": "64x64", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-64x64.png" },
+          { "size": "88x88", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-88x88.png" },
+          { "size": "126x126", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-126x126.png" },
+          { "size": "180x180", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-180x180.png" },
+          { "size": "241x241", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-241x241.png" }
+        ],
+        "dark": [
+          { "size": "72x72", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-dark-72x72.png" },
+          { "size": "64x64", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-dark-64x64.png" },
+          { "size": "88x88", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-dark-88x88.png" },
+          { "size": "126x126", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-dark-126x126.png" },
+          { "size": "180x180", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-dark-180x180.png" },
+          { "size": "241x241", "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/icon-dark-241x241.png" }
+        ]
+      },
+      "carouselImages": [
+        {
+          "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/assets/carousel-600x900.png",
+          "altText": "GreenCode audit result showing a green score, the energy anti-patterns found, and a ranked remediation plan.",
+          "size": "600x900"
+        }
+      ],
+      "bannerImages": []
+    }
+  },
+  "integrations": [
+    {
+      "type": "MCP",
+      "config": {
+        "endpoints": {
+          "default": {
+            "type": "HTTPS",
+            "uri": "https://episodes-blues-toward-mayor.trycloudflare.com/mcp"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -36,3 +36,14 @@ httpx==0.28.1
 # absent (app/main.py), which meant the deployed service had no request
 # throttling at all. It is a hard dependency now.
 slowapi==0.1.9
+
+# --- Alexa+ track: self-hosted MCP server (app/mcp_server.py) -----------------
+# Speaks MCP over Streamable HTTP. Hard dependency: without it the server that
+# is the submission's primary track surface cannot be imported at all.
+mcp>=2.3.0
+
+# --- AWS Builder mini challenge: Amazon Bedrock refactoring backend -----------
+# app/bedrock_client.py uses boto3's bedrock-runtime Converse API. Imported
+# lazily inside the client so the rest of the app still runs on a host with no
+# AWS account and no boto3 installed.
+boto3>=1.34.0

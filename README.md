@@ -3,7 +3,136 @@
 [![CI Gatekeeper](https://img.shields.io/badge/CI%2FCD-Active%20Quality%20Gate-success)](action.yml)
 [![Green Computing](https://img.shields.io/badge/Standard-Green%20Software%20Foundation-brightgreen)](https://greensoftware.foundation)
 [![SCI Standard](https://img.shields.io/badge/Specification-SCI%20v1.0-blue)](https://greensoftware.foundation)
-[![Tests](https://img.shields.io/badge/tests-238%20passing-success)](tests/)
+[![Tests](https://img.shields.io/badge/tests-327%20passing-success)](tests/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+
+## 🏆 Amazon Developer Hackathon 2026
+
+This repository is submitted to the **Alexa+** primary track, with the
+**AWS Builder** and **Open Source** mini challenges.
+
+| Target | What it is | Where |
+|---|---|---|
+| **Alexa+** | Self-hosted **MCP server** over Streamable HTTP, spec `2025-11-25`+ | [`app/mcp_server.py`](app/mcp_server.py) |
+| **AWS Builder** | **Amazon Bedrock** (`bedrock-runtime` Converse API) refactoring backend | [`app/bedrock_client.py`](app/bedrock_client.py) |
+
+### Ask it in plain language
+
+> *"How much carbon does this function emit, and what should I fix first?"*
+> *"Is Ireland or Virginia a cleaner place to run tonight's batch job?"*
+> *"Rewrite this so it uses less energy, without changing what it does."*
+
+The agent calls `audit_and_score`, `compare_regions` and `refactor_code`, and
+relays one verdict — it never has to orchestrate four tools itself or invent a
+number between them.
+
+### Run the MCP server
+
+```bash
+pip install -r requirements.txt
+python -m app.mcp_server
+# GreenCode MCP server v1.1.0
+# MCP protocol: 2026-07-28 (minimum required 2025-11-25)
+# Endpoint: http://127.0.0.1:8765/mcp
+```
+
+Then point any MCP client at it — see [`mcp.example.json`](mcp.example.json):
+
+```json
+{ "mcpServers": { "greencode": {
+    "type": "streamable-http", "url": "http://127.0.0.1:8765/mcp" } } }
+```
+
+Verify it end to end (boots the server and calls it as a real client):
+
+```bash
+python check_mcp_live.py
+```
+
+**8 tools:** `audit_and_score` · `audit_code` · `audit_repository` ·
+`calculate_sci` · `measure_energy` · `get_grid_intensity` · `compare_regions` ·
+`refactor_code`
+**2 resources:** `greencode://standards/gsf-sci` · `greencode://health`
+
+### Alexa+ onboarding checklist
+
+Implemented and proven live by `check_mcp_alexa.py`
+(11 check groups — discovery, 401 handshake, authenticated session, latency),
+**both against a local server and over a real public tunnel**:
+
+| Requirement (Alexa+ docs) | Where |
+|---|---|
+| Streamable HTTP, protocol ≥ `2025-11-25` | `app/mcp_server.py` |
+| **401 without `WWW-Authenticate`** for unauthenticated `/mcp` | `AlexaAuthMiddleware`, on when `GREENCODE_MCP_TOKEN` is set |
+| **Protected Resource Metadata** (RFC 9728) at the well-known URI (+ `/mcp` path variant) | `/.well-known/oauth-protected-resource` |
+| **Auth-server metadata with PKCE `S256`** (RFC 8414) | `/.well-known/oauth-authorization-server` |
+| Remote URL via a tunnel (cloudflared named by the docs) | [`scripts/start_mcp_remote.ps1`](scripts/start_mcp_remote.ps1) |
+| Tunnel `Host` must pass the transport's DNS-rebinding guard (else **421**) | `GREENCODE_MCP_ALLOWED_HOSTS` env → `create_app()` |
+| **Round-trip latency < 500 ms** | warm tool calls **11–32 ms** local, **339–359 ms** over the public tunnel (`probe` + intensity TTL caches) |
+| `addon.json` (HTTPS endpoint, schema constraints) | [`alexa/addon.json`](alexa/addon.json) · [`alexa/README.md`](alexa/README.md) |
+| Every addon.json URL resolves (icons, privacy, terms) | `/assets/*`, `/privacy`, `/terms` served by the app; 6 light + 6 dark PNG icons from `scripts/gen_alexa_icons.py` |
+
+```bash
+# Compliance proof, end to end over a socket:
+python check_mcp_alexa.py
+# ALL ALEXA+ COMPLIANCE CHECKS PASSED
+
+# Same proof over the live public tunnel (internet → Cloudflare → your box):
+python check_mcp_alexa.py --url https://<tunnel>.trycloudflare.com --token <token>
+# ALL ALEXA+ COMPLIANCE CHECKS PASSED   (warm 339–359 ms, exit 0)
+
+# Expose it publicly for Alexa+ (tunnel first, then server with its Host allow-listed;
+# paste the printed https URL into addon.json):
+$env:GREENCODE_MCP_TOKEN = "<random token>"
+.\scripts\start_mcp_remote.ps1
+```
+
+Account linking is **not** enabled: GreenCode's tools work identically for
+every user, and the Alexa+ account-linking docs say such add-ons don't need
+it. The discovery documents still advertise `S256` so the checklist is
+satisfied. `alexa-ai deploy` (CLI + Amazon account) is the one step that
+cannot run from this repo — see [`alexa/README.md`](alexa/README.md).
+
+### Enable Amazon Bedrock
+
+```bash
+export AWS_PROFILE=your-profile        # or AWS_ACCESS_KEY_ID, or an instance role
+export AWS_REGION=us-east-1
+export GREENCODE_LLM_PROVIDER=bedrock  # or: auto | huggingface
+```
+
+`boto3` resolves credentials from the standard chain, so no key material needs
+to be pasted into `.env`. Model access needs `bedrock:InvokeModel`. Without
+credentials the client **fails closed** with a classified `auth` error and makes
+no request, rather than silently degrading.
+
+### Why this is not a REST wrapper
+
+GreenCode already had 37 REST endpoints, so the honest risk was shipping a
+JSON-RPC skin over them. Three things were added that a pass-through cannot do:
+
+1. **Provenance is mandatory.** Every result carries `measurement_method` and
+   `measurement_is_hardware`. No code path reports a TDP estimate as a
+   measurement — an agent that can invent a plausible carbon number gets quoted
+   in a sustainability report.
+2. **Tools are scoped to a decision.** `audit_and_score` runs analysis,
+   measurement, SCI and grid lookup, returning one verdict. An agent cannot
+   report a green score for code it never measured.
+3. **A "no data" grid is not a clean grid.** The carbon resolver returns `0.0`
+   when no provider answers, because `None` would break downstream arithmetic.
+   Left alone, a typo'd zone like `US-VA` would sort first in `compare_regions`
+   and be recommended as the greenest place on earth. The MCP layer normalises
+   it to `None` and excludes it from ranking
+   ([`_resolve_intensity`](app/mcp_server.py), regression-tested).
+
+### Why it fits the Alexa+ track
+
+The rules ask for *"agentic workflow that orchestrates across services
+autonomously"* and list *"basic MCP wrapper around an existing API"* as the
+uncreative end of the scale. `audit_and_score` is the former: it chains static
+analysis, hardware energy measurement, GSF SCI arithmetic and live grid
+telemetry into a single autonomous verdict, and refuses to report a number whose
+provenance it cannot state.
 
 **GreenCode Auditor** is a platform for enforcing Green Computing standards across
 software engineering workflows. It audits multi-language GitHub and local
@@ -58,6 +187,8 @@ greencode/
 │   ├── dynamic_analysis.py # Sandboxed repo execution under measurement (Docker)
 │   ├── huggingface_client.py # HuggingFace Inference API client (classified errors)
 │   ├── llm_refactor.py     # LLM refactoring + behaviour-preserving verification gate
+│   ├── bedrock_client.py   # Amazon Bedrock (AWS Builder) - Converse API, Claude
+│   ├── mcp_server.py       # Alexa+ self-hosted MCP server (Streamable HTTP)
 │   ├── audit_intel.py      # Deterministic root-cause grouping & remediation planning
 │   ├── optimizer.py        # Electricity Maps client + rule-based refactor engine
 │   ├── database.py         # SQLite + SQLAlchemy historic ledger & metrics persistence

@@ -1,0 +1,23 @@
+# MCP client configuration for GreenCode.
+#
+# Point any MCP client at this file to reach the server. For example:
+#
+#   Kiro / Cursor / VS Code   .kiro/settings/mcp.json, or .cursor/mcp.json
+#   Claude Desktop             claude_desktop_config.json
+#
+# Start the server first, otherwise the client will report a connection error:
+#
+#   python -m app.mcp_server
+#   # GreenCode MCP server v1.1.0
+#   # Endpoint: http://127.0.0.1:8765/mcp
+#
+# The server is self-hosted and binds to loopback, matching the transport here.
+
+{
+  "mcpServers": {
+    "greencode": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8765/mcp"
+    }
+  }
+}

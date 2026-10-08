@@ -302,6 +302,10 @@ def enqueue_github_scan_task(
     }
 
 
+# Backward compatibility alias for legacy scripts
+enqueue_scan_task = enqueue_github_scan_task
+
+
 def get_task_status(task_id: Any, user_id: Optional[int] = None) -> Dict[str, Any]:
     """Retrieve task execution status and audit payload, enforcing ownership.
 

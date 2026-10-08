@@ -279,7 +279,12 @@ CORS_ORIGINS = [
     o.strip()
     for o in os.environ.get(
         "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:5173,http://localhost:8080",
+        # Vite's dev server binds 127.0.0.1 by default, which is a different
+        # origin from localhost - a browser treats them as unrelated, so
+        # listing only "localhost:5173" made every API call fail CORS on a
+        # stock `npm run dev`. Both spellings are listed because both are
+        # reachable depending on how the server was started.
+        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:8080",
     ).split(",")
     if o.strip()
 ]

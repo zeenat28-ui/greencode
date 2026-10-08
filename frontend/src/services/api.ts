@@ -39,9 +39,43 @@ export const setRefreshToken = (token: string | null): void => {
     // Storage unavailable (private mode) - session simply won't survive reloads.
   }
 };
+/**
+ * Demo mode marker.
+ *
+ * "Explore Enterprise Demo" gives a judge a populated walkthrough without a
+ * GitHub token. It issues no real token, so every authenticated endpoint
+ * answers 401 - and the interceptor below treats 401 as "your session is over"
+ * and signs the user out. The result was that clicking any nav item during the
+ * demo bounced straight back to /login, so the demo could not actually be
+ * walked through.
+ *
+ * loginAsDemo sets this flag, and the 401 handler consults it: a demo session
+ * keeps its state and lets the error surface to the caller (each page already
+ * renders its own empty state), instead of being torn down mid-tour.
+ */
+const DEMO_MODE_KEY = 'greencode_demo_mode';
+
+export const isDemoMode = (): boolean => {
+  try {
+    return localStorage.getItem(DEMO_MODE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+export const setDemoMode = (on: boolean): void => {
+  try {
+    if (on) localStorage.setItem(DEMO_MODE_KEY, '1');
+    else localStorage.removeItem(DEMO_MODE_KEY);
+  } catch {
+    // Storage unavailable (private mode) - demo simply degrades to signing out.
+  }
+};
+
 export const clearSession = (): void => {
   _accessToken = null;
   setRefreshToken(null);
+  setDemoMode(false);
 };
 
 const api = axios.create({
@@ -104,6 +138,13 @@ api.interceptors.response.use(
           clearSession();
         }
       }
+      // A demo session holds no token by design, so a 401 is expected rather
+      // than a sign of an expired one. Signing out here would eject the judge
+      // mid-walkthrough, so let the request fail and render its empty state.
+      if (isDemoMode()) {
+        return Promise.reject(error);
+      }
+
       clearSession();
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }

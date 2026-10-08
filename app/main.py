@@ -83,6 +83,19 @@ from app.scanner import (
     run_github_audit,
 )
 from app.tasks import enqueue_github_scan_task, get_task_status
+from app.scope import ScopeCalculator
+from app.ml_carbon import MLCarbonAnalyzer
+from app.sla import EnergySLAEngine
+from app.pricing import PricingManager
+
+try:
+    from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+    PROMETHEUS_AVAILABLE = True
+    METRIC_REQUESTS_TOTAL = Counter("greencode_http_requests_total", "Total HTTP requests served", ["method", "endpoint"])
+    METRIC_AUDITS_TOTAL = Counter("greencode_audits_total", "Total code audits conducted", ["type"])
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1603,7 +1616,117 @@ def create_github_pull_request_endpoint(
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("error", "Failed to create PR"))
     return res
-    return res
+
+
+# ---------------------------------------------------------------------------
+# Scope 1-3, ML Carbon, Energy SLA, Pricing & Prometheus Endpoints
+# ---------------------------------------------------------------------------
+
+class ScopeInventoryRequest(BaseModel):
+    energy_joules: float = Field(3600.0, description="Total measured or modeled operational energy in Joules")
+    duration_seconds: float = Field(1.0, description="Execution duration in seconds")
+    grid_intensity_gco2_per_kwh: float = Field(200.0, description="Grid carbon intensity in gCO2e/kWh")
+    runs_per_year: int = Field(10000, description="Projected annual production runs")
+    team_size: int = Field(5, description="Engineering development team size")
+    dev_hours: float = Field(160.0, description="Development hours per engineer per period")
+    cloud_provider: str = Field("aws", description="Cloud provider (aws, gcp, azure, generic, on_prem)")
+    vcpu_count: int = Field(2, description="Virtual CPU count allocated")
+    memory_gb: float = Field(4.0, description="System RAM in gigabytes")
+    data_transfer_gb: float = Field(0.05, description="Network egress/ingress data volume per run")
+    grid_zone: str = Field("US-CAL-CISO", description="Regional electricity grid identifier")
+    renewable_rec_pct: float = Field(0.0, description="Renewable energy certificates matching percentage (0-100)")
+
+
+class MLAuditRequest(BaseModel):
+    source_code: str = Field(..., description="Python ML source code to evaluate")
+    file_path: Optional[str] = Field("model.py", description="Source code file path or identifier")
+
+
+class MLTokenProjectionRequest(BaseModel):
+    parameter_count_b: float = Field(7.0, description="Model parameter count in billions (e.g. 7.0 for Llama-7B)")
+    token_count: int = Field(1000, description="Number of tokens generated or processed")
+    hardware: str = Field("a100", description="Accelerator hardware (h100, a100, rtx_4090, v100, t4, cpu, npu)")
+    grid_intensity_gco2_per_kwh: float = Field(200.0, description="Datacenter grid carbon intensity")
+    runs_per_year: int = Field(1000000, description="Annual token scale or queries")
+
+
+class SLAEvaluationRequest(BaseModel):
+    total_joules: float = Field(..., description="Total measured deployment Joules")
+    green_score: float = Field(..., description="Repository Green Score (0-100)")
+    sci_gco2e: float = Field(0.0, description="Software Carbon Intensity (gCO2e per functional unit)")
+    config_path: Optional[str] = Field(None, description="Path to custom greencode-sla.yaml")
+
+
+@app.post("/api/scope/inventory", tags=["Enterprise Scope 1-3"])
+def scope_inventory_endpoint(req: ScopeInventoryRequest):
+    """Generate an audit-ready Scope 1, 2, and 3 GHG Protocol & CSRD/SBTi emissions inventory."""
+    report = ScopeCalculator.generate_inventory(
+        energy_joules=req.energy_joules,
+        duration_seconds=req.duration_seconds,
+        grid_intensity_gco2_per_kwh=req.grid_intensity_gco2_per_kwh,
+        runs_per_year=req.runs_per_year,
+        team_size=req.team_size,
+        dev_hours=req.dev_hours,
+        cloud_provider=req.cloud_provider,
+        vcpu_count=req.vcpu_count,
+        memory_gb=req.memory_gb,
+        data_transfer_gb=req.data_transfer_gb,
+        grid_zone=req.grid_zone,
+        renewable_rec_pct=req.renewable_rec_pct,
+    )
+    if PROMETHEUS_AVAILABLE:
+        METRIC_AUDITS_TOTAL.labels(type="scope_inventory").inc()
+    return report.to_dict()
+
+
+@app.post("/api/ml/audit", tags=["AI & ML Carbon"])
+def ml_audit_endpoint(req: MLAuditRequest):
+    """Audit Python ML source code (PyTorch, TensorFlow, Transformers, vLLM) for energy anti-patterns."""
+    result = MLCarbonAnalyzer.audit_code(req.source_code, file_path=req.file_path or "model.py")
+    if PROMETHEUS_AVAILABLE:
+        METRIC_AUDITS_TOTAL.labels(type="ml_audit").inc()
+    return result.to_dict()
+
+
+@app.post("/api/ml/tokens", tags=["AI & ML Carbon"])
+def ml_token_projection_endpoint(req: MLTokenProjectionRequest):
+    """Calculate operational energy and carbon footprint for AI LLM token inference."""
+    result = MLCarbonAnalyzer.project_token_emissions(
+        parameter_count_b=req.parameter_count_b,
+        token_count=req.token_count,
+        hardware=req.hardware,
+        grid_intensity_gco2_per_kwh=req.grid_intensity_gco2_per_kwh,
+        runs_per_year=req.runs_per_year,
+    )
+    from dataclasses import asdict
+    return asdict(result)
+
+
+@app.post("/api/sla/evaluate", tags=["Energy SLA & Budgets"])
+def sla_evaluate_endpoint(req: SLAEvaluationRequest):
+    """Evaluate repository energy and green scores against SLA boundaries."""
+    engine = EnergySLAEngine(config_path=req.config_path)
+    verdict = engine.evaluate_deployment(
+        total_joules=req.total_joules,
+        green_score=req.green_score,
+        sci_gco2e=req.sci_gco2e,
+    )
+    return verdict.to_dict()
+
+
+@app.get("/api/pricing/tiers", tags=["Commercial Licensing"])
+def list_pricing_tiers_endpoint():
+    """Retrieve available commercial subscription tiers, features, and API quotas."""
+    return PricingManager.list_tiers()
+
+
+@app.get("/metrics", tags=["Observability"])
+def prometheus_metrics_endpoint():
+    """Prometheus exposition metrics endpoint for Datadog, Grafana, and Prometheus scrapers."""
+    if not PROMETHEUS_AVAILABLE:
+        return Response(content="# Prometheus client not installed\n", media_type="text/plain")
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 
 
 def run_cli():

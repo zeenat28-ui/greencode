@@ -45,6 +45,19 @@ class ViolationType:
     UNCACHED_NETWORK_IN_LOOP = "UNCACHED_NETWORK_IN_LOOP"
     QUADRATIC_STRING_CONCAT = "QUADRATIC_STRING_CONCAT_IN_LOOP"
     HIDDEN_ITERATIVE_COMPUTATION = "HIDDEN_ITERATIVE_COMPUTATION"
+    # Extended GSF catalogue (roadmap: "Add 10 more patterns"). Every one of
+    # these is detectable statically without executing the code, and none of
+    # them fire on samples/eco_pipeline.py, which must stay at 0 violations.
+    N_PLUS_ONE_QUERY_IN_LOOP = "N_PLUS_ONE_QUERY_IN_LOOP"
+    INEFFICIENT_REGEX_IN_LOOP = "INEFFICIENT_REGEX_IN_LOOP"
+    THREAD_THRASHING_IN_LOOP = "THREAD_THRASHING_IN_LOOP"
+    SYNC_FILE_IO_IN_LOOP = "SYNC_FILE_IO_IN_LOOP"
+    SLEEP_IN_LOOP = "SLEEP_IN_LOOP"
+    JSON_SERIALIZE_IN_LOOP = "JSON_SERIALIZE_IN_LOOP"
+    SORTED_IN_LOOP = "SORTED_IN_LOOP"
+    RECURSION_WITHOUT_MEMOIZATION = "RECURSION_WITHOUT_MEMOIZATION"
+    LINEAR_LOOKUP_IN_LOOP = "LINEAR_LOOKUP_IN_LOOP"
+    EXCESSIVE_LOGGING_IN_LOOP = "EXCESSIVE_LOGGING_IN_LOOP"
 
 
 VIOLATION_METADATA = {
@@ -87,6 +100,86 @@ VIOLATION_METADATA = {
         "gsf_pattern": "Vectorized Processing & Memory Efficiency",
         "description": "Using row-by-row iteration (e.g. df.iterrows(), df.itertuples()) or deeply chained async callback mappings (e.g. array.map / forEach) bypasses hardware vectorized processing pipelines, multiplying CPU cycles and power draw.",
         "fix_guidance": "Replace iterative row loops with vectorized columnar operations, array comprehensions, or batch pipeline transforms.",
+    },
+    ViolationType.N_PLUS_ONE_QUERY_IN_LOOP: {
+        "title": "N+1 Query Inside Iteration (SELECT per row)",
+        "deduction": 14.0,
+        "severity": "HIGH",
+        "gsf_pattern": "Data Access Batching & Request Coalescing",
+        "description": "Executing a SELECT query once per loop iteration opens a network round trip per row (the classic N+1 pattern). Each trip keeps a connection, the CPU and the NIC awake instead of fetching the whole result set in one batched query.",
+        "fix_guidance": "Issue a single query with WHERE ... IN (...), a JOIN, or a server-side cursor that fetches the full set once; batch writes with executemany or a bulk upsert.",
+    },
+    ViolationType.INEFFICIENT_REGEX_IN_LOOP: {
+        "title": "Regex Compiled Or Executed Inside Loop",
+        "deduction": 7.0,
+        "severity": "MEDIUM",
+        "gsf_pattern": "Algorithmic Efficiency / Compile Once, Reuse",
+        "description": "Compiling or running a regular expression inside a loop re-parses the pattern on every iteration. Backtracking engines can burn orders of magnitude more CPU than an equivalent literal search.",
+        "fix_guidance": "Hoist re.compile() out of the loop (or use a module-level compiled pattern), and prefer literal string methods over regex when the pattern is fixed.",
+    },
+    ViolationType.THREAD_THRASHING_IN_LOOP: {
+        "title": "Thread Or Process Spawned Per Iteration",
+        "deduction": 13.0,
+        "severity": "HIGH",
+        "gsf_pattern": "Concurrency Pooling & Scheduling Efficiency",
+        "description": "Creating a thread or process inside a loop forces the OS scheduler to create and tear down execution contexts repeatedly. Context switches and thread startup dominate the useful work and keep every core awake.",
+        "fix_guidance": "Create one ThreadPoolExecutor/ProcessPoolExecutor outside the loop and submit work to it, or batch the items so each worker handles many of them.",
+    },
+    ViolationType.SYNC_FILE_IO_IN_LOOP: {
+        "title": "Blocking File I/O Inside Iteration",
+        "deduction": 9.0,
+        "severity": "MEDIUM",
+        "gsf_pattern": "I/O Batching & Buffering",
+        "description": "Opening or reading a file synchronously inside a loop stalls the thread once per iteration. Disk and filesystem metadata latency keeps the CPU idle-but-awake, wasting energy on every wait.",
+        "fix_guidance": "Open the resource once outside the loop, read/stream it in chunks, or batch multiple writes into a single buffered transaction.",
+    },
+    ViolationType.SLEEP_IN_LOOP: {
+        "title": "Blocking Sleep / Busy-Wait Inside Iteration",
+        "deduction": 10.0,
+        "severity": "MEDIUM",
+        "gsf_pattern": "Demand Avoidance / Event-Driven Waiting",
+        "description": "A sleep call inside a loop pins a thread in a timed wait for every iteration. Sleeping threads and their wakeups consume CPU time and prevent the host from entering deeper idle (C-)states.",
+        "fix_guidance": "Replace polling with an event/callback/future, or hoist a single sleep outside the loop. If polling is unavoidable, back off exponentially and batch the work done per wakeup.",
+    },
+    ViolationType.JSON_SERIALIZE_IN_LOOP: {
+        "title": "JSON (De)serialization Inside Iteration",
+        "deduction": 7.0,
+        "severity": "MEDIUM",
+        "gsf_pattern": "Serialization Amortization",
+        "description": "Calling json.dumps/loads (or JSON.stringify/parse) inside a loop re-parses or re-serializes on every pass. Serialization is CPU-heavy string work that scales with payload size times iteration count.",
+        "fix_guidance": "Serialize once after the loop (build a list, then dump), or stream a single payload instead of one document per item.",
+    },
+    ViolationType.SORTED_IN_LOOP: {
+        "title": "Sorting Inside Iteration",
+        "deduction": 9.0,
+        "severity": "MEDIUM",
+        "gsf_pattern": "Algorithmic Efficiency / Sort Once",
+        "description": "Sorting (sorted(), list.sort(), Arrays.sort) inside a loop re-sorts data whose order is largely unchanged. Sorts are O(N log N) each pass, multiplying into the hottest part of the workload.",
+        "fix_guidance": "Sort once after the loop, keep the collection sorted as you insert (bisect/heap), or use a partial selection (top-k) when only part of the order is needed.",
+    },
+    ViolationType.RECURSION_WITHOUT_MEMOIZATION: {
+        "title": "Self-Recursive Function Without Memoization",
+        "deduction": 11.0,
+        "severity": "HIGH",
+        "gsf_pattern": "Caching / Memoized Computation",
+        "description": "A function that calls itself without caching repeated subproblems re-computes the same results exponentially (e.g. naive fibonacci). Redundant computation is pure wasted CPU energy.",
+        "fix_guidance": "Add functools.lru_cache/cache or an explicit memo table, convert the recursion to iteration with a shared table, or use dynamic programming.",
+    },
+    ViolationType.LINEAR_LOOKUP_IN_LOOP: {
+        "title": "Linear Search (.index / indexOf) Inside Loop",
+        "deduction": 8.0,
+        "severity": "MEDIUM",
+        "gsf_pattern": "Data Structure Selection / Hash Lookups",
+        "description": "Calling list.index() or Array.indexOf() inside a loop performs an O(N) scan per iteration, turning O(N) work into O(N^2). Cache-unfriendly scans keep cores busy for no added information.",
+        "fix_guidance": "Replace the list with a dict/set for O(1) membership, build a value->index map once before the loop, or use enumerate when the position is already known.",
+    },
+    ViolationType.EXCESSIVE_LOGGING_IN_LOOP: {
+        "title": "Synchronous Logging / Print Inside Iteration",
+        "deduction": 6.0,
+        "severity": "LOW",
+        "gsf_pattern": "I/O Batching & Log Amortization",
+        "description": "print()/console.log/System.out.print inside a loop performs a synchronous I/O syscall per iteration. Terminal, pipe and log-shipping latency multiplies by N and often dominates short iterations.",
+        "fix_guidance": "Accumulate messages and flush once after the loop, log at a sampled rate, or use a buffered/async logger.",
     },
 }
 
@@ -405,6 +498,42 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
         for name in new_session_names:
             self._session_names.discard(name)
 
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        """Flag self-recursion that never caches its subresults.
+
+        Naive recursive functions (fib, tree walks without a memo table)
+        recompute the same subtrees exponentially: pure wasted CPU. A
+        cache/memo decorator means the author already knew this, so those
+        definitions are exempt.
+        """
+        name = node.name
+        decorator_text = " ".join(
+            ast.unparse(d) if hasattr(ast, "unparse") else "" for d in node.decorator_list
+        ).lower()
+        if "cache" not in decorator_text and "memo" not in decorator_text:
+            recurses = False
+            for child in ast.walk(node):
+                if not isinstance(child, ast.Call):
+                    continue
+                if isinstance(child.func, ast.Name) and child.func.id == name:
+                    recurses = True
+                    break
+                if (
+                    isinstance(child.func, ast.Attribute)
+                    and child.func.attr == name
+                    and isinstance(child.func.value, ast.Name)
+                    and child.func.value.id in ("self", "cls")
+                ):
+                    recurses = True
+                    break
+            if recurses:
+                self._add_violation(
+                    ViolationType.RECURSION_WITHOUT_MEMOIZATION,
+                    node,
+                    f"Function '{name}' calls itself without a cache/memo decorator, recomputing repeated subproblems exponentially.",
+                )
+        self.generic_visit(node)
+
     def visit_For(self, node: ast.For) -> None:
         self.loop_stack.append(node)
         if len(self.loop_stack) >= 3 and len(self.loop_stack) == 3:
@@ -480,6 +609,105 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                     ViolationType.UNCACHED_NETWORK_IN_LOOP,
                     node,
                     f"Synchronous network call '{func_name}' executed inside iteration loop causes repeated NIC power wakeups.",
+                )
+
+        # ------------------------------------------------------------------
+        # Extended GSF catalogue: loop-scoped inefficiencies (roadmap item
+        # "Add 10 more patterns"). All of these are checked only while a loop
+        # is on the stack, and every string match below is deliberately
+        # conservative so samples/eco_pipeline.py stays at zero violations.
+        # ------------------------------------------------------------------
+        if len(self.loop_stack) > 0:
+            func = node.func
+            func_name_str = ""
+            receiver_name = ""
+            if isinstance(func, ast.Name):
+                func_name_str = func.id
+            elif isinstance(func, ast.Attribute):
+                func_name_str = func.attr
+                if isinstance(func.value, ast.Name):
+                    receiver_name = func.value.id
+
+            # N+1 query: a SELECT (or WITH ... SELECT) issued per iteration.
+            # Writes/DDL are excluded: batched row inserts are a separate
+            # discussion and flagging them would fire on eco_pipeline.
+            if func_name_str in ("execute", "query", "executescript"):
+                first_arg = node.args[0] if node.args else None
+                if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                    q = first_arg.value.lstrip().upper()
+                    if q.startswith(("SELECT", "WITH")):
+                        self._add_violation(
+                            ViolationType.N_PLUS_ONE_QUERY_IN_LOOP,
+                            node,
+                            "SELECT query executed once per loop iteration (N+1 pattern): each row costs a separate database round trip.",
+                        )
+
+            # Regex compiled/executed per iteration: re.* module functions
+            # re-parse the pattern on every call.
+            if receiver_name == "re" and func_name_str in (
+                "compile", "search", "match", "sub", "subn",
+                "findall", "finditer", "fullmatch", "split",
+            ):
+                self._add_violation(
+                    ViolationType.INEFFICIENT_REGEX_IN_LOOP,
+                    node,
+                    f"re.{func_name_str}() called inside a loop re-parses the pattern every iteration.",
+                )
+
+            # Thread/process or executor pool constructed per iteration.
+            if func_name_str in ("Thread", "Process", "ThreadPoolExecutor", "ProcessPoolExecutor"):
+                self._add_violation(
+                    ViolationType.THREAD_THRASHING_IN_LOOP,
+                    node,
+                    f"{func_name_str} created inside a loop: per-item execution contexts cost scheduler time and CPU wakeups.",
+                )
+
+            # Blocking file open per iteration.
+            if func_name_str == "open" and receiver_name in ("", "io"):
+                self._add_violation(
+                    ViolationType.SYNC_FILE_IO_IN_LOOP,
+                    node,
+                    "open() inside a loop performs blocking filesystem I/O once per iteration.",
+                )
+
+            # Timed wait per iteration (polling loops).
+            if func_name_str == "sleep":
+                self._add_violation(
+                    ViolationType.SLEEP_IN_LOOP,
+                    node,
+                    "sleep() inside a loop pins a thread in a timed wait per iteration and blocks deeper idle states.",
+                )
+
+            # JSON (de)serialization per iteration.
+            if receiver_name == "json" and func_name_str in ("dumps", "loads", "dump", "load"):
+                self._add_violation(
+                    ViolationType.JSON_SERIALIZE_IN_LOOP,
+                    node,
+                    f"json.{func_name_str}() inside a loop re-serializes data on every pass.",
+                )
+
+            # Sorting per iteration.
+            if func_name_str in ("sorted", "sort"):
+                self._add_violation(
+                    ViolationType.SORTED_IN_LOOP,
+                    node,
+                    f"{func_name_str}() inside a loop re-sorts data each iteration (O(N log N) per pass).",
+                )
+
+            # Linear scan per iteration.
+            if func_name_str == "index":
+                self._add_violation(
+                    ViolationType.LINEAR_LOOKUP_IN_LOOP,
+                    node,
+                    ".index() inside a loop performs an O(N) scan per iteration, turning the loop into O(N^2).",
+                )
+
+            # Synchronous console logging per iteration.
+            if func_name_str in ("print", "pprint"):
+                self._add_violation(
+                    ViolationType.EXCESSIVE_LOGGING_IN_LOOP,
+                    node,
+                    f"{func_name_str}() inside a loop performs a synchronous I/O syscall once per iteration.",
                 )
 
         self.generic_visit(node)

@@ -3,6 +3,7 @@ real MCP client would - the same path an Alexa+ agent takes.
 """
 import asyncio
 import json
+import os
 import socket
 import threading
 import time
@@ -15,6 +16,18 @@ from mcp.client.streamable_http import streamable_http_client
 
 PORT = 8791
 URL = f"http://127.0.0.1:{PORT}/mcp"
+
+# The app's import chain loads .env, so a GREENCODE_MCP_TOKEN there turns the
+# 401 checklist on for this in-process server too. Send it like a real Alexa+
+# agent would; with no token set the server runs open and no client is passed.
+_TOKEN = os.environ.get("GREENCODE_MCP_TOKEN", "").strip()
+
+
+def _authed_http():
+    if not _TOKEN:
+        return None
+    import httpx2
+    return httpx2.AsyncClient(headers={"Authorization": f"Bearer {_TOKEN}"}, timeout=30)
 
 HEAVY = """
 def process(rows):
@@ -41,7 +54,7 @@ def wait_for_port(port, timeout=30):
 async def run_checks():
     failures = []
 
-    async with streamable_http_client(URL) as streams:
+    async with streamable_http_client(URL, http_client=_authed_http()) as streams:
         read, write = streams[0], streams[1]
         async with ClientSession(read, write) as session:
             init = await session.initialize()

@@ -44,3 +44,4 @@ Every corporate carbon report includes the full fallback chain, provenance tag, 
 - **RTO (Recovery Time Objective)**: < 15 Minutes.
 - **RPO (Recovery Point Objective)**: < 1 Minute (WAL replication to S3).
 - **Scale Limits**: 10,000 requests/sec with Redis caching layer and Aurora Serverless v2 auto-scaling.
+

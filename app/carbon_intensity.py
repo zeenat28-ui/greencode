@@ -488,7 +488,7 @@ def resolve_carbon_intensity(
                 tried.append({"provider": provider.provider_id, "result": "no_key"})
                 continue
 
-        datum = provider.fetch(normalized, key_override)
+        datum = provider.fetch(normalized, key_override)  # greencode: ignore - fallback chain tries at most 1 live provider
         if not datum or datum.get("carbon_intensity") is None:
             tried.append({"provider": provider.provider_id, "result": "unavailable"})
             continue

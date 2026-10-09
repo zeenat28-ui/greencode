@@ -42,17 +42,18 @@ def _post_json(url: str, payload: Dict[str, Any], cfg: PipelineConfig) -> Dict[s
     if requests is None:
         return {"delivered": False, "error": "requests not installed"}
     last_error = ""
-    for attempt in range(max(1, cfg.max_retries + 1)):
-        try:
-            resp = requests.post(url, json=payload, timeout=cfg.http_timeout_seconds)
-            if resp.status_code < 400:
-                return {"delivered": True, "status_code": resp.status_code}
-            last_error = f"HTTP {resp.status_code}"
-            # 4xx will not become a 2xx on retry; only 5xx and 429 are worth another go.
-            if resp.status_code < 500 and resp.status_code != 429:
-                break
-        except Exception as exc:
-            last_error = str(exc)
+    with requests.Session() as session:
+        for attempt in range(max(1, cfg.max_retries + 1)):
+            try:
+                resp = session.post(url, json=payload, timeout=cfg.http_timeout_seconds)
+                if resp.status_code < 400:
+                    return {"delivered": True, "status_code": resp.status_code}
+                last_error = f"HTTP {resp.status_code}"
+                # 4xx will not become a 2xx on retry; only 5xx and 429 are worth another go.
+                if resp.status_code < 500 and resp.status_code != 429:
+                    break
+            except Exception as exc:
+                last_error = str(exc)
         logger.warning(
             "Pipeline notification attempt %s/%s failed: %s",
             attempt + 1, cfg.max_retries + 1, last_error,

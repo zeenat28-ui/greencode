@@ -2060,17 +2060,18 @@ def run_cli():
     print("-" * 70)
 
     if violations:
-        print("[!] DETECTED GREEN COMPUTING ANOMALIES:")
+        output_lines = ["[!] DETECTED GREEN COMPUTING ANOMALIES:"]
         for idx, v in enumerate(violations[:10], 1):
             # Violations already carry repository-relative paths.
             rel = v.get("relative_path") or v.get("file_path", "unknown")
-            print(f"  {idx}. [{v['severity']}] {v['title']} (Line {v['line_number']} in {rel})")
-            print(f"     Deduction: -{v['deduction']} pts | Pattern: {v['gsf_pattern']}")
-            print(f"     Guidance : {v['suggested_fix']}")
-            print()
+            output_lines.append(f"  {idx}. [{v['severity']}] {v['title']} (Line {v['line_number']} in {rel})")
+            output_lines.append(f"     Deduction: -{v['deduction']} pts | Pattern: {v['gsf_pattern']}")
+            output_lines.append(f"     Guidance : {v['suggested_fix']}")
+            output_lines.append("")
         if len(violations) > 10:
-            print(f"  ... and {len(violations) - 10} more violations.")
-        print("-" * 70)
+            output_lines.append(f"  ... and {len(violations) - 10} more violations.")
+        output_lines.append("-" * 70)
+        print("\n".join(output_lines))
 
     # 1. Export SARIF v2.1.0 Report if requested
     if args.sarif:

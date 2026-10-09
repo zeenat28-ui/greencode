@@ -535,6 +535,9 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_For(self, node: ast.For) -> None:
+        # Evaluate target and iterable before entering loop scope
+        self.visit(node.target)
+        self.visit(node.iter)
         self.loop_stack.append(node)
         if len(self.loop_stack) >= 3 and len(self.loop_stack) == 3:
             self._add_violation(
@@ -542,10 +545,15 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                 node,
                 f"Loop is nested at depth {len(self.loop_stack)}. Algorithmic cost scales to O(N^{len(self.loop_stack)}).",
             )
-        self.generic_visit(node)
+        for stmt in node.body:
+            self.visit(stmt)
+        for stmt in node.orelse:
+            self.visit(stmt)
         self.loop_stack.pop()
 
     def visit_While(self, node: ast.While) -> None:
+        # Evaluate test condition before entering loop scope
+        self.visit(node.test)
         self.loop_stack.append(node)
         if len(self.loop_stack) >= 3 and len(self.loop_stack) == 3:
             self._add_violation(
@@ -553,7 +561,10 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                 node,
                 f"While-loop is nested at depth {len(self.loop_stack)}. Algorithmic cost scales to O(N^{len(self.loop_stack)}).",
             )
-        self.generic_visit(node)
+        for stmt in node.body:
+            self.visit(stmt)
+        for stmt in node.orelse:
+            self.visit(stmt)
         self.loop_stack.pop()
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -586,19 +597,35 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                     elif receiver in self._session_names:
                         # Call on a pooled session object — not an anti-pattern
                         is_pooled = True
-                    elif func_name in NETWORK_CALL_NAMES:
+                    elif func_name in ("request", "urlopen", "send", "fetch"):
                         is_net_call = True
-                elif func_name in NETWORK_CALL_NAMES:
+                    elif func_name in ("get", "post", "put", "delete", "patch"):
+                        # Only flag if receiver looks like http/client/session or an argument looks like a URL
+                        if any(k in receiver.lower() for k in ("http", "client", "session", "api", "request", "conn", "endpoint")):
+                            is_net_call = True
+                        elif any(isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.startswith(("http://", "https://", "/")) for a in node.args):
+                            is_net_call = True
+                elif isinstance(node.func.value, ast.Call):
+                    sub_func = node.func.value.func
+                    call_name = ""
+                    if isinstance(sub_func, ast.Name):
+                        call_name = sub_func.id
+                    elif isinstance(sub_func, ast.Attribute):
+                        call_name = sub_func.attr
+                    if "session" in call_name.lower() or "pool" in call_name.lower():
+                        is_pooled = True
+                    elif func_name in ("request", "urlopen", "fetch"):
+                        is_net_call = True
+                elif func_name in ("request", "urlopen", "fetch"):
                     is_net_call = True
             elif isinstance(node.func, ast.Name):
                 func_name = node.func.id
-                if func_name in NETWORK_CALL_NAMES:
+                if func_name in ("fetch", "urlopen"):
                     is_net_call = True
             elif isinstance(node.func, ast.Call) and isinstance(node.func.func, ast.Name) and node.func.func.id == "getattr":
                 # Handle dynamic metaprogramming dispatch, e.g. getattr(session, 'get')(...)
-                if len(node.func.args) >= 2 and isinstance(node.func.args[1], ast.Constant) and str(node.func.args[1].value).lower() in NETWORK_CALL_NAMES:
+                if len(node.func.args) >= 2 and isinstance(node.func.args[1], ast.Constant) and str(node.func.args[1].value).lower() in ("get", "post", "put", "delete", "request"):
                     func_name = f"getattr(..., '{node.func.args[1].value}')"
-                    # Only flag if the target object is not a known session
                     if len(node.func.args) >= 1 and isinstance(node.func.args[0], ast.Name) and node.func.args[0].id in self._session_names:
                         is_pooled = True
                     else:
@@ -804,6 +831,12 @@ def audit_with_tree_sitter(source_code: str, language: str, file_path: str) -> L
                         "context_code": node_text[:200],
                     })
 
+        # Only evaluate nesting depth on actual loop statements or verified iterative callback calls
+        if capture_name not in ("loop", "call_iter"):
+            continue
+        if not _is_iterative_node(node):
+            continue
+
         # Calculate nesting depth by inspecting parent loop and callback-driven iteration nodes
         depth = 1
         curr = node.parent
@@ -870,6 +903,12 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
     is_keyword_lang = lang_clean in ("ruby", "lua", "julia", "bash", "sh", "zsh", "shell", "pascal", "matlab", "fortran", "ada")
     has_braces = (not is_indent_lang) and (not is_keyword_lang) and any("{" in l or "}" in l for l in lines)
 
+    string_strip_regex = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
+    loop_end_regex = re.compile(r"^\s*(?:end|done|endfor|enddo|until\b|wend|next|fi|end-perform)\b|\bend\b", re.IGNORECASE)
+    net_strip_regex = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:[^`\\]|\\.)*`')
+
+    db_context_regex = re.compile(r"\b(?:with|using|defer|try)\b", re.IGNORECASE)
+
     for idx, raw_line in enumerate(lines):
         line_no = idx + 1
         stripped = raw_line.strip()
@@ -892,14 +931,14 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
         # Check loop exit before checking new statement on closing blocks
         if has_braces:
             # Strip string literal contents before counting braces to prevent skew from strings containing '{' or '}'
-            code_no_strings = re.sub(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', '', raw_line)
+            code_no_strings = string_strip_regex.sub('', raw_line)
             open_count = code_no_strings.count("{")
             close_count = code_no_strings.count("}")
             if close_count > open_count and loop_stack:
                 for _ in range(min(len(loop_stack), close_count - open_count)):
                     loop_stack.pop()
         else:
-            if re.search(r"^\s*(?:end|done|endfor|enddo|until\b|wend|next|fi|end-perform)\b|\bend\b", stripped, re.IGNORECASE):
+            if loop_end_regex.search(stripped):
                 if loop_stack:
                     loop_stack.pop()
 
@@ -932,7 +971,7 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
         if len(loop_stack) >= 1:
             # Strip string literal contents before network-pattern matching to prevent
             # false positives from URL arguments passed to pooled session calls.
-            _code_no_strings = re.sub(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:[^`\\]|\\.)*`', '', stripped)
+            _code_no_strings = net_strip_regex.sub('', stripped)
             if UNIVERSAL_NETWORK_REGEX.search(_code_no_strings) and line_no not in seen_net_lines:
                 seen_net_lines.add(line_no)
                 s_idx = max(0, line_no - 2)
@@ -976,8 +1015,12 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
                 })
 
         # 3. Check for raw database cursor/connection without context manager
-        if UNIVERSAL_DB_REGEX.search(stripped):
-            has_context = bool(re.search(r"\b(?:with|using|defer|try)\b", raw_line, re.IGNORECASE))
+        if (
+            UNIVERSAL_DB_REGEX.search(stripped)
+            and not stripped.startswith(('"', "'", "r'", 'r"'))
+            and not any(k in stripped for k in (" in stripped", " in line", "re.search", "re.match"))
+        ):
+            has_context = bool(db_context_regex.search(raw_line))
             if not has_context:
                 s_idx = max(0, line_no - 1)
                 e_idx = min(len(lines), line_no + 2)
@@ -999,7 +1042,7 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
                 })
 
         # 4. Check for hidden iterative row computation in non-Tree-sitter languages
-        if any(f".{m}(" in stripped.lower() for m in ("iterrows", "itertuples")):
+        if not stripped.startswith(('"', "'", "r'", 'r"')) and any(f".{m}(" in stripped.lower() for m in ("iterrows", "itertuples")):
             s_idx = max(0, line_no - 1)
             e_idx = min(len(lines), line_no + 1)
             snippet = "\n".join(lines[s_idx:e_idx])
@@ -1308,14 +1351,18 @@ def audit_repository(repo_path: str) -> Dict[str, Any]:
             languages_found[lang] = languages_found.get(lang, 0) + 1
     else:
         real_repo_root = os.path.realpath(repo_path)
+        all_candidate_paths: List[str] = []
         for root, dirs, files in os.walk(repo_path, followlinks=False):
             # Prune ignored and symlinked directories to prevent infinite traversal loops
             dirs[:] = [
                 d for d in dirs
                 if d not in ignore_dirs and not d.startswith(".") and not os.path.islink(os.path.join(root, d))
             ]
-            for file in sorted(files):
-                full_path = os.path.join(root, file)
+            for file in files:
+                all_candidate_paths.append(os.path.join(root, file))
+
+        all_candidate_paths.sort()
+        for full_path in all_candidate_paths:
 
                 # Security check: Skip symlinks resolving outside repository root (e.g. /etc/passwd attacks)
                 if os.path.islink(full_path):

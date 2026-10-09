@@ -151,3 +151,4 @@ async def get_calibrated_energy_model(
         cloud_instance=cloud_profile,
     )
     return {"success": True, "calibrated_result": res}
+

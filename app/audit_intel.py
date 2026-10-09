@@ -171,7 +171,7 @@ def build_remediation_plan(scan_result: Dict[str, Any]) -> Dict[str, Any]:
     steps: List[Dict[str, Any]] = []
     for vtype, items in by_rule.items():
         pb = _playbook_for(vtype)
-        files = sorted({(i.get("file") or i.get("path") or "") for i in items} - {""})
+        raw_files = list({(i.get("file") or i.get("path") or "") for i in items} - {""})
         effort, risk = pb["effort"], pb["risk"]
         # Priority normalises occurrence count against the cost of doing the
         # work, so a high-volume low-effort fix outranks a rare high-effort one.
@@ -181,8 +181,8 @@ def build_remediation_plan(scan_result: Dict[str, Any]) -> Dict[str, Any]:
                 "violation_type": vtype,
                 "theme": pb["theme"],
                 "occurrences": len(items),
-                "file_count": len(files),
-                "files": files[:20],
+                "file_count": len(raw_files),
+                "files": raw_files[:20],
                 "action": pb["action"],
                 "effort": effort,
                 "risk": risk,

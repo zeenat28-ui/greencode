@@ -612,12 +612,13 @@ def _refactor_nested_loop_code(snippet: str) -> str:
     # kept re-capturing until the first *indented* line, which emitted the whole
     # rewritten block indented and produced an IndentationError.
     base_indent: Optional[str] = None
+    loop_pattern = re.compile(r"^for\s+([a-zA-Z0-9_,\s\(\)]+)\s+in\s+(.+?):$")
 
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
-        m = re.match(r"^for\s+([a-zA-Z0-9_,\s\(\)]+)\s+in\s+(.+?):$", stripped)
+        m = loop_pattern.match(stripped)
         if m and not in_body:
             if base_indent is None:
                 base_indent = line[: len(line) - len(line.lstrip())]

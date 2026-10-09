@@ -42,17 +42,6 @@ jobs:
           pr_comment: "true"
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload SonarQube issue report
-        if: always()
-        uses: SonarSource/sonarqube-scan-action@v4
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.projectKey=greencode
-            -Dsonar.sources=.
-            -Dsonar.genericissueimport.report.path=greencode-sonar.json
-
       - name: Quality Gate Status Output
         run: |
           echo "Green Score: ${{ steps.auditor.outputs.green-score }} / 100"

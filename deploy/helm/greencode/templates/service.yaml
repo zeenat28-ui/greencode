@@ -14,3 +14,4 @@ spec:
   selector:
     app.kubernetes.io/name: greencode
     app.kubernetes.io/instance: {{ .Release.Name }}
+

@@ -74,3 +74,4 @@ env:
   RATE_LIMIT_STORAGE: "redis"
   ENTERPRISE_MULTI_TENANCY: "true"
   SLA_ENFORCE_MODE: "active"
+

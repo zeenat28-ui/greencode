@@ -83,3 +83,4 @@ Outputs:
   AuroraEndpoint:
     Description: Aurora PostgreSQL Primary Endpoint
     Value: !GetAtt AuroraCluster.Endpoint.Address
+

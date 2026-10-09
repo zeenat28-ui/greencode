@@ -1,10 +1,12 @@
 """Enterprise Audit REST API Router."""
 
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.audit.service import AuditService
+from app.auth.dependencies import get_current_actor, require_permission
+from app.auth.roles import Permission
 
 router = APIRouter(prefix="/api/audit", tags=["Static & Dynamic Auditing"])
 
@@ -16,7 +18,10 @@ class ScanRequest(BaseModel):
 
 
 @router.post("/scan")
-async def trigger_scan(payload: ScanRequest):
+async def trigger_scan(
+    payload: ScanRequest,
+    actor: Dict[str, Any] = Depends(require_permission(Permission.TRIGGER_AUDIT)),
+):
     """Trigger an AST static audit on a local directory or repository path."""
     try:
         result = AuditService.execute_audit(
@@ -30,7 +35,10 @@ async def trigger_scan(payload: ScanRequest):
 
 
 @router.get("/projects/{project_id}/history")
-async def get_project_audit_history(project_id: int):
+async def get_project_audit_history(
+    project_id: int,
+    actor: Dict[str, Any] = Depends(get_current_actor),
+):
     """Retrieve audit history and scores for a specific project."""
     return AuditService.get_project_audits(project_id=project_id)
 

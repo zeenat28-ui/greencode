@@ -1,10 +1,12 @@
 """Enterprise Policy API Router."""
 
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.policies.service import PolicyService
+from app.auth.dependencies import get_current_actor, get_tenant_actor, require_permission
+from app.auth.roles import Permission, Role, normalize_role
 
 router = APIRouter(prefix="/api/policies", tags=["Energy Policies & Guardrails"])
 
@@ -33,13 +35,23 @@ class PolicyEvaluationRequest(BaseModel):
 
 
 @router.get("/{org_id}")
-async def get_policy(org_id: int, project_id: Optional[int] = Query(None)):
+async def get_policy(
+    org_id: int,
+    project_id: Optional[int] = Query(None),
+    actor: Dict[str, Any] = Depends(get_tenant_actor),
+):
     """Fetch active policy for organization or specific project."""
     return PolicyService.get_policy(org_id=org_id, project_id=project_id)
 
 
 @router.post("/{org_id}")
-async def save_policy(org_id: int, payload: EnergyPolicyPayload, project_id: Optional[int] = Query(None)):
+async def save_policy(
+    org_id: int,
+    payload: EnergyPolicyPayload,
+    project_id: Optional[int] = Query(None),
+    actor: Dict[str, Any] = Depends(require_permission(Permission.OVERRIDE_POLICIES)),
+    tenant: Dict[str, Any] = Depends(get_tenant_actor),
+):
     """Save or update organization energy policy."""
     return PolicyService.save_policy(
         org_id=org_id,
@@ -49,8 +61,22 @@ async def save_policy(org_id: int, payload: EnergyPolicyPayload, project_id: Opt
 
 
 @router.post("/evaluate")
-async def evaluate_deployment(payload: PolicyEvaluationRequest):
+async def evaluate_deployment(
+    payload: PolicyEvaluationRequest,
+    actor: Dict[str, Any] = Depends(get_current_actor),
+):
     """Evaluate deployment energy regression and team budget against rules."""
+    # Tenant boundary: org_id is supplied in the body, so enforce it manually
+    # against the verified token (superadmin may evaluate across tenants).
+    role = normalize_role(actor.get("role"))
+    if role != Role.SUPERADMIN and actor.get("org_id") != payload.org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Tenant isolation violation: token belongs to organization "
+                f"{actor.get('org_id')} but requested organization {payload.org_id}"
+            ),
+        )
     return PolicyService.evaluate_deployment_rules(
         org_id=payload.org_id,
         current_energy=payload.current_energy,

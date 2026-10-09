@@ -20,6 +20,16 @@ from app.services.energy_diff_service import EnergyDiffService
 from app.audit_logs import AuditLogManager
 from app.reports.esg_report import ESGReportGenerator
 from app.compliance import ComplianceManager
+from app.auth.jwt import create_tokens
+from app.auth.roles import Role
+
+
+def _admin_headers():
+    tokens = create_tokens(user_id=1, org_id=1, role=Role.SUPERADMIN.value)
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+ADMIN = _admin_headers()
 
 
 @pytest.fixture(autouse=True)
@@ -221,7 +231,7 @@ def test_enterprise_rest_endpoints(client):
         "name": "Acme SaaS Corp",
         "slug": "acme-saas-corp",
         "tier": "enterprise",
-    })
+    }, headers=ADMIN)
     assert res_org.status_code in (200, 201)
     org_id = res_org.json()["id"]
 
@@ -254,12 +264,12 @@ def test_enterprise_rest_endpoints(client):
     assert res_gate.json()["verdict"] == "APPROVED"
 
     # 5. ESG report export endpoint
-    res_esg = client.get(f"/api/reports/esg/{org_id}")
+    res_esg = client.get(f"/api/reports/esg/{org_id}", headers=ADMIN)
     assert res_esg.status_code == 200
     assert "emissions_summary" in res_esg.json()
 
     # 6. Audit integrity endpoint
-    res_audit = client.get(f"/api/reports/audit-logs/{org_id}/verify")
+    res_audit = client.get(f"/api/reports/audit-logs/{org_id}/verify", headers=ADMIN)
     assert res_audit.status_code == 200
     assert res_audit.json()["valid"] is True
 

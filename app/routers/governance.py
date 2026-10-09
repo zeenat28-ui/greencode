@@ -22,10 +22,30 @@ from app.database import (
 from app.enterprise_governance import governance_manager
 from app.esg_disclosure import ESGComplianceExporter
 from app.calibrated_energy import CalibratedEnergyModel
+from app.auth.dependencies import get_current_actor, require_permission
+from app.auth.roles import Permission, Role, normalize_role
 
 logger = logging.getLogger("greencode.routers.governance")
 
 router = APIRouter(prefix="/api/enterprise", tags=["Enterprise Governance & Multi-Tenancy"])
+
+
+def _enforce_tenant(actor: Dict[str, Any], org_id: int) -> None:
+    """Refuse cross-tenant access unless the caller is a platform superadmin.
+
+    The enterprise governance surface takes ``org_id`` from the request body or
+    query string, so tenant isolation must be enforced explicitly against the
+    verified token rather than trusting the client-supplied value.
+    """
+    role = normalize_role(actor.get("role"))
+    if role != Role.SUPERADMIN and actor.get("org_id") != org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Tenant isolation violation: token belongs to organization "
+                f"{actor.get('org_id')} but requested organization {org_id}"
+            ),
+        )
 
 
 class CreateOrgRequest(BaseModel):
@@ -43,25 +63,19 @@ class SSOConfigRequest(BaseModel):
     enforce_sso_only: bool = False
 
 
-# Dependency helper delegating to app.main auth
-def get_auth_dependency():
-    from app.main import get_current_user
-    return get_current_user
-
-
 @router.post("/organizations")
 async def create_tenant_organization(
     req: CreateOrgRequest,
-    current_user: Dict[str, Any] = Depends(lambda: None),
+    actor: Dict[str, Any] = Depends(require_permission(Permission.MANAGE_ORG)),
 ):
-    """Create an isolated enterprise tenant workspace."""
+    """Create an isolated enterprise tenant workspace (org admin / superadmin only)."""
     org = create_organization(name=req.name, slug=req.slug, tier=req.tier)
     record_audit_log(
         action="organization:create",
         resource_type="organization",
         resource_id=str(org.get("id")),
         org_id=org.get("id"),
-        user_id=1,
+        user_id=actor.get("user_id", 1),
         details=f"Created tenant {org.get('slug')} with tier {req.tier}",
     )
     return {"success": True, "organization": org}
@@ -69,27 +83,28 @@ async def create_tenant_organization(
 
 @router.get("/organizations/me")
 async def get_my_tenant_organization(
-    current_user: Dict[str, Any] = Depends(lambda: None),
+    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
-    """Retrieve active organization workspace profile."""
-    return {
-        "is_tenant": True,
-        "organization": {
-            "id": 1,
-            "name": "Enterprise Workspace",
-            "slug": "enterprise",
-            "tier": "enterprise",
-            "sso_enabled": True,
-        },
-    }
+    """Retrieve the caller's own organization workspace profile (tenant-scoped)."""
+    org_id = actor.get("org_id") or 1
+    org = get_organization_by_id(org_id)
+    if not org:
+        return {
+            "is_tenant": False,
+            "organization": None,
+            "message": "User belongs to default community workspace.",
+        }
+    return {"is_tenant": True, "organization": org}
 
 
 @router.get("/audit-logs")
 async def get_compliance_audit_logs(
     limit: int = Query(50, ge=1, le=200),
+    actor: Dict[str, Any] = Depends(require_permission(Permission.EXPORT_ESG)),
 ):
-    """Retrieve immutable SOC 2 Type II audit logs for compliance audits."""
-    logs = list_audit_logs(org_id=1, limit=limit)
+    """Retrieve immutable SOC 2 Type II audit logs for the caller's own tenant."""
+    org_id = actor.get("org_id") or 1
+    logs = list_audit_logs(org_id=org_id, limit=limit)
     return {
         "success": True,
         "count": len(logs),
@@ -101,10 +116,12 @@ async def get_compliance_audit_logs(
 @router.post("/sso/configure")
 async def configure_tenant_sso(
     req: SSOConfigRequest,
+    actor: Dict[str, Any] = Depends(require_permission(Permission.MANAGE_ORG)),
 ):
-    """Register enterprise SAML 2.0 / OIDC IdP."""
+    """Register enterprise SAML 2.0 / OIDC IdP for the caller's tenant."""
+    org_id = actor.get("org_id") or 1
     cfg = governance_manager.configure_sso(
-        org_id=1,
+        org_id=org_id,
         idp_entity_id=req.idp_entity_id,
         sso_url=req.sso_url,
         certificate_x509=req.certificate_x509,
@@ -116,9 +133,11 @@ async def configure_tenant_sso(
 
 
 @router.get("/compliance/esg-disclosure")
-async def export_esg_disclosure_package():
-    """Export signed CSRD/SEC ESG disclosure bundle."""
-    org = {"name": "Enterprise Workspace", "slug": "enterprise"}
+async def export_esg_disclosure_package(
+    actor: Dict[str, Any] = Depends(require_permission(Permission.EXPORT_ESG)),
+):
+    """Export signed CSRD/SEC ESG disclosure bundle for the caller's tenant."""
+    org = {"name": "Enterprise Workspace", "slug": "enterprise", "id": actor.get("org_id") or 1}
     audits = get_latest_repositories(limit=25)
     report = ESGComplianceExporter.generate_disclosure_package(organization=org, audits=audits)
     return {
@@ -133,6 +152,7 @@ async def get_calibrated_energy_model(
     duration: float = Query(1.5, ge=0.01),
     cpu_percent: float = Query(45.0, ge=0.0, le=100.0),
     cloud_profile: str = Query("c6g.xlarge"),
+    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Derive defensible energy metrics via SPECpower micro-benchmarks."""
     res = CalibratedEnergyModel.calculate_energy(
@@ -150,6 +170,7 @@ async def monitor_k8s_pod_energy(
     cpu_millicores: float = Body(250.0, embed=True),
     memory_bytes: int = Body(268435456, embed=True),  # 256MB
     cloud_instance: str = Body("c6g.xlarge", embed=True),
+    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Monitor real-time Kubernetes Pod energy, carbon, and annual electricity cost."""
     from app.kubernetes_profiler import kubernetes_monitor
@@ -170,6 +191,7 @@ async def evaluate_k8s_deployment_health(
     deployment_name: str = Body(..., embed=True),
     observed_watts: float = Body(..., embed=True),
     spike_threshold_pct: float = Body(35.0, embed=True),
+    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Evaluate microservice energy regression and provide automatic rollback verdict."""
     from app.kubernetes_profiler import kubernetes_monitor
@@ -186,6 +208,7 @@ async def evaluate_k8s_deployment_health(
 async def lint_code_for_energy(
     source_code: str = Body(..., embed=True),
     language: str = Body("python", embed=True),
+    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Real-time IDE Language Server Protocol (LSP) energy diagnostics."""
     from app.energy_linter import EnergyLinter
@@ -197,6 +220,7 @@ async def lint_code_for_energy(
 async def get_team_energy_debt(
     team_id: str = Query("platform-engineering"),
     team_name: str = Query("Platform Engineering"),
+    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Calculate accumulated Energy Debt ($ USD & kg CO2e) with interest rate tracking."""
     from app.energy_debt import energy_debt_tracker
@@ -218,6 +242,7 @@ async def predict_deploy_energy_impact(
     pr_identifier: str = Body("PR-1024", embed=True),
     base_score: float = Body(95.0, embed=True),
     incoming_score: float = Body(82.0, embed=True),
+    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Pre-production energy and cloud financial impact prediction for CI/CD merge gates."""
     from app.energy_predictor import GreenDeployPredictor
@@ -237,6 +262,7 @@ async def get_cloud_cost_breakdown(
     region: str = Query("us-west-2"),
     service_type: str = Query("ec2_c6g_xlarge"),
     energy_joules: float = Query(66600.0),
+    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Convert raw energy consumption into direct AWS, GCP, and Azure dollar costs."""
     from app.cloud_cost_mapper import CloudCostMapper
@@ -254,8 +280,10 @@ async def set_team_budget_endpoint(
     team_id: str = Body(..., embed=True),
     monthly_budget_kg: float = Body(500.0, embed=True),
     org_id: int = Body(1, embed=True),
+    actor: Dict[str, Any] = Depends(require_permission(Permission.CONFIGURE_BUDGET)),
 ):
     """Allocate monthly carbon budget cap (kg CO2e) for an engineering team."""
+    _enforce_tenant(actor, org_id)
     from app.database import set_team_carbon_budget
     res = set_team_carbon_budget(org_id=org_id, team_id=team_id, monthly_budget_kg=monthly_budget_kg)
     return {"success": True, "budget": res}
@@ -265,6 +293,7 @@ async def set_team_budget_endpoint(
 async def get_team_budget_endpoint(
     team_id: str,
     org_id: int = Query(1),
+    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Retrieve active carbon budget allocation and consumption status."""
     from app.database import get_team_carbon_budget
@@ -279,8 +308,10 @@ async def record_budget_consumption_endpoint(
     team_id: str = Body(..., embed=True),
     consumed_kg: float = Body(..., embed=True),
     org_id: int = Body(1, embed=True),
+    actor: Dict[str, Any] = Depends(require_permission(Permission.CONFIGURE_BUDGET)),
 ):
     """Record carbon emissions against a team's monthly budget."""
+    _enforce_tenant(actor, org_id)
     from app.database import record_carbon_consumption
     res = record_carbon_consumption(org_id=org_id, team_id=team_id, consumed_kg=consumed_kg)
     return {"success": True, "consumption": res}

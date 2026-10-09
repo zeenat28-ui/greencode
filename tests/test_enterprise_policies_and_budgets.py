@@ -8,6 +8,16 @@ from app.database import init_db
 from app.services.policy_service import PolicyService
 from app.budgets import CarbonBudgetManager
 from app.github_integration.pr_comment import format_pr_sticky_comment, GATE_MARKER
+from app.auth.jwt import create_tokens
+from app.auth.roles import Role
+
+
+def _admin_headers():
+    tokens = create_tokens(user_id=1, org_id=1, role=Role.SUPERADMIN.value)
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+ADMIN = _admin_headers()
 
 
 @pytest.fixture(autouse=True)
@@ -113,12 +123,12 @@ def test_policies_rest_endpoints(client):
         "name": "Strict Zero-Regression Policy",
         "max_regression_pct": 10.0,
         "warning_threshold_pct": 75.0,
-    })
+    }, headers=ADMIN)
     assert res_save.status_code == 200
     assert res_save.json()["max_regression_pct"] == 10.0
 
     # 2. Get policy
-    res_get = client.get("/api/policies/1")
+    res_get = client.get("/api/policies/1", headers=ADMIN)
     assert res_get.status_code == 200
     assert res_get.json()["max_regression_pct"] == 10.0
 
@@ -129,7 +139,7 @@ def test_policies_rest_endpoints(client):
         "baseline_energy": 1.0,  # 25% > 10% limit
         "team_budget_consumed": 100.0,
         "team_budget_total": 500.0,
-    })
+    }, headers=ADMIN)
     assert res_eval.status_code == 200
     assert res_eval.json()["decision"] == "BLOCK"
 

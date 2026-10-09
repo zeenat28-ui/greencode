@@ -1,12 +1,27 @@
 """Enterprise Energy Policy REST API Router."""
 
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.services.policy_service import PolicyService
+from app.auth.dependencies import get_current_actor, get_tenant_actor, require_permission
+from app.auth.roles import Permission, Role, normalize_role
 
 router = APIRouter(prefix="/api/policies", tags=["Energy Policies & Guardrails"])
+
+
+def _enforce_tenant(actor: Dict[str, Any], org_id: int) -> None:
+    """Refuse cross-tenant access unless the caller is a platform superadmin."""
+    role = normalize_role(actor.get("role"))
+    if role != Role.SUPERADMIN and actor.get("org_id") != org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Tenant isolation violation: token belongs to organization "
+                f"{actor.get('org_id')} but requested organization {org_id}"
+            ),
+        )
 
 
 class PolicySaveRequest(BaseModel):
@@ -35,15 +50,23 @@ class EvaluateRulesRequest(BaseModel):
 
 
 @router.get("/{org_id}")
-async def get_enterprise_policy(org_id: int, project_id: Optional[int] = Query(None)):
+async def get_enterprise_policy(
+    org_id: int,
+    project_id: Optional[int] = Query(None),
+    actor: Dict[str, Any] = Depends(get_tenant_actor),
+):
     """Fetch active energy guardrail policies for an enterprise organization or project."""
     return PolicyService.get_policy(org_id=org_id, project_id=project_id)
 
 
 @router.post("", status_code=status.HTTP_200_OK)
 @router.post("/", status_code=status.HTTP_200_OK)
-async def save_enterprise_policy(payload: PolicySaveRequest):
+async def save_enterprise_policy(
+    payload: PolicySaveRequest,
+    actor: Dict[str, Any] = Depends(require_permission(Permission.OVERRIDE_POLICIES)),
+):
     """Save or update organizational energy policies and threshold rules."""
+    _enforce_tenant(actor, payload.org_id)
     return PolicyService.save_policy(
         org_id=payload.org_id,
         policy_data=payload.model_dump(),
@@ -52,8 +75,13 @@ async def save_enterprise_policy(payload: PolicySaveRequest):
 
 
 @router.post("/org/{org_id}", status_code=status.HTTP_200_OK)
-async def save_enterprise_policy_by_org(org_id: int, payload: PolicySaveRequest):
+async def save_enterprise_policy_by_org(
+    org_id: int,
+    payload: PolicySaveRequest,
+    actor: Dict[str, Any] = Depends(require_permission(Permission.OVERRIDE_POLICIES)),
+):
     """Save or update organizational energy policies for specific org."""
+    _enforce_tenant(actor, org_id)
     return PolicyService.save_policy(
         org_id=org_id,
         policy_data=payload.model_dump(),
@@ -62,8 +90,12 @@ async def save_enterprise_policy_by_org(org_id: int, payload: PolicySaveRequest)
 
 
 @router.post("/evaluate")
-async def evaluate_deployment_rules(payload: EvaluateRulesRequest):
+async def evaluate_deployment_rules(
+    payload: EvaluateRulesRequest,
+    actor: Dict[str, Any] = Depends(get_current_actor),
+):
     """Evaluate live candidate metrics against organizational energy rules to determine gate verdict."""
+    _enforce_tenant(actor, payload.org_id)
     return PolicyService.evaluate_deployment_rules(
         org_id=payload.org_id,
         current_energy=payload.current_energy,

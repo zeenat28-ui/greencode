@@ -5,6 +5,17 @@ from fastapi.testclient import TestClient
 
 from app.database import init_db
 from app.main import app
+from app.auth.jwt import create_tokens
+from app.auth.roles import Role
+
+
+def _admin_headers():
+    """Superadmin token (org 1): exercises secured endpoints, bypasses tenant checks."""
+    tokens = create_tokens(user_id=1, org_id=1, role=Role.SUPERADMIN.value)
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+ADMIN = _admin_headers()
 
 @pytest.fixture(autouse=True)
 def setup_database():
@@ -22,7 +33,7 @@ def test_tenants_modular_routes(client):
         "slug": "acme-mod-cloud",
         "tier": "enterprise",
         "sso_enabled": True,
-    })
+    }, headers=ADMIN)
     assert res.status_code == 201
     data = res.json()
     org_id = data["id"]
@@ -30,12 +41,12 @@ def test_tenants_modular_routes(client):
     assert data["slug"] == "acme-mod-cloud"
 
     # Fetch tenant
-    res_get = client.get(f"/api/tenants/orgs/{org_id}")
+    res_get = client.get(f"/api/tenants/orgs/{org_id}", headers=ADMIN)
     assert res_get.status_code == 200
     assert res_get.json()["name"] == "Acme Modular Cloud"
 
     # List tenants
-    res_list = client.get("/api/tenants/orgs")
+    res_list = client.get("/api/tenants/orgs", headers=ADMIN)
     assert res_list.status_code == 200
     assert len(res_list.json()) >= 1
 
@@ -68,7 +79,7 @@ def test_audit_modular_routes(client):
     res_scan = client.post("/api/audit/scan", json={
         "path": "app/core/config.py",
         "commit_sha": "testsha123",
-    })
+    }, headers=ADMIN)
     assert res_scan.status_code == 200
     data = res_scan.json()
     assert "green_score" in data
@@ -92,7 +103,7 @@ def test_energy_modular_routes(client):
 
 def test_policies_modular_routes(client):
     """Test /api/policies/{org_id} and evaluate endpoint."""
-    res_get = client.get("/api/policies/1")
+    res_get = client.get("/api/policies/1", headers=ADMIN)
     assert res_get.status_code == 200
     assert "max_regression_pct" in res_get.json()
 
@@ -102,7 +113,7 @@ def test_policies_modular_routes(client):
         "max_regression_pct": 10.0,
         "warning_threshold_pct": 65.0,
         "breach_threshold_pct": 100.0,
-    })
+    }, headers=ADMIN)
     assert res_save.status_code == 200
     assert res_save.json()["max_regression_pct"] == 10.0
 
@@ -113,7 +124,7 @@ def test_policies_modular_routes(client):
         "baseline_energy": 0.10,  # 100% regression
         "team_budget_consumed": 50.0,
         "team_budget_total": 500.0,
-    })
+    }, headers=ADMIN)
     assert res_eval.status_code == 200
     eval_data = res_eval.json()
     assert eval_data["decision"] == "BLOCK"
@@ -128,7 +139,7 @@ def test_kubernetes_modular_routes(client):
         "current_power_w": 350.0,
         "baseline_power_w": 200.0,
         "auto_trigger": True,
-    })
+    }, headers=ADMIN)
     assert res_k8s.status_code == 200
     data = res_k8s.json()
     assert data["spike_pct"] >= 35.0
@@ -182,18 +193,18 @@ def test_admin_modular_routes(client):
     assert res_health.status_code == 200
     assert res_health.json()["status"] == "HEALTHY"
 
-    res_settings = client.get("/api/admin/settings")
+    res_settings = client.get("/api/admin/settings", headers=ADMIN)
     assert res_settings.status_code == 200
     assert "enforce_policies" in res_settings.json()
 
-    res_patch = client.patch("/api/admin/settings", json={"enforce_policies": False})
+    res_patch = client.patch("/api/admin/settings", json={"enforce_policies": False}, headers=ADMIN)
     assert res_patch.status_code == 200
     assert res_patch.json()["enforce_policies"] is False
 
-    res_audit = client.get("/api/admin/audit-logs/1")
+    res_audit = client.get("/api/admin/audit-logs/1", headers=ADMIN)
     assert res_audit.status_code == 200
     assert isinstance(res_audit.json(), list)
 
-    res_verify = client.get("/api/admin/audit-logs/1/verify")
+    res_verify = client.get("/api/admin/audit-logs/1/verify", headers=ADMIN)
     assert res_verify.status_code == 200
     assert "valid" in res_verify.json()

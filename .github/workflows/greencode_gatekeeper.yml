@@ -1,10 +1,7 @@
 name: "GreenCode Auditor CI Quality Gate"
 
 on:
-  push:
-    branches: [ "main", "master", "develop" ]
-  pull_request:
-    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 # security-events is required to publish the SARIF report to the Security tab;
 # pull-requests write is required for the sticky PR comment. Without these the

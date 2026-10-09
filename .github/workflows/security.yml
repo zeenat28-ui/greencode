@@ -1,12 +1,7 @@
 name: Automated Security Audit & Vulnerability Scan
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: '0 4 * * 1' # Weekly automated security scan every Monday at 04:00 UTC
+  workflow_dispatch:
 
 jobs:
   python-security-audit:

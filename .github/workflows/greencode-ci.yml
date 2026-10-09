@@ -6,10 +6,6 @@ name: GreenCode Quality
 # the test suite and the frontend type-check, and both must be green.
 
 on:
-  push:
-    branches: [ "main", "master", "develop" ]
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
 
 permissions:

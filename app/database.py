@@ -263,12 +263,69 @@ Base = declarative_base()
 # ---------------------------------------------------------------------------
 # RELATIONAL MODELS
 # ---------------------------------------------------------------------------
+class Organization(Base):
+    """Enterprise Tenant / Organization workspace."""
+
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(100), unique=True, index=True, nullable=False)
+    tier = Column(String(50), default="free", nullable=False)  # free, pro, enterprise
+    sso_enabled = Column(Boolean, default=False, nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    users = relationship("User", back_populates="organization", lazy="selectin")
+    repositories = relationship("Repository", back_populates="organization", lazy="selectin")
+    audit_logs = relationship("AuditLog", back_populates="organization", lazy="selectin")
+
+
+class AuditLog(Base):
+    """Immutable Enterprise Compliance Audit Trail for SOC2 / ISO 14064."""
+
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    action = Column(String(100), nullable=False, index=True)  # e.g., "audit:run", "refactor:apply"
+    resource_type = Column(String(100), nullable=False)  # e.g., "repository", "violation"
+    resource_id = Column(String(255), nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    status = Column(String(50), default="SUCCESS")  # SUCCESS, DENIED, ERROR
+    details = Column(Text, nullable=True)  # JSON or structured context
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+    organization = relationship("Organization", back_populates="audit_logs")
+    user = relationship("User")
+
+
+class TenantQuota(Base):
+    """Enforces runtime API quotas and rate limits per tenant."""
+
+    __tablename__ = "tenant_quotas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), unique=True, nullable=False, index=True)
+    period_year_month = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    api_calls_count = Column(Integer, default=0, nullable=False)
+    max_monthly_calls = Column(Integer, default=1000, nullable=False)
+    last_reset_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
 class User(Base):
     """Registered platform user for GreenCode Developer Portal."""
 
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     username = Column(String(100), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
@@ -276,7 +333,7 @@ class User(Base):
     github_username = Column(String(100), nullable=True)
     github_token = Column(Text, nullable=True)
     avatar_url = Column(String(1024), nullable=True)
-    role = Column(String(50), default="developer")
+    role = Column(String(50), default="developer")  # admin, engineer, auditor, viewer
     is_verified = Column(Boolean, default=False, nullable=False)
     verification_token = Column(String(255), nullable=True, index=True)
     reset_token = Column(String(255), nullable=True, index=True)
@@ -288,6 +345,7 @@ class User(Base):
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
 
+    organization = relationship("Organization", back_populates="users")
     repositories = relationship(
         "Repository", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -299,6 +357,7 @@ class Repository(Base):
     __tablename__ = "repositories"
 
     id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
     path_or_url = Column(String(1024), nullable=False)
@@ -320,6 +379,7 @@ class Repository(Base):
     default_branch = Column(String(255), nullable=True)
     html_url = Column(String(1024), nullable=True)
 
+    organization = relationship("Organization", back_populates="repositories")
     user = relationship("User", back_populates="repositories")
     violations = relationship(
         "ScanViolation", back_populates="repository", cascade="all, delete-orphan", lazy="selectin"
@@ -481,6 +541,8 @@ def init_db(*, use_alembic: bool = True) -> None:
                 col_names = [r[1] for r in res]
                 if "user_id" not in col_names:
                     conn.execute(text("ALTER TABLE repositories ADD COLUMN user_id INTEGER REFERENCES users(id);"))
+                if "org_id" not in col_names:
+                    conn.execute(text("ALTER TABLE repositories ADD COLUMN org_id INTEGER REFERENCES organizations(id);"))
                 # GitHub provenance columns (additive migration, idempotent)
                 for new_col, col_ddl in _REPOSITORY_ADDITIVE_COLUMNS:
                     if new_col not in col_names:
@@ -488,6 +550,8 @@ def init_db(*, use_alembic: bool = True) -> None:
                 # Migrate verification and reset columns to users if not yet present
                 u_res = conn.execute(text("PRAGMA table_info(users);")).fetchall()
                 u_cols = [r[1] for r in u_res]
+                if "org_id" not in u_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN org_id INTEGER REFERENCES organizations(id);"))
                 if "is_verified" not in u_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 0;"))
                 if "verification_token" not in u_cols:
@@ -541,8 +605,12 @@ async def init_async_db() -> None:
                 col_names = [r[1] for r in res.fetchall()]
                 if "user_id" not in col_names:
                     await conn.execute(text("ALTER TABLE repositories ADD COLUMN user_id INTEGER REFERENCES users(id);"))
+                if "org_id" not in col_names:
+                    await conn.execute(text("ALTER TABLE repositories ADD COLUMN org_id INTEGER REFERENCES organizations(id);"))
                 u_res = await conn.execute(text("PRAGMA table_info(users);"))
                 u_cols = [r[1] for r in u_res.fetchall()]
+                if "org_id" not in u_cols:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN org_id INTEGER REFERENCES organizations(id);"))
                 if "is_verified" not in u_cols:
                     await conn.execute(text("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 0;"))
                 if "verification_token" not in u_cols:
@@ -1065,6 +1133,7 @@ def user_to_dict(user: Optional[User], include_sensitive: bool = False) -> Optio
 
     return {
         "id": user.id,
+        "org_id": getattr(user, "org_id", None),
         "email": user.email,
         "username": user.username,
         "full_name": user.full_name or user.username,
@@ -1081,6 +1150,134 @@ def user_to_dict(user: Optional[User], include_sensitive: bool = False) -> Optio
     }
 
 
+def create_organization(
+    name: str,
+    slug: Optional[str] = None,
+    tier: str = "free",
+) -> Dict[str, Any]:
+    """Create a new tenant organization."""
+    init_db()
+    db = SessionLocal()
+    try:
+        clean_name = name.strip()
+        clean_slug = (slug or clean_name.lower().replace(" ", "-")).strip()
+        clean_slug = re.sub(r"[^a-z0-9-]", "", clean_slug)
+        existing = db.query(Organization).filter(Organization.slug == clean_slug).first()
+        if existing:
+            return {
+                "id": existing.id,
+                "name": existing.name,
+                "slug": existing.slug,
+                "tier": existing.tier,
+                "created_at": existing.created_at.isoformat() if existing.created_at else None,
+            }
+        org = Organization(
+            name=clean_name,
+            slug=clean_slug,
+            tier=tier,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(org)
+        db.commit()
+        db.refresh(org)
+        return {
+            "id": org.id,
+            "name": org.name,
+            "slug": org.slug,
+            "tier": org.tier,
+            "created_at": org.created_at.isoformat() if org.created_at else None,
+        }
+    finally:
+        db.close()
+
+
+def get_organization_by_id(org_id: int) -> Optional[Dict[str, Any]]:
+    """Get organization by ID."""
+    init_db()
+    db = SessionLocal()
+    try:
+        org = db.query(Organization).filter(Organization.id == org_id).first()
+        if not org:
+            return None
+        return {
+            "id": org.id,
+            "name": org.name,
+            "slug": org.slug,
+            "tier": org.tier,
+            "sso_enabled": org.sso_enabled,
+            "created_at": org.created_at.isoformat() if org.created_at else None,
+        }
+    finally:
+        db.close()
+
+
+def record_audit_log(
+    action: str,
+    resource_type: str,
+    resource_id: Optional[str] = None,
+    org_id: Optional[int] = None,
+    user_id: Optional[int] = None,
+    ip_address: Optional[str] = None,
+    status: str = "SUCCESS",
+    details: Optional[str] = None,
+) -> int:
+    """Record immutable compliance audit log event."""
+    init_db()
+    db = SessionLocal()
+    try:
+        entry = AuditLog(
+            action=action,
+            resource_type=resource_type,
+            resource_id=str(resource_id) if resource_id else None,
+            org_id=org_id,
+            user_id=user_id,
+            ip_address=ip_address,
+            status=status,
+            details=details,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+        return entry.id
+    except Exception:
+        db.rollback()
+        return -1
+    finally:
+        db.close()
+
+
+def list_audit_logs(
+    org_id: Optional[int] = None,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """List compliance audit trail entries."""
+    init_db()
+    db = SessionLocal()
+    try:
+        query = db.query(AuditLog)
+        if org_id is not None:
+            query = query.filter(AuditLog.org_id == org_id)
+        entries = query.order_by(desc(AuditLog.created_at)).limit(limit).all()
+        return [
+            {
+                "id": e.id,
+                "org_id": e.org_id,
+                "user_id": e.user_id,
+                "action": e.action,
+                "resource_type": e.resource_type,
+                "resource_id": e.resource_id,
+                "ip_address": e.ip_address,
+                "status": e.status,
+                "details": e.details,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in entries
+        ]
+    finally:
+        db.close()
+
+
 def create_user(
     email: str,
     username: str,
@@ -1091,6 +1288,7 @@ def create_user(
     avatar_url: Optional[str] = None,
     role: str = "developer",
     auto_verify: bool = False,
+    org_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Create a new user account with hashed password and verification token."""
     init_db()
@@ -1118,6 +1316,7 @@ def create_user(
         v_token = None if auto_verify else secrets.token_urlsafe(32)
         encrypted_github_token = encrypt_secret(github_token.strip()) if github_token else None
         user = User(
+            org_id=org_id,
             email=clean_email,
             username=clean_username,
             password_hash=hashed_pwd,

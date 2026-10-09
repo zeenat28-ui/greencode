@@ -36,14 +36,18 @@ except ImportError:
 
 from app.database import (
     close_async_db,
+    create_organization,
     create_refresh_token,
     get_cumulative_carbon_savings,
     get_latest_repositories,
     get_or_create_github_user,
+    get_organization_by_id,
     get_repository_details,
     get_user_by_id,
     get_user_raw_github_token,
     init_db,
+    list_audit_logs,
+    record_audit_log,
     revoke_refresh_tokens,
     rotate_refresh_token,
     save_profile_metric,
@@ -500,6 +504,42 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+def require_role(allowed_roles: List[str]):
+    """Enterprise RBAC role gating dependency."""
+    async def _role_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+        user_role = current_user.get("role", "developer")
+        if user_role not in allowed_roles and user_role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Action forbidden. Required role: {allowed_roles}, your role: {user_role}",
+            )
+        return current_user
+    return _role_checker
+
+
+def require_permission(permission: str):
+    """Enterprise fine-grained capability checker."""
+    # Mapping permissions to roles
+    ROLE_PERMISSIONS: Dict[str, List[str]] = {
+        "admin": ["*"],
+        "engineer": ["audit:run", "audit:read", "refactor:run", "refactor:apply"],
+        "developer": ["audit:run", "audit:read", "refactor:run", "refactor:apply"],
+        "auditor": ["audit:read", "reports:export", "compliance:read", "audit_log:read"],
+        "viewer": ["audit:read"],
+    }
+
+    async def _permission_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+        user_role = current_user.get("role", "developer")
+        allowed = ROLE_PERMISSIONS.get(user_role, [])
+        if "*" not in allowed and permission not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: '{permission}' is not permitted for role '{user_role}'",
+            )
+        return current_user
+    return _permission_checker
 
 
 profiler_engine = DynamicExecutionProfiler()
@@ -1757,6 +1797,65 @@ def prometheus_metrics_endpoint():
 # a 405). This catch-all is registered after every real API route, so only
 # genuinely unmatched API paths reach it, and it is registered before the SPA
 # catch-all so an unmatched /api path 404s regardless of whether the frontend
+# ---------------------------------------------------------------------------
+# ENTERPRISE MULTI-TENANCY & AUDIT LOG APIS
+# ---------------------------------------------------------------------------
+class CreateOrgRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    slug: Optional[str] = Field(None, min_length=2, max_length=100)
+    tier: str = Field("free", pattern="^(free|pro|enterprise)$")
+
+
+@app.post("/api/enterprise/organizations", tags=["Enterprise Multi-Tenancy"])
+async def api_create_organization(
+    req: CreateOrgRequest,
+    current_user: Dict[str, Any] = Depends(require_role(["admin"])),
+):
+    """Create an enterprise tenant organization (Admin only)."""
+    org = create_organization(name=req.name, slug=req.slug, tier=req.tier)
+    record_audit_log(
+        action="organization:create",
+        resource_type="organization",
+        resource_id=str(org.get("id")),
+        org_id=org.get("id"),
+        user_id=current_user.get("id"),
+        details=f"Created tenant {org.get('slug')} with tier {req.tier}",
+    )
+    return {"success": True, "organization": org}
+
+
+@app.get("/api/enterprise/organizations/me", tags=["Enterprise Multi-Tenancy"])
+async def api_get_my_organization(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve current user's enterprise tenant organization details."""
+    org_id = current_user.get("org_id")
+    if not org_id:
+        return {
+            "is_tenant": False,
+            "organization": None,
+            "message": "User belongs to default community workspace.",
+        }
+    org = get_organization_by_id(org_id)
+    return {"is_tenant": True, "organization": org}
+
+
+@app.get("/api/enterprise/audit-logs", tags=["Enterprise Compliance"])
+async def api_list_audit_logs(
+    limit: int = Query(50, ge=1, le=200),
+    current_user: Dict[str, Any] = Depends(require_permission("audit_log:read")),
+):
+    """Retrieve immutable SOC 2 / ISO 14064 compliance audit log trail."""
+    org_id = current_user.get("org_id")
+    logs = list_audit_logs(org_id=org_id, limit=limit)
+    return {
+        "success": True,
+        "count": len(logs),
+        "audit_logs": logs,
+        "compliance_standard": "SOC 2 Type II / ISO 14064-1",
+    }
+
+
 # has been built. Keeps "removed endpoint" behaviour identical in dev and prod.
 @app.api_route(
     "/api/{full_path:path}",

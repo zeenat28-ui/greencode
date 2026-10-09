@@ -1146,6 +1146,32 @@ def audit_source_code(source_code: str, language: str = "python", file_path: str
                 if key not in seen_v_keys:
                     seen_v_keys.add(key)
                     all_violations.append(pv)
+
+            # Deep AI/ML Workload Energy Profiling (PyTorch, TF, HuggingFace, ONNX)
+            try:
+                from app.ml_carbon import MLCarbonAnalyzer
+                ml_analyzer = MLCarbonAnalyzer()
+                ml_res = ml_analyzer.analyze_code(source_code, file_path=file_path)
+                for mv in ml_res.get("violations", []):
+                    m_key = (mv["line_number"], mv["violation_type"])
+                    if m_key not in seen_v_keys:
+                        seen_v_keys.add(m_key)
+                        all_violations.append({
+                            "file_path": file_path,
+                            "line_number": mv["line_number"],
+                            "end_line_number": mv.get("end_line_number", mv["line_number"]),
+                            "violation_type": mv["violation_type"],
+                            "title": f"AI/ML Optimization: {mv['violation_type']}",
+                            "severity": mv.get("severity", "HIGH"),
+                            "deduction": mv.get("deduction", 15.0),
+                            "gsf_pattern": "GSF-AI-01-ACCELERATOR-EFFICIENCY",
+                            "description": mv.get("description", ""),
+                            "suggested_fix": mv.get("remediation", ""),
+                            "snippet": mv.get("snippet", ""),
+                            "context_code": mv.get("snippet", ""),
+                        })
+            except Exception:
+                pass
         except SyntaxError:
             pass
 

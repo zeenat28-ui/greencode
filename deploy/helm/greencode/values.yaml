@@ -1,0 +1,76 @@
+replicaCount: 3
+
+image:
+  repository: ghcr.io/zeenat28-ui/greencode
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+serviceAccount:
+  create: true
+  name: "greencode-sa"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+mcpService:
+  type: ClusterIP
+  port: 8765
+  targetPort: 8765
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: greencode.enterprise.internal
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            port: 80
+        - path: /mcp
+          pathType: Prefix
+          backend:
+            port: 8765
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+env:
+  ENVIRONMENT: "production"
+  DATABASE_URL: "postgresql+asyncpg://greencode_app:vault_secret@postgres-cluster.database.svc.cluster.local:5432/greencode_prod"
+  REDIS_URL: "redis://:vault_secret@redis-cluster.cache.svc.cluster.local:6379/0"
+  DB_POOL_SIZE: "30"
+  DB_MAX_OVERFLOW: "20"
+  RATE_LIMIT_STORAGE: "redis"
+  ENTERPRISE_MULTI_TENANCY: "true"
+  SLA_ENFORCE_MODE: "active"

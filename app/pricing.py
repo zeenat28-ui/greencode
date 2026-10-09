@@ -91,3 +91,28 @@ class PricingManager:
         tier = cls.get_tier(tier_name)
         return getattr(tier, feature_key, False)
 
+    @classmethod
+    def check_and_consume_quota(
+        cls,
+        tier_name: str,
+        current_calls_count: int,
+    ) -> Dict[str, Any]:
+        """Validate and consume API quota for current billing period."""
+        tier = cls.get_tier(tier_name)
+        max_calls = tier.max_monthly_api_calls
+        if current_calls_count >= max_calls:
+            return {
+                "allowed": False,
+                "tier": tier.name,
+                "current_usage": current_calls_count,
+                "limit": max_calls,
+                "error": f"Monthly quota exceeded for {tier.name} tier ({current_calls_count}/{max_calls}). Upgrade required.",
+            }
+        return {
+            "allowed": True,
+            "tier": tier.name,
+            "current_usage": current_calls_count + 1,
+            "limit": max_calls,
+            "remaining": max_calls - (current_calls_count + 1),
+        }
+

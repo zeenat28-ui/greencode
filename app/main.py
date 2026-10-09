@@ -326,6 +326,7 @@ from app.routers.energy_deployment import router as energy_deployment_router
 from app.routers.budgets import router as budgets_router
 from app.routers.pr_gate import router as pr_gate_router
 from app.routers.reports import router as reports_router
+from app.routers.policies import router as policies_router
 
 app.include_router(enterprise_governance_router)
 app.include_router(orgs_router)
@@ -333,6 +334,7 @@ app.include_router(energy_deployment_router)
 app.include_router(budgets_router)
 app.include_router(pr_gate_router)
 app.include_router(reports_router)
+app.include_router(policies_router)
 
 # A published literal is worse than no check at all: it invites operators to
 # believe the deployment is protected while every access token in the fleet is

@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard, GitBranch, AlertCircle,
   Gauge, History, Settings, ShieldCheck, Leaf,
-  Loader2, LogOut, Github, ChevronDown, Cpu
+  Loader2, LogOut, Github, ChevronDown, Cpu,
+  Sliders, DollarSign, Activity, FileText
 } from 'lucide-react';
 import { gridService } from '../../services/greencodeApi';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
@@ -11,11 +12,13 @@ import { useAuth } from '../../context/AuthContext';
 
 const NAV_ITEMS = [
   { name: 'Dashboard',       path: '/dashboard',     icon: LayoutDashboard },
+  { name: 'Overview',        path: '/overview',      icon: Activity },
+  { name: 'Budgets',         path: '/budgets',       icon: DollarSign },
+  { name: 'Policies',        path: '/policies',      icon: Sliders },
+  { name: 'Deployments',     path: '/deployments',   icon: Gauge },
+  { name: 'ESG Reports',     path: '/reports',       icon: FileText },
   { name: 'Scan Code',       path: '/scan',          icon: GitBranch },
   { name: 'Code Issues',     path: '/issues',        icon: AlertCircle },
-  { name: 'Cloud & AI',      path: '/cloud-carbon',  icon: Cpu },
-  { name: 'Profiler',        path: '/profiler',      icon: Gauge },
-  { name: 'Audit History',   path: '/history',       icon: History },
   { name: 'Settings',        path: '/settings',      icon: Settings },
 ];
 

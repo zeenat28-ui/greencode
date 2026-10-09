@@ -8,6 +8,11 @@ import CloudCarbon from './pages/CloudCarbon';
 import History from './pages/History';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
+import Overview from './pages/Overview';
+import Budgets from './pages/Budgets';
+import Policies from './pages/Policies';
+import Reports from './pages/Reports';
+import Deployments from './pages/Deployments';
 import ProtectedRoute from './components/layouts/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
 
@@ -26,6 +31,11 @@ function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/overview" element={<Overview />} />
+          <Route path="/budgets" element={<Budgets />} />
+          <Route path="/policies" element={<Policies />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/deployments" element={<Deployments />} />
           <Route path="/scan" element={<ScanRepository />} />
           <Route path="/issues" element={<Issues />} />
           <Route path="/cloud-carbon" element={<CloudCarbon />} />

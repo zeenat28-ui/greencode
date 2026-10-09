@@ -413,9 +413,40 @@ class EnergyDebtLedger(Base):
     weekly_interest_usd = Column(Float, default=0.0, nullable=False)
     debt_velocity_trend = Column(String(50), default="STABLE", nullable=False)
     details_json = Column(Text, nullable=True)
-    last_updated_at = Column(
+class EnergyPolicy(Base):
+    """Declarative energy, carbon budget, and automated deployment gate rules."""
+
+    __tablename__ = "energy_policies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
+    name = Column(String(255), default="Default Energy Policy", nullable=False)
+
+    # Deployment regression limits
+    max_regression_pct = Column(Float, default=25.0, nullable=False)
+    max_energy_per_run_joules = Column(Float, default=1.0, nullable=False)
+    max_sci_score = Column(Float, default=80.0, nullable=False)
+
+    # Multi-tier alert thresholds
+    warning_threshold_pct = Column(Float, default=70.0, nullable=False)
+    critical_threshold_pct = Column(Float, default=90.0, nullable=False)
+    breach_threshold_pct = Column(Float, default=100.0, nullable=False)
+
+    # Automated enforcement flags
+    auto_block_deploy = Column(Boolean, default=True, nullable=False)
+    auto_rollback_k8s = Column(Boolean, default=True, nullable=False)
+    dirty_grid_threshold_gco2e = Column(Float, default=450.0, nullable=False)
+
+    created_at = Column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
+    updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    organization = relationship("Organization")
 
 
 class User(Base):

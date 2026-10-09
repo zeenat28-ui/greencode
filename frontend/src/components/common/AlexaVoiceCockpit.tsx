@@ -95,7 +95,7 @@ export default function AlexaVoiceCockpit() {
     } else if (q.includes('optimize') || q.includes('bedrock') || q.includes('fix') || q.includes('refactor') || q.includes('pytorch') || q.includes('loop')) {
       resp = 'Amazon Bedrock Claude 3.5 Sonnet analyzed the AST nodes and replaced inefficient quadratic loops with vectorized operations, reducing energy draw by 58%.';
     } else {
-      resp = `Processed query: "${rawQuery}". GreenCode verified energy efficiency via Amazon Bedrock and AWS Grid Telemetry according to Green Software Foundation standards.`;
+      resp = `Sample response for: "${rawQuery}". Through Alexa+, this query is routed to the live GreenCode MCP server (/mcp), which runs the real Bedrock and AWS Grid Telemetry tools.`;
     }
 
     setActiveSpeech(resp);
@@ -147,7 +147,7 @@ export default function AlexaVoiceCockpit() {
                 Amazon Alexa+ &amp; AWS Bedrock Voice Cockpit
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#00CAFF]/20 text-[#00CAFF] border border-[#00CAFF]/30">
-                Official Voice MCP Agent
+                Voice MCP Agent &middot; Interactive Preview
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF9900]/20 text-[#FF9900] border border-[#FF9900]/30 font-mono">
                 RFC 9728 Compliant
@@ -164,9 +164,12 @@ export default function AlexaVoiceCockpit() {
               AWS Tech Architecture
             </button>
             <span className="text-slate-600">|</span>
-            <span className="flex items-center gap-1.5 font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-emerald-300">MCP Transport /mcp Live</span>
+            <span
+              className="flex items-center gap-1.5 font-medium"
+              title="This in-browser cockpit speaks pre-authored sample responses; the deployed MCP server is reachable at /mcp"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-amber-300">In-Browser Demo &middot; Live MCP at /mcp</span>
             </span>
           </div>
         </div>
@@ -181,7 +184,9 @@ export default function AlexaVoiceCockpit() {
                 </span>
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Interact with GreenCode using your voice or presets. Alexa invokes backend MCP tools and speaks the answer aloud:
+                Interact with GreenCode using your voice or presets. This preview speaks pre-authored
+                sample responses in the browser; when asked through Alexa+, the same questions hit the
+                live MCP server at <code className="font-mono text-[10px]">/mcp</code>:
               </p>
             </div>
             

@@ -68,6 +68,9 @@ export default function GitHubBotPreviewModal({
                 <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30 font-mono">
                   Dependabot for Energy
                 </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/40 font-bold">
+                  Interactive Simulation
+                </span>
               </h3>
               <p className="text-[11px] text-slate-400">
                 Zero-friction developer adoption: blocks carbon regressions and auto-suggests PR patches
@@ -152,7 +155,7 @@ export default function GitHubBotPreviewModal({
                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-medium">bot</span>
                 <span className="text-xs text-slate-400">&middot; just now</span>
               </div>
-              <span className="text-[11px] text-slate-500 font-mono">Amazon Bedrock Powered</span>
+              <span className="text-[11px] text-slate-500 font-mono">Amazon Bedrock (sample output)</span>
             </div>
 
             {/* Comment Body */}
@@ -161,10 +164,10 @@ export default function GitHubBotPreviewModal({
                 <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-900 space-y-1">
                   <div className="font-bold flex items-center gap-1.5">
                     <CheckCircle2 size={14} className="text-emerald-600" />
-                    Patch Successfully Applied to Branch
+                    Simulation: Patch Applied to Branch
                   </div>
                   <p className="text-[11px] text-emerald-800">
-                    Commit <code className="bg-emerald-100/60 px-1 rounded font-mono">ec0-89a1f2</code> merged into PR. Algorithmic complexity reduced from O(N²) to O(1). Estimated savings: <strong>+$410 / month</strong> in AWS EC2 compute cost.
+                    Simulated commit <code className="bg-emerald-100/60 px-1 rounded font-mono">ec0-89a1f2</code> (no repository was modified &mdash; real PRs are opened via <code className="font-mono">/github/pull-request</code>). Algorithmic complexity reduced from O(N²) to O(1). Estimated savings: <strong>+$410 / month</strong> in AWS EC2 compute cost.
                   </p>
                 </div>
               ) : (
@@ -199,7 +202,7 @@ export default function GitHubBotPreviewModal({
                       className="btn-primary text-xs px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 flex items-center gap-1.5 w-full sm:w-auto justify-center"
                     >
                       <Sparkles size={12} />
-                      {isPatching ? 'Committing Patch...' : 'Commit 1-Click Optimization Patch'}
+                      {isPatching ? 'Simulating Patch...' : 'Simulate 1-Click Patch'}
                     </button>
                   </div>
                 </>

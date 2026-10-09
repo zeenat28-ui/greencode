@@ -33,7 +33,7 @@ export default function EsgAuditModal({
     month: 'long',
     day: 'numeric',
   });
-  const auditId = `GC-ESG-${Math.abs(scanData.repo_path?.length || 1) * 3127}-${new Date().getFullYear()}`;
+  const auditId = `GC-ESG-${String(scanData.total_files || 0).padStart(4, '0')}-${score}-${new Date().getFullYear()}`;
 
   // Annual projection for 10 EC2 instances running 24/7
   const annualKwhSaved = ((violations * 1.8 * 8760) / 1000);
@@ -84,7 +84,7 @@ export default function EsgAuditModal({
         <div className="bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-300">
             <FileText size={15} className="text-olive-400" />
-            Official ESG Compliance Audit Certificate
+            ESG &amp; SCI Audit Report &mdash; Modeled Projections
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -120,7 +120,7 @@ export default function EsgAuditModal({
                 GreenCode Automated ESG &amp; SCI Audit
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Green Software Foundation (GSF SCI v1.0) &middot; ISO 14064 Scope 2/3 Telemetry
+                Green Software Foundation (GSF SCI v1.0) methodology &middot; ISO 14064-1-aligned Scope 2/3 estimation
               </p>
             </div>
             <div className="text-right sm:text-right font-mono text-xs text-slate-500">
@@ -128,7 +128,7 @@ export default function EsgAuditModal({
               <div>Date: <span className="font-semibold text-slate-800">{auditDate}</span></div>
               <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-olive-50 text-olive-800 border border-olive-200">
                 <ShieldCheck size={12} />
-                GSF Certified Baseline
+                GSF SCI-Aligned Baseline
               </div>
             </div>
           </div>
@@ -243,14 +243,23 @@ export default function EsgAuditModal({
             </div>
           </div>
 
-          {/* Official Sign-off & Verification Footer */}
+          {/* Projection methodology disclosure */}
+          <p className="text-[10px] leading-relaxed text-slate-500">
+            <strong className="text-slate-600">About these projections:</strong> annual savings are
+            modeled estimates derived from the detected violation count (&times; 1.8 W continuous
+            draw &times; 8,760 h) and a published grid-intensity rate &mdash; not metered
+            measurements. Per-scan energy and carbon figures above come from the actual
+            RAPL-instrumented scan of this repository.
+          </p>
+
+          {/* Verification Sign-off Footer */}
           <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500">
             <div className="flex items-center gap-2">
               <Award size={16} className="text-olive-700" />
-              <span>Verified with Amazon Bedrock AST Analysis &amp; RAPL Sandbox Execution</span>
+              <span>Scan metrics verified with Amazon Bedrock AST analysis &amp; RAPL sandbox execution; ROI figures are modeled estimates</span>
             </div>
             <div className="font-mono text-[11px] text-slate-400">
-              Deterministic Verification: ISO 14064-1 Compliant
+              Methodology aligned to ISO 14064-1 (not a certified audit)
             </div>
           </div>
         </div>

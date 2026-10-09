@@ -83,9 +83,15 @@ class TestPublicEndpoints(unittest.TestCase):
     def test_root_endpoint(self):
         resp = self.client.get("/")
         self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertEqual(data["service"], "GreenCode Auditor API")
-        self.assertEqual(data["status"], "online")
+        # "/" serves the built React SPA (HTML) when frontend/dist exists, and a
+        # JSON service banner otherwise. Both are valid, so only assert the JSON
+        # shape when the response actually is JSON.
+        if resp.headers.get("content-type", "").startswith("application/json"):
+            data = resp.json()
+            self.assertEqual(data["service"], "GreenCode Auditor API")
+            self.assertEqual(data["status"], "online")
+        else:
+            self.assertIn("text/html", resp.headers.get("content-type", ""))
 
     def test_health_endpoint(self):
         resp = self.client.get("/api/health")

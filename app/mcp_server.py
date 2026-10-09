@@ -525,6 +525,98 @@ def compare_regions(zones: List[str]) -> Dict[str, Any]:
     return _envelope("ok", data=result)
 @mcp.tool(
     description=(
+        "Explain any GreenCode green score back to the user with full "
+        "provenance: whether the energy was a hardware measurement or a model, "
+        "what data source produced the grid intensity, how fresh the reading is, "
+        "and the equivalent real-world emissions. This is the 'explain this score' "
+        "traceability view - it never hides measurement_is_hardware."
+    )
+)
+def explain_score(
+    green_score: float,
+    *,
+    measurement_method: str = "model",
+    measurement_is_hardware: Optional[bool] = None,
+    zone: str = "IE",
+    violation_count: int = 0,
+    severity_counts: Optional[Dict[str, int]] = None,
+    language: str = "python",
+    as_of: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return provenance for a green score the caller already has.
+
+    The score may come from audit_code, audit_repository or a pre-computed KPI.
+    This tool returns the trace that led to it: hardware-vs-model, the grid-source
+    tier, data freshness, the SCI breakdown and equivalents, plus the caveats that
+    must be stated before quoting the number.
+    """
+    if severity_counts is None:
+        severity_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+
+    if not (0.0 <= green_score <= 100.0):
+        return _envelope("error", data={"reason": "green_score must be between 0 and 100"})
+
+    if measurement_is_hardware is None:
+        measurement_is_hardware = energy_sensors.is_hardware_method(measurement_method)
+
+    region = _resolve_intensity(zone)
+    grid = region.get("carbon_intensity")
+    # Fall back to a numeric floor so the SCI arithmetic never breaks on a
+    # zero-source zone; the tier field still labels the source as unavailable.
+    grid = grid if grid is not None else 0.0
+
+    result = sci.compute_sci(
+        energy_joules=1500.0,
+        duration_seconds=1.0,
+        carbon_intensity_gco2_per_kwh=float(grid),
+        functional_unit=10000.0,
+        measurement_method=measurement_method,
+    )
+    grade = sci.sci_grade(result.sci_gco2_per_functional_unit, unit="run")
+    equivalents = sci.carbon_equivalents(result.operational_gco2)
+
+    return _envelope(
+        "ok",
+        data={
+            "green_score": green_score,
+            "grade": _grade(green_score),
+            "measurement_method": measurement_method,
+            "measurement_is_hardware": measurement_is_hardware,
+            "grid_intensity": {
+                "zone": zone,
+                "carbon_intensity": grid,
+                "source": region.get("intensity_source"),
+                "tier": region.get("intensity_source_tier"),
+                "is_live": bool(region.get("is_live")),
+            },
+            "data_freshness": {
+                "as_of": as_of or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "tier": region.get("intensity_source_tier") or "static-reference",
+            },
+            "scientific_context": {
+                "sci_gco2_per_functional_unit": result.sci_gco2_per_functional_unit,
+                "grade": grade,
+                "carbon_equivalents": equivalents,
+                "measurement_method": measurement_method,
+            },
+            "findings_summary": {
+                "violation_count": violation_count,
+                "severity_counts": severity_counts,
+                "language": language,
+            },
+            "trace_id": "explain-" + time.strftime("%H%M%SZ", time.gmtime()),
+            "caveats": [
+                "A green score is a measurement, not a guarantee of efficiency.",
+                "Model-based energy figures are TDP estimates; use measure_energy for hardware readings.",
+                "Grid intensity may be a static reference, not a live reading.",
+            ],
+        },
+    )
+
+
+
+@mcp.tool(
+    description=(
         "THE RECOMMENDED ENTRY POINT. Runs the whole GreenCode pipeline in one "
         "call: static analysis of the snippet, a hardware energy measurement, "
         "SCI against the live grid intensity of the chosen zone, and a ranked "

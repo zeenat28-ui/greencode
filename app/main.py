@@ -1753,6 +1753,20 @@ def prometheus_metrics_endpoint():
 # ---------------------------------------------------------------------------
 # Enterprise React Frontend SPA Mounting
 # ---------------------------------------------------------------------------
+# Unknown /api/* routes must return a clean JSON 404 (never the SPA's HTML or
+# a 405). This catch-all is registered after every real API route, so only
+# genuinely unmatched API paths reach it, and it is registered before the SPA
+# catch-all so an unmatched /api path 404s regardless of whether the frontend
+# has been built. Keeps "removed endpoint" behaviour identical in dev and prod.
+@app.api_route(
+    "/api/{full_path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    include_in_schema=False,
+)
+async def api_not_found(full_path: str):
+    raise HTTPException(status_code=404, detail="Not Found")
+
+
 if os.path.isdir(FRONTEND_DIST):
     assets_dir = os.path.join(FRONTEND_DIST, "assets")
     if os.path.isdir(assets_dir):

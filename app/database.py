@@ -280,6 +280,68 @@ class Organization(Base):
     users = relationship("User", back_populates="organization", lazy="selectin")
     repositories = relationship("Repository", back_populates="organization", lazy="selectin")
     audit_logs = relationship("AuditLog", back_populates="organization", lazy="selectin")
+    teams = relationship("Team", back_populates="organization", cascade="all, delete-orphan", lazy="selectin")
+    projects = relationship("Project", back_populates="organization", cascade="all, delete-orphan", lazy="selectin")
+
+
+class Team(Base):
+    """Engineering or product team within an Enterprise Organization."""
+
+    __tablename__ = "teams"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(100), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    monthly_carbon_budget_kg = Column(Float, default=500.0, nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    organization = relationship("Organization", back_populates="teams")
+    projects = relationship("Project", back_populates="team", cascade="all, delete-orphan", lazy="selectin")
+
+
+class Project(Base):
+    """Software project or microservice audited by GreenCode under a Team/Org."""
+
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(100), nullable=False, index=True)
+    repo_url = Column(String(1024), nullable=True)
+    default_branch = Column(String(255), default="main", nullable=False)
+    sci_threshold = Column(Float, default=80.0, nullable=False)
+    energy_budget_kwh = Column(Float, default=50.0, nullable=False)
+    policy_json = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    organization = relationship("Organization", back_populates="projects")
+    team = relationship("Team", back_populates="projects")
+    members = relationship("ProjectMember", back_populates="project", cascade="all, delete-orphan", lazy="selectin")
+
+
+class ProjectMember(Base):
+    """Association table mapping Users to Projects with scoped RBAC roles."""
+
+    __tablename__ = "project_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    role = Column(String(50), default="developer", nullable=False)  # admin, maintainer, developer, auditor
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    project = relationship("Project", back_populates="members")
+    user = relationship("User")
 
 
 class AuditLog(Base):
@@ -1934,12 +1996,12 @@ def get_team_carbon_budget(org_id: int, team_id: str, period: Optional[str] = No
         db.close()
 
 
-def record_carbon_consumption(org_id: int, team_id: str, consumed_kg: float) -> Dict[str, Any]:
+def record_carbon_consumption(org_id: int, team_id: str, consumed_kg: float, period: Optional[str] = None) -> Dict[str, Any]:
     """Accrue carbon emissions against a team's monthly budget."""
     init_db()
     db = SessionLocal()
     try:
-        now_period = datetime.now(timezone.utc).strftime("%Y-%m")
+        now_period = period or datetime.now(timezone.utc).strftime("%Y-%m")
         budget = db.query(CarbonBudget).filter(
             CarbonBudget.org_id == org_id,
             CarbonBudget.team_id == team_id,

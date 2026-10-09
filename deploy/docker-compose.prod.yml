@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: greencode-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_DB: greencode_enterprise
+      POSTGRES_USER: greencode_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-StrongProductionPassword2026!}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greencode_admin -d greencode_enterprise"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - greencode-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: greencode-redis-prod
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-StrongRedisPassword2026!}"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - greencode-network
+
+  gatekeeper-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: greencode-gatekeeper:latest
+    container_name: greencode-api-prod
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://greencode_admin:${DB_PASSWORD:-StrongProductionPassword2026!}@postgres:5432/greencode_enterprise
+      REDIS_URL: redis://:${REDIS_PASSWORD:-StrongRedisPassword2026!}@redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-ProductionSuperSecretKeyMinimum32CharsLengthRequired2026}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-ProductionFernetKey32BytesLongSecret2026}
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    networks:
+      - greencode-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  greencode-network:
+    driver: bridge
+

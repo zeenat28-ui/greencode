@@ -321,7 +321,18 @@ app.add_middleware(
 
 # Enterprise Modular Routers
 from app.routers.governance import router as enterprise_governance_router
+from app.routers.orgs import router as orgs_router
+from app.routers.energy_deployment import router as energy_deployment_router
+from app.routers.budgets import router as budgets_router
+from app.routers.pr_gate import router as pr_gate_router
+from app.routers.reports import router as reports_router
+
 app.include_router(enterprise_governance_router)
+app.include_router(orgs_router)
+app.include_router(energy_deployment_router)
+app.include_router(budgets_router)
+app.include_router(pr_gate_router)
+app.include_router(reports_router)
 
 # A published literal is worse than no check at all: it invites operators to
 # believe the deployment is protected while every access token in the fleet is
@@ -660,6 +671,24 @@ def read_root():
         "standards": ["Green Software Foundation Patterns", "SCI Specification v1.0"],
         "docker_engine_ready": profiler_engine.is_docker_ready(),
     }
+
+
+_ENTERPRISE_DASHBOARD_HTML = os.path.join(os.path.dirname(__file__), "static", "enterprise_dashboard.html")
+
+
+@app.get("/dashboard", response_class=FileResponse, include_in_schema=False)
+@app.get("/projects", response_class=FileResponse, include_in_schema=False)
+@app.get("/budgets", response_class=FileResponse, include_in_schema=False)
+@app.get("/policies", response_class=FileResponse, include_in_schema=False)
+@app.get("/reports", response_class=FileResponse, include_in_schema=False)
+@app.get("/deployments", response_class=FileResponse, include_in_schema=False)
+@app.get("/settings/org", response_class=FileResponse, include_in_schema=False)
+@app.get("/settings/security", response_class=FileResponse, include_in_schema=False)
+def serve_enterprise_dashboard():
+    """Serves the enterprise SaaS gatekeeper and carbon management dashboard."""
+    if os.path.isfile(_ENTERPRISE_DASHBOARD_HTML):
+        return FileResponse(_ENTERPRISE_DASHBOARD_HTML)
+    return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
 
 
 @app.get("/api/health", tags=["Health"])

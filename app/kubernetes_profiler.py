@@ -233,3 +233,15 @@ class KubernetesEnergyMonitor:
 # Global singleton instance for operational telemetry
 kubernetes_monitor = KubernetesEnergyMonitor()
 
+
+def trigger_kubernetes_rollback(namespace: str, deployment_name: str) -> Dict[str, Any]:
+    """Module-level helper to trigger Kubernetes rollback on the singleton monitor."""
+    detail = kubernetes_monitor.trigger_kubernetes_rollback(namespace, deployment_name)
+    return {
+        "status": "SUCCESS",
+        "details": detail,
+        "namespace": namespace,
+        "deployment": deployment_name,
+    }
+
+

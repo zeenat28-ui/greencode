@@ -77,3 +77,6 @@ ibm_bob_report.json
 alembic/versions/__pycache__/
 
 
+
+# Internal planning/strategy notes (not part of the judged submission)
+HACKATHON_PLAN.md

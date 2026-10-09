@@ -16,6 +16,12 @@ the engineering team asked for.
 - **Fix:** Close and reopen the terminal (or run the absolute path once to
   confirm the install). "Command not found right after install" reads like a
   broken installer when it is only an environment refresh.
+  ### Run it to verify
+- Reopen the terminal, then `get-command aws` shows the MSI binary in
+  `C:\Program Files\Amazon\AWSCLIV2` (a stale pre-install shell keeps the old
+  PATH - this is an environment refresh, not a broken installer).
+- `python -c "import shutil; print(shutil.which('aws'))"` resolves PATH the
+  same way a non-interactive shell does.
 
 ## 2. Alexa+ deploy path requires an AWS account with a card on file
 
@@ -33,6 +39,13 @@ the engineering team asked for.
   self-hosted MCP server + `alexa/addon.json` manifest + compliance proofs
   (`check_mcp_alexa.py`, `check_mcp_live.py`) so judges can verify with one
   command, and documented the exact `alexa-ai configure` / `alexa-ai deploy`
+  ### Run it to verify
+- `aws sts get-caller-identity` (or `aws configure list`) returns your account -
+  no card is required for MCP-only work.
+- `python check_mcp_live.py` prints `ALL LIVE MCP CHECKS PASSED` on a loopback
+  server, so judges verify the submission with one command and no AWS billing.
+- Self-hosting the MCP server means `alexa-ai deploy` (private CodeArtifact
+  registry) is optional for the submission.
   steps for anyone with an AWS account. No AWS billing is used anywhere in the
 
 ## 6. Amazon-hosted vs self-hosted manifest confusion
@@ -61,6 +74,12 @@ the engineering team asked for.
   quote unescaping shuffled the boundaries.
 - **Fix:** Moved every verification step into real files under `vfy/`
   (`check_manifest.py`, `verify_submission.py`) and run those. Anything more
+  ### Run it to verify
+- `python vfy\check_manifest.py --manifest alexa/addon.json` and
+  `python vfy\verify_submission.py` (already produced by this friction fix) are
+  the only commands you need for the Alexa+ checklist.
+- Anything more than one line of Python belongs in `vfy/`, not in a
+  `powershell -Command "python -c ..."` one-liner.
   than one line of Python deserves a file — this cost real debugging minutes.
 
 ## 8. Devpost site blocks automated fetching (HTTP 403)
@@ -84,6 +103,12 @@ the engineering team asked for.
   Alexa+ features.
 - **Fix:** Skipped the phone entirely — the documented flow explicitly allows
   the **web simulator** for testing, which is what we used. No Echo device was
+  ### Run it to verify
+- The Alexa+ checking script confirms the live end-to-end state in the browser
+  web simulator: `python check_mcp_alexa.py --url <tunnel> --token $env:GREENCODE_MCP_TOKEN`
+  prints the checklist (401 + PRM + PKCE + DNS-rebind + <500ms).
+- No physical Echo device is needed: the web simulator is the documented,
+  submission-allowed path.
   required for the hackathon.
 
 ## 10. `alexa-ai` CLI install is a 3-step private-registry dance
@@ -96,6 +121,14 @@ the engineering team asked for.
   The `codeartifact login` token expires every 12 hours, so a fresh install on
   a new machine must redo step 2. Flagging because "install our CLI" normally
   means one command, and the expiry silently breaks later installs.
+  ### Run it to verify
+- The private-registry dance only matters if you install `alexa-ai`
+  (`@alexa-ai/cli`). The shipped submission is self-hosted MCP + `addon.json`,
+  so the command that matters is `python check_mcp_live.py` (prints
+  `ALL LIVE MCP CHECKS PASSED`).
+- If you do install the CLI, `aws codeartifact login --tool npm` tokens expire
+  every 12 hours - re-run step 2 on a new machine; that expiry is why later
+  installs appear to 404. See `scripts/start_mcp_remote.ps1`.
 
   project code — Bedrock access is optional and degrades gracefully
   (`app/bedrock_client.py` imports boto3 lazily; the app falls back to the

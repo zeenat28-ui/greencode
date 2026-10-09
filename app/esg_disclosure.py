@@ -104,3 +104,4 @@ class ESGComplianceExporter:
             cryptographic_seal_sha256=sha256_hash,
             digital_signature_hmac=signature,
         )
+

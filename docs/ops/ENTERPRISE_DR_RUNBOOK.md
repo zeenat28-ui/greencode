@@ -49,3 +49,4 @@ python -c "from app.pipeline import ledger; assert ledger.verify_chain() == True
 | **P95 Latency (Audit API)** | < 350 ms | > 600 ms for 5 min | Scale replica pods + Inspect DB pool |
 | **P95 Latency (MCP Alexa+)** | < 450 ms | > 500 ms (Alexa SLA budget) | Warm cache & recycle idle uvicorn workers |
 | **Database Connection Pool** | < 75% utilized | > 85% pool exhaustion | Increment DB_POOL_SIZE / Aurora scale |
+

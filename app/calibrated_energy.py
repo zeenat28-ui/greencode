@@ -147,3 +147,4 @@ class CalibratedEnergyModel:
                 "scientific_basis": "SPECpower_ssj2008 & Cloud Carbon Footprint (CCF) Empirical Model",
             },
         )
+

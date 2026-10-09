@@ -204,3 +204,4 @@ class EnterpriseGovernanceManager:
 
 # Global singleton instance
 governance_manager = EnterpriseGovernanceManager()
+

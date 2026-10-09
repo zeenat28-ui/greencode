@@ -319,6 +319,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
 )
 
+# Enterprise Modular Routers
+from app.routers.governance import router as enterprise_governance_router
+app.include_router(enterprise_governance_router)
+
 # A published literal is worse than no check at all: it invites operators to
 # believe the deployment is protected while every access token in the fleet is
 # signed with a key that is in the repository's history.

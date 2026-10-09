@@ -1,37 +1,39 @@
-"""Enterprise ESG Reports, Compliance & Audit Trail API Router."""
+"""Enterprise Compliance & ESG Reports API Router."""
 
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from app.audit_logs import AuditLogManager
-from app.compliance import ComplianceManager
+from app.reports.exports import ReportExporter
+from app.reports.compliance import ComplianceFormatter
 from app.reports.esg_report import ESGReportGenerator
 
-router = APIRouter(prefix="/api/reports", tags=["ESG Compliance & Audit Reports"])
+router = APIRouter(prefix="/api/reports", tags=["Compliance & Audit Reports"])
 
 
 @router.get("/esg/{org_id}")
 async def get_esg_report(org_id: int, period: Optional[str] = Query(None)):
-    """Fetch structured ESG and Scope 2/3 GHG compliance report as JSON."""
-    return ESGReportGenerator.generate_data(org_id=org_id, period=period)
+    """Generate regulatory ESG sustainability disclosure for an enterprise."""
+    return ComplianceFormatter.get_esg_data(org_id=org_id, period=period)
 
 
 @router.get("/esg/{org_id}/html", response_class=HTMLResponse)
 @router.get("/esg/{org_id}/export/html", response_class=HTMLResponse)
-async def export_esg_html(org_id: int, period: Optional[str] = Query(None)):
-    """Render exportable, audit-grade executive HTML ESG sustainability report."""
-    html_content = ESGReportGenerator.generate_html(org_id=org_id, period=period)
+async def get_esg_report_html(org_id: int, period: Optional[str] = Query(None)):
+    """Render standalone executive HTML disclosure certificate."""
+    html_content = ComplianceFormatter.get_esg_html(org_id=org_id, period=period)
     return HTMLResponse(content=html_content, status_code=status.HTTP_200_OK)
 
 
-@router.get("/esg/{org_id}/csv")
-async def export_esg_csv(org_id: int, period: Optional[str] = Query(None)):
-    """Render exportable CSV ESG sustainability report."""
-    from app.reports.exports import ReportExporter
+@router.get("/esg/{org_id}/csv", response_class=PlainTextResponse)
+async def get_esg_report_csv(org_id: int, period: Optional[str] = Query(None)):
+    """Download SEC/CSRD compliance data as CSV."""
+    csv_content = ReportExporter.export_csv(org_id=org_id, period=period)
     return Response(
-        content=ReportExporter.export_csv(org_id=org_id, period=period),
+        content=csv_content,
         media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=esg-report-{org_id}.csv"},
     )
 
 
@@ -55,10 +57,4 @@ async def get_audit_trail(
 async def verify_audit_chain_integrity(org_id: int):
     """Verify cryptographic SHA-256 chain continuity for enterprise compliance auditors."""
     return AuditLogManager.verify_integrity(org_id=org_id)
-
-
-@router.get("/compliance/{org_id}")
-async def get_compliance_posture(org_id: int):
-    """Audit platform security posture, SOC2 readiness, and data retention rules."""
-    return ComplianceManager.evaluate_security_posture(org_id=org_id)
 

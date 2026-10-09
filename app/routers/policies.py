@@ -41,10 +41,21 @@ async def get_enterprise_policy(org_id: int, project_id: Optional[int] = Query(N
 
 
 @router.post("", status_code=status.HTTP_200_OK)
+@router.post("/", status_code=status.HTTP_200_OK)
 async def save_enterprise_policy(payload: PolicySaveRequest):
     """Save or update organizational energy policies and threshold rules."""
     return PolicyService.save_policy(
         org_id=payload.org_id,
+        policy_data=payload.model_dump(),
+        project_id=payload.project_id,
+    )
+
+
+@router.post("/org/{org_id}", status_code=status.HTTP_200_OK)
+async def save_enterprise_policy_by_org(org_id: int, payload: PolicySaveRequest):
+    """Save or update organizational energy policies for specific org."""
+    return PolicyService.save_policy(
+        org_id=org_id,
         policy_data=payload.model_dump(),
         project_id=payload.project_id,
     )

@@ -1,15 +1,15 @@
-"""Pre-Deploy PR Energy Delta Gate REST API Router."""
+"""Enterprise Pull Request Energy Gate API Router."""
 
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from app.services.energy_diff_service import EnergyDiffService
+from app.pr_gate.diff_analyzer import EnergyDiffService
 
-router = APIRouter(prefix="/api/pr-gate", tags=["CI/CD Pre-Deploy PR Gate"])
+router = APIRouter(prefix="/api/pr-gate", tags=["PR Energy Delta Gate"])
 
 
-class PREvaluationRequest(BaseModel):
+class PRComparePayload(BaseModel):
     base_scan: Dict[str, Any]
     head_scan: Dict[str, Any]
     monthly_invocations: int = Field(10_000_000, gt=0)
@@ -18,10 +18,10 @@ class PREvaluationRequest(BaseModel):
     max_regression_pct: float = Field(15.0, ge=0.0)
 
 
-@router.post("/evaluate", status_code=status.HTTP_200_OK)
-@router.post("/compare", status_code=status.HTTP_200_OK)
-async def evaluate_pr_energy_gate(payload: PREvaluationRequest):
-    """Evaluate base vs head code analysis to generate gate decision and PR comment."""
+@router.post("/compare")
+@router.post("/evaluate")
+async def compare_pr_energy(payload: PRComparePayload):
+    """Calculate pre-deployment energy delta, annual USD delta, and sticky comment markdown."""
     return EnergyDiffService.compare_scans(
         base_scan=payload.base_scan,
         head_scan=payload.head_scan,

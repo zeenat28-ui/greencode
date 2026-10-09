@@ -319,6 +319,43 @@ class TenantQuota(Base):
     )
 
 
+class CarbonBudget(Base):
+    """Enforces multi-tenant organizational and team-level carbon caps (kg CO2e / month)."""
+
+    __tablename__ = "carbon_budgets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    team_id = Column(String(100), nullable=False, index=True)
+    monthly_budget_kg_co2e = Column(Float, default=500.0, nullable=False)
+    consumed_kg_co2e = Column(Float, default=0.0, nullable=False)
+    period_year_month = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    alert_threshold_pct = Column(Float, default=80.0, nullable=False)  # alert at 80%
+    is_breached = Column(Boolean, default=False, nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+class EnergyDebtLedger(Base):
+    """Tracks persistent accumulated team energy debt and financial liabilities over time."""
+
+    __tablename__ = "energy_debt_ledger"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    team_id = Column(String(100), nullable=False, index=True)
+    total_violations_count = Column(Integer, default=0, nullable=False)
+    energy_debt_kg_co2e = Column(Float, default=0.0, nullable=False)
+    energy_debt_usd = Column(Float, default=0.0, nullable=False)
+    weekly_interest_usd = Column(Float, default=0.0, nullable=False)
+    debt_velocity_trend = Column(String(50), default="STABLE", nullable=False)
+    details_json = Column(Text, nullable=True)
+    last_updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
 class User(Base):
     """Registered platform user for GreenCode Developer Portal."""
 
@@ -1820,3 +1857,121 @@ def revoke_refresh_tokens(user_id: int) -> None:
         db.rollback()
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# CARBON BUDGETS & ENERGY DEBT PERSISTENCE (Multi-Tenant)
+# ---------------------------------------------------------------------------
+def set_team_carbon_budget(
+    org_id: int,
+    team_id: str,
+    monthly_budget_kg: float,
+    period: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Configure or update monthly carbon budget for a team within an organization."""
+    init_db()
+    db = SessionLocal()
+    try:
+        now_period = period or datetime.now(timezone.utc).strftime("%Y-%m")
+        budget = db.query(CarbonBudget).filter(
+            CarbonBudget.org_id == org_id,
+            CarbonBudget.team_id == team_id,
+            CarbonBudget.period_year_month == now_period,
+        ).first()
+
+        if not budget:
+            budget = CarbonBudget(
+                org_id=org_id,
+                team_id=team_id,
+                monthly_budget_kg_co2e=monthly_budget_kg,
+                consumed_kg_co2e=0.0,
+                period_year_month=now_period,
+            )
+            db.add(budget)
+        else:
+            budget.monthly_budget_kg_co2e = monthly_budget_kg
+        db.commit()
+        db.refresh(budget)
+        return {
+            "id": budget.id,
+            "org_id": budget.org_id,
+            "team_id": budget.team_id,
+            "monthly_budget_kg_co2e": budget.monthly_budget_kg_co2e,
+            "consumed_kg_co2e": budget.consumed_kg_co2e,
+            "period": budget.period_year_month,
+            "is_breached": budget.is_breached,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def get_team_carbon_budget(org_id: int, team_id: str, period: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve active carbon budget and consumption metrics for a team."""
+    init_db()
+    db = SessionLocal()
+    try:
+        now_period = period or datetime.now(timezone.utc).strftime("%Y-%m")
+        budget = db.query(CarbonBudget).filter(
+            CarbonBudget.org_id == org_id,
+            CarbonBudget.team_id == team_id,
+            CarbonBudget.period_year_month == now_period,
+        ).first()
+        if not budget:
+            return None
+        return {
+            "id": budget.id,
+            "org_id": budget.org_id,
+            "team_id": budget.team_id,
+            "monthly_budget_kg_co2e": budget.monthly_budget_kg_co2e,
+            "consumed_kg_co2e": budget.consumed_kg_co2e,
+            "period": budget.period_year_month,
+            "is_breached": budget.is_breached,
+        }
+    finally:
+        db.close()
+
+
+def record_carbon_consumption(org_id: int, team_id: str, consumed_kg: float) -> Dict[str, Any]:
+    """Accrue carbon emissions against a team's monthly budget."""
+    init_db()
+    db = SessionLocal()
+    try:
+        now_period = datetime.now(timezone.utc).strftime("%Y-%m")
+        budget = db.query(CarbonBudget).filter(
+            CarbonBudget.org_id == org_id,
+            CarbonBudget.team_id == team_id,
+            CarbonBudget.period_year_month == now_period,
+        ).first()
+
+        if not budget:
+            budget = CarbonBudget(
+                org_id=org_id,
+                team_id=team_id,
+                monthly_budget_kg_co2e=500.0,
+                consumed_kg_co2e=consumed_kg,
+                period_year_month=now_period,
+            )
+            db.add(budget)
+        else:
+            budget.consumed_kg_co2e += consumed_kg
+            if budget.consumed_kg_co2e >= budget.monthly_budget_kg_co2e:
+                budget.is_breached = True
+
+        db.commit()
+        db.refresh(budget)
+        return {
+            "team_id": budget.team_id,
+            "consumed_kg_co2e": budget.consumed_kg_co2e,
+            "monthly_budget_kg_co2e": budget.monthly_budget_kg_co2e,
+            "utilization_pct": round((budget.consumed_kg_co2e / budget.monthly_budget_kg_co2e) * 100.0, 1),
+            "is_breached": budget.is_breached,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+

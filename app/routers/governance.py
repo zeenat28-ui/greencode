@@ -249,3 +249,41 @@ async def get_cloud_cost_breakdown(
     return {"success": True, "cost_breakdown": breakdown}
 
 
+@router.post("/budgets/team")
+async def set_team_budget_endpoint(
+    team_id: str = Body(..., embed=True),
+    monthly_budget_kg: float = Body(500.0, embed=True),
+    org_id: int = Body(1, embed=True),
+):
+    """Allocate monthly carbon budget cap (kg CO2e) for an engineering team."""
+    from app.database import set_team_carbon_budget
+    res = set_team_carbon_budget(org_id=org_id, team_id=team_id, monthly_budget_kg=monthly_budget_kg)
+    return {"success": True, "budget": res}
+
+
+@router.get("/budgets/team/{team_id}")
+async def get_team_budget_endpoint(
+    team_id: str,
+    org_id: int = Query(1),
+):
+    """Retrieve active carbon budget allocation and consumption status."""
+    from app.database import get_team_carbon_budget
+    budget = get_team_carbon_budget(org_id=org_id, team_id=team_id)
+    if not budget:
+        return {"success": False, "message": f"No carbon budget found for team '{team_id}'."}
+    return {"success": True, "budget": budget}
+
+
+@router.post("/budgets/consume")
+async def record_budget_consumption_endpoint(
+    team_id: str = Body(..., embed=True),
+    consumed_kg: float = Body(..., embed=True),
+    org_id: int = Body(1, embed=True),
+):
+    """Record carbon emissions against a team's monthly budget."""
+    from app.database import record_carbon_consumption
+    res = record_carbon_consumption(org_id=org_id, team_id=team_id, consumed_kg=consumed_kg)
+    return {"success": True, "consumption": res}
+
+
+

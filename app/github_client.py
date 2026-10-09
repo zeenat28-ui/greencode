@@ -685,12 +685,14 @@ def post_pr_carbon_comment(
     scan_result: Dict[str, Any],
     gate_threshold: float = 75.0,
     token: Optional[str] = None,
+    base_scan_result: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Publish an automated, rich GSF green audit sticky comment onto a GitHub Pull Request.
 
     Formats:
     - Score badge & pass/fail indicator.
     - Audit metrics table (Total files, lines, violations).
+    - Energy Delta vs Base/Main Branch (Pre-Deployment Predictor).
     - Top energy inefficiency breakdown with remediation tips.
     - Collapsible section for detailed GSF SCI v1.0 specifications.
     """
@@ -713,6 +715,19 @@ def post_pr_carbon_comment(
     total_files = scan_result.get("total_files", 0)
     total_lines = scan_result.get("total_lines", 0)
 
+    # Compute pre-deployment delta if base scan result is provided
+    delta_str = "Baseline Run"
+    if base_scan_result:
+        from app.energy_predictor import GreenDeployPredictor
+        prediction = GreenDeployPredictor.predict_pr_impact(
+            pr_identifier=f"PR #{pr_number}",
+            base_audit=base_scan_result,
+            incoming_audit=scan_result,
+        )
+        delta_pct = prediction.energy_delta_percent
+        sign = "+" if delta_pct > 0 else ""
+        delta_str = f"**`{sign}{delta_pct:.1f}%`** ({prediction.decision})"
+
     # Build Markdown table of violations
     violation_rows = []
     for idx, v in enumerate(violations[:8], 1):
@@ -734,6 +749,7 @@ def post_pr_carbon_comment(
         f"|---|---|---|\n"
         f"| **Overall Green Score** | **`{score:.1f} / 100.0`** | `>= {gate_threshold:.1f} / 100.0` |\n"
         f"| **Quality Gate Status** | **`{status_icon}`** | `Pass Required` |\n"
+        f"| **Energy Delta vs Main** | {delta_str} | `<= +10% Permitted` |\n"
         f"| **Files Scanned** | `{total_files}` | All codebases |\n"
         f"| **Lines of Code Audited** | `{total_lines}` | Multi-language CST |\n"
         f"| **Total Violations Flagged** | `{len(violations)}` | `0 Critical Issues` |\n\n"

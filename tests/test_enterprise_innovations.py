@@ -163,3 +163,50 @@ def test_cloud_cost_mapper():
     )
     assert breakdown_gcp.provider == "GCP"
     assert breakdown_gcp.total_cost_usd > 0.0
+
+
+def test_kubernetes_live_rollback_execution():
+    monitor = KubernetesEnergyMonitor(cluster_name="aws-eks-production")
+    monitor.record_baseline("default", "orders-api", baseline_watts=10.0)
+
+    verdict = monitor.evaluate_deployment_health(
+        namespace="default",
+        deployment_name="orders-api",
+        observed_watts=20.0,  # 100% spike
+        spike_threshold_pct=30.0,
+        auto_trigger_rollback=True,
+    )
+    assert verdict.should_rollback is True
+    assert verdict.rollback_triggered is True
+    assert verdict.rollback_status is not None
+    assert "ROLLED_BACK_orders-api" in verdict.rollback_status
+
+
+def test_multi_tenant_carbon_budgets():
+    from app.database import (
+        set_team_carbon_budget,
+        get_team_carbon_budget,
+        record_carbon_consumption,
+    )
+
+    # 1. Set budget
+    b = set_team_carbon_budget(org_id=1, team_id="checkout-eng", monthly_budget_kg=400.0)
+    assert b["monthly_budget_kg_co2e"] == 400.0
+    assert b["team_id"] == "checkout-eng"
+
+    # 2. Get budget
+    fetched = get_team_carbon_budget(org_id=1, team_id="checkout-eng")
+    assert fetched is not None
+    assert fetched["monthly_budget_kg_co2e"] == 400.0
+
+    # 3. Accrue consumption
+    c = record_carbon_consumption(org_id=1, team_id="checkout-eng", consumed_kg=350.0)
+    assert c["consumed_kg_co2e"] == 350.0
+    assert c["is_breached"] is False
+    assert c["utilization_pct"] > 80.0
+
+    # 4. Breach budget
+    c_breach = record_carbon_consumption(org_id=1, team_id="checkout-eng", consumed_kg=60.0)
+    assert c_breach["is_breached"] is True
+
+

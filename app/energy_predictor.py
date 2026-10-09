@@ -115,3 +115,4 @@ class GreenDeployPredictor:
             recommendation_summary=rec,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
+

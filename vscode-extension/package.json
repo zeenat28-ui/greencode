@@ -1,0 +1,53 @@
+{
+  "name": "greencode-energy-linter",
+  "displayName": "GreenCode AI - Energy & Carbon Linter",
+  "description": "Real-time energy efficiency linter and carbon debt tracker for green software engineering.",
+  "version": "1.0.0",
+  "publisher": "greencode",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:python",
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:go",
+    "onLanguage:rust",
+    "onLanguage:java",
+    "onLanguage:c",
+    "onLanguage:cpp"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "greencode.lintWorkspace",
+        "title": "GreenCode: Audit Current File for Energy Inefficiencies"
+      },
+      {
+        "command": "greencode.showEnergyDebt",
+        "title": "GreenCode: Show Team Energy Debt & Carbon Impact"
+      }
+    ],
+    "configuration": {
+      "title": "GreenCode",
+      "properties": {
+        "greencode.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "GreenCode API Base URL for live diagnostic telemetry"
+        },
+        "greencode.enableRealTimeLinting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable instant inline energy smell diagnostics while typing"
+        }
+      }
+    }
+  }
+}

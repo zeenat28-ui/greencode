@@ -97,3 +97,4 @@ class EnergyLinter:
                 },
             })
         return {"diagnostics": lsp_diags}
+

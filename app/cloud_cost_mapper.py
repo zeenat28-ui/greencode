@@ -114,3 +114,4 @@ class CloudCostMapper:
             carbon_intensity_g_per_kwh=round(grid_carbon, 1),
             total_co2_kg=round(co2_kg, 4),
         )
+

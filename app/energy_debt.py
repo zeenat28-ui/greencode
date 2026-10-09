@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+import json
 from typing import Any, Dict, List, Optional
 
 
@@ -101,6 +102,44 @@ class EnergyDebtTracker:
         )
 
         self._team_debts[team_id] = debt
+
+        # Persist to database if available
+        try:
+            from app.database import EnergyDebtLedger, SessionLocal, init_db
+            init_db()
+            db = SessionLocal()
+            try:
+                row = db.query(EnergyDebtLedger).filter(
+                    EnergyDebtLedger.team_id == team_id,
+                ).first()
+                if not row:
+                    row = EnergyDebtLedger(
+                        org_id=1,
+                        team_id=team_id,
+                        total_violations_count=len(violations),
+                        energy_debt_kg_co2e=round(total_kg, 2),
+                        energy_debt_usd=round(total_usd, 2),
+                        weekly_interest_usd=round(weekly_interest, 2),
+                        debt_velocity_trend=trend,
+                        details_json=json.dumps(sorted_patterns),
+                    )
+                    db.add(row)
+                else:
+                    row.total_violations_count = len(violations)
+                    row.energy_debt_kg_co2e = round(total_kg, 2)
+                    row.energy_debt_usd = round(total_usd, 2)
+                    row.weekly_interest_usd = round(weekly_interest, 2)
+                    row.debt_velocity_trend = trend
+                    row.details_json = json.dumps(sorted_patterns)
+                    row.last_updated_at = datetime.now(timezone.utc)
+                db.commit()
+            except Exception:
+                db.rollback()
+            finally:
+                db.close()
+        except Exception:
+            pass
+
         return debt
 
     def get_team_debt(self, team_id: str) -> Optional[TeamEnergyDebt]:
@@ -112,3 +151,4 @@ class EnergyDebtTracker:
 
 # Global singleton instance
 energy_debt_tracker = EnergyDebtTracker()
+

@@ -1,0 +1,22 @@
+# GreenCode MCP server - minimal runtime for free-tier hosts (Render, etc.)
+#
+# The repo's root requirements.txt pulls in the whole product surface: the
+# Docker SDK, celery, redis, pandas, streamlit, postgres drivers - none of which
+# app/mcp_server.py or the audit engine it imports ever load. Installing all of
+# that into a 512 MB free instance wastes build time and RAM.
+#
+# These are exactly the packages app.mcp_server (and its engine: parser, sci,
+# optimizer, carbon_intensity, energy_sensors, llm_refactor) import at runtime,
+# pinned to the same versions the 376-test suite passes against, so the slim
+# image behaves identically to a local checkout.
+#
+# mcp pulls its own transitives (starlette, sse-starlette, anyio, httpx,
+# pydantic, opentelemetry) with compatible ranges; the direct deps are pinned.
+mcp==2.3.0
+uvicorn==0.52.4
+tree-sitter==0.21.3
+tree-sitter-languages==1.10.2
+requests==2.34.2
+python-dotenv==1.2.3
+pydantic==2.13.4
+cachetools==7.2.0

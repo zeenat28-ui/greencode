@@ -1,0 +1,32 @@
+# Render Blueprint - one-click deploy of the GreenCode MCP server (Alexa+ track).
+#
+# Deploy: Render Dashboard -> New -> Blueprint -> point at this repo. Render
+# reads this file and creates the service below. No credit card is required for
+# the free instance type.
+#
+# After the first deploy, set the two env vars marked below in the dashboard if
+# the Blueprint values are not what you want. GREENCODE_MCP_ALLOWED_HOSTS must
+# equal this service's public host, or the MCP SDK's DNS-rebinding guard will
+# answer the public URL with 421.
+services:
+  - type: web
+    name: greencode-mcp
+    runtime: docker
+    plan: free
+    region: singapore          # closest free region to South Asia; change freely
+    dockerfilePath: deploy/mcp/Dockerfile.mcp
+    dockerContext: .
+    healthCheckPath: /privacy
+    envVars:
+      # A strong random token. With this set, /mcp returns a bare 401 without a
+      # WWW-Authenticate header (the Alexa+ checklist) and PRM is still public.
+      # Render generates it; read it back from the dashboard to run the checkers.
+      - key: GREENCODE_MCP_TOKEN
+        generateValue: true
+      # Public host of this service so DNS-rebinding protection allows it.
+      - key: GREENCODE_MCP_ALLOWED_HOSTS
+        value: greencode-mcp.onrender.com
+      # Refactor backend. huggingface = free public API with a key; the engine
+      # degrades to deterministic rule-based rewrites if no key is set.
+      - key: GREENCODE_LLM_PROVIDER
+        value: huggingface

@@ -41,3 +41,20 @@ htmlcov/
 .vscode/
 .idea/
 .gemini/
+
+# Large trees that no root-context image needs. The MCP image (deploy/mcp) is
+# built with this same context but COPYs only app/ + alexa/, so it never sees
+# them; excluding them shrinks the build context from ~1.5 GB to a few MB, which
+# is what the slow `transferring context` step was paying for. The root backend
+# image needs none of these either: it serves the UI via the nginx `web` service
+# (frontend/ falls back to a JSON banner when absent).
+# samples/ is deliberately NOT listed: the runtime profiler reads its bundled
+# benchmark scripts from there, so a full backend build must keep them - and
+# they are only a few KB, so they cost the MCP context transfer nothing.
+security-hunt/
+frontend/
+node_modules/
+docs/
+*.mp4
+.git/
+

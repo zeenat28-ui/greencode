@@ -1,0 +1,50 @@
+# GreenCode MCP server - slim image for a free-tier host (Render free plan).
+#
+# WHY A SEPARATE IMAGE
+# --------------------
+# The root Dockerfile builds the entire product (FastAPI + Streamlit UI) and
+# installs Node, a JRE, Go, gcc, libpq and every pinned dependency. That image
+# does not fit comfortably in a 512 MB free instance and wastes build minutes on
+# runtimes the MCP surface never touches.
+#
+# The Alexa+ submission's primary surface is app/mcp_server.py. Its import
+# closure is small and pure-Python apart from tree-sitter's C bindings, so this
+# image carries only that. It copies the engine package (app/) and the Alexa+
+# assets (alexa/ - the privacy/terms pages and icons that addon.json points back
+# through the same tunnel) and nothing else.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /srv
+
+# No apt packages at all. tree-sitter (0.21.3) and tree-sitter-languages
+# (1.10.2) both publish prebuilt manylinux_2_17_x86_64 wheels for cp312, so pip
+# installs them without compiling a single C file - no gcc, no python3-dev, no
+# build-essential. That keeps the image small and the build fast (an earlier
+# revision that ran `apt-get install build-essential` spent 12+ minutes on
+# binutils on a Windows Docker host; removing it drops the build to under a
+# minute). --prefer-binary makes the intent explicit: if a wheel is ever
+# missing, fail loudly instead of silently invoking a compiler that is not here.
+COPY deploy/mcp/requirements-mcp.txt ./requirements-mcp.txt
+RUN pip install --no-cache-dir --prefer-binary -r requirements-mcp.txt
+
+# Only what the MCP server serves. Selective COPY (not `COPY . .`) keeps the
+# frontend/, security-hunt/ and other large trees out of the image.
+COPY app ./app
+COPY alexa ./alexa
+
+# The service must listen on the port the platform injects ($PORT). Render sets
+# PORT; local runs fall back to 8000.
+ENV GREENCODE_MCP_HOST=0.0.0.0
+EXPOSE 8000
+
+# /privacy is public (no token), returns 200, and is cheap - the ideal probe.
+# Uses the stdlib urllib rather than curl so the image needs no extra packages.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
+    CMD python -c "import os,urllib.request as u; u.urlopen('http://127.0.0.1:%s/privacy'%(os.environ.get('PORT','8000')),timeout=5)" || exit 1
+
+CMD ["sh", "-c", "GREENCODE_MCP_PORT=${PORT:-8000} python -m app.mcp_server"]

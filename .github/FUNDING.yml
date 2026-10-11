@@ -3,12 +3,13 @@
 # button on https://github.com/zeenat28-ui/greencode
 
 github: [zeenat28-ui]
-custom: ["https://github.com/zeenat28-ui/greencode"]
+open_collective: greencode
+custom: ["https://opencollective.com/greencode"]
 
 # Optional additional funding platforms (uncomment and add your handle anytime):
 # ko_fi: zeenat28
 # buy_me_a_coffee: zeenat28
-# open_collective: greencode
 # patreon: zeenat28
 # polar: zeenat28-ui
 # liberapay: zeenat28
+

@@ -5,7 +5,7 @@
 [![SCI Standard](https://img.shields.io/badge/Specification-SCI%20v1.0-blue)](https://greensoftware.foundation)
 [![Tests](https://img.shields.io/badge/tests-438%20passing-success)](tests/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
-[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/zeenat28-ui)
+[![Sponsor](https://img.shields.io/badge/Sponsor-Open%20Collective-ea4aaa?logo=opencollective)](https://opencollective.com/greencode)
 
 ## 🏆 Amazon Developer Hackathon 2026 ("Build, Ship, Shape")
 
@@ -794,4 +794,5 @@ to paper over.
 ## 💖 Funding & Sponsorship
 
 GreenCode Auditor is open to community sponsorships, sustainability grants, and enterprise backing:
-- Click the **Sponsor** button at the top of [`github.com/zeenat28-ui/greencode`](https://github.com/zeenat28-ui/greencode) (powered by [`.github/FUNDING.yml`](.github/FUNDING.yml)) or visit [`github.com/sponsors/zeenat28-ui`](https://github.com/sponsors/zeenat28-ui).
+- **Open Collective:** [`opencollective.com/greencode`](https://opencollective.com/greencode)
+- **GitHub Sponsor Button:** Click the **Sponsor** button at the top of [`github.com/zeenat28-ui/greencode`](https://github.com/zeenat28-ui/greencode) (powered by [`.github/FUNDING.yml`](.github/FUNDING.yml)) or visit [`github.com/sponsors/zeenat28-ui`](https://github.com/sponsors/zeenat28-ui).

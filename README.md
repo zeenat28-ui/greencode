@@ -751,8 +751,29 @@ to paper over.
 - **Attribution Requirement:** Any fork, redistribution, or derivative work must preserve both [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) attributing `@zeenat28-ui`. Removing copyright notices or claiming original authorship terminates license rights under Apache License 2.0.
 - **Contributing:** See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). All Pull Requests require automated CI passage and Code Owner (`@zeenat28-ui`) approval.
 
-## Funding and Sponsorship
+## Commercial Plans, License Activation, and Sponsorship
 
-- **Open Collective:** [`opencollective.com/greencode`](https://opencollective.com/greencode)
-- **GitHub Sponsors:** [`github.com/sponsors/zeenat28-ui`](https://github.com/sponsors/zeenat28-ui) (configured in [`.github/FUNDING.yml`](.github/FUNDING.yml)).
+GreenCode follows an open-core model: the static analyzer, CLI, and MCP server are Apache-2.0 licensed, while teams and organizations can unlock higher quotas, automated PR patching, and signed regulatory evidence bundles via a `GC-LIC-...` license key.
+
+| Feature / Quota | Community (`$0 / mo`) | Pro Team (`$49 / mo`) | Organization (`$499 / mo`) |
+|---|---|---|---|
+| **Monthly Repository Audits** | 50 / month | 1,000 / month | Unlimited |
+| **AI Code Refactorings (Bedrock / HF)** | 10 / month | 250 / month | 5,000 / month |
+| **Monitored Repositories** | Up to 3 | Up to 25 | Unlimited |
+| **13-Language AST + `--diff` PR Gate** | Included | Included | Included |
+| **GitHub PR `suggestion` & `.diff` Bot** | Manual CLI | Automated Webhook & PR Bot | Automated + Custom SLA Rules |
+| **Kubernetes Kepler / Pod Wattage Sentinel** | Basic | Full + Auto-Rollback | Multi-Cluster + Prometheus |
+| **CSRD / SEC Signed Evidence Bundle (`.zip`)** | — | — | Included (`HMAC-SHA256` + Merkle Root) |
+| **SAML 2.0 SSO, SCIM 2.0 & S3 WORM Ledger** | — | — | Included |
+
+### How to Purchase and Activate a Commercial License (`GC-LIC-...`)
+
+1. **Subscribe or Back a Commercial Tier:**
+   - **Open Collective (Instant Fiscal Host Invoice):** [`opencollective.com/greencode`](https://opencollective.com/greencode) (`>= $49` provisions **Pro**; `>= $499` provisions **Organization** automatically via `POST /api/billing/webhooks/opencollective`).
+   - **GitHub Sponsors:** [`github.com/sponsors/zeenat28-ui`](https://github.com/sponsors/zeenat28-ui) (configured in [`.github/FUNDING.yml`](.github/FUNDING.yml)).
+2. **Activate in Dashboard, API, or CI/CD:**
+   - **Web UI:** Open **Settings &rarr; Plan Quota &amp; License Activation**, paste your `GC-LIC-...` key, and click **Activate License**.
+   - **REST API:** `POST /api/billing/license/activate` with `{"license_key": "GC-LIC-..."}`.
+   - **GitHub Action (`action.yml`):** Pass `license_key: ${{ secrets.GREENCODE_LICENSE_KEY }}` and `diff_range: origin/main...HEAD`.
+
 

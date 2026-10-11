@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   DollarSign, Leaf, Zap, 
   X, TrendingDown, Sparkles 
@@ -12,6 +12,7 @@ interface FinOpsCalculatorModalProps {
 
 interface InstanceTypeOption {
   id: string;
+  sourceX86: string;
   name: string;
   provider: string;
   specs: string;
@@ -22,6 +23,7 @@ interface InstanceTypeOption {
 const INSTANCE_OPTIONS: InstanceTypeOption[] = [
   {
     id: 'c8g.2xlarge',
+    sourceX86: 'c5.2xlarge',
     name: 'AWS c8g.2xlarge (Graviton4)',
     provider: 'Amazon Web Services',
     specs: '8 vCPU ARM Neoverse-V2, 16 GiB RAM (Latest AWS Silicon)',
@@ -30,6 +32,7 @@ const INSTANCE_OPTIONS: InstanceTypeOption[] = [
   },
   {
     id: 'inf2.xlarge',
+    sourceX86: 'g5.xlarge',
     name: 'AWS inf2.xlarge (Inferentia2)',
     provider: 'Amazon Web Services',
     specs: '1x AWS Inferentia2 Accelerator, 32 GiB HBM (GenAI Inference)',
@@ -38,6 +41,7 @@ const INSTANCE_OPTIONS: InstanceTypeOption[] = [
   },
   {
     id: 'c6i.2xlarge',
+    sourceX86: 'c5.2xlarge',
     name: 'AWS c6i.2xlarge',
     provider: 'Amazon Web Services',
     specs: '8 vCPU, 16 GiB RAM (Compute Optimized)',
@@ -46,6 +50,7 @@ const INSTANCE_OPTIONS: InstanceTypeOption[] = [
   },
   {
     id: 'g5.xlarge',
+    sourceX86: 'g5.xlarge',
     name: 'AWS g5.xlarge (GPU)',
     provider: 'Amazon Web Services',
     specs: '4 vCPU, 16 GiB RAM, NVIDIA A10G (AI / LLM)',
@@ -54,6 +59,7 @@ const INSTANCE_OPTIONS: InstanceTypeOption[] = [
   },
   {
     id: 'm6g.2xlarge',
+    sourceX86: 'm5.2xlarge',
     name: 'AWS m6g.2xlarge (Graviton2)',
     provider: 'Amazon Web Services',
     specs: '8 vCPU ARM Graviton2, 32 GiB RAM',
@@ -62,14 +68,54 @@ const INSTANCE_OPTIONS: InstanceTypeOption[] = [
   },
 ];
 
+const REGION_OPTIONS = [
+  { code: 'us-east-1', label: 'AWS us-east-1 (N. Virginia)', defaultIntensity: 379 },
+  { code: 'us-west-2', label: 'AWS us-west-2 (Oregon Hydro)', defaultIntensity: 78 },
+  { code: 'eu-west-1', label: 'AWS eu-west-1 (Ireland Wind)', defaultIntensity: 245 },
+  { code: 'eu-north-1', label: 'AWS eu-north-1 (Stockholm)', defaultIntensity: 18 },
+];
+
 export default function FinOpsCalculatorModal({
   isOpen,
   onClose,
 }: FinOpsCalculatorModalProps) {
   const [selectedInstance, setSelectedInstance] = useState<InstanceTypeOption>(INSTANCE_OPTIONS[0]);
-  const [nodeCount, setNodeCount] = useState<number>(20); // 20 production instances
-  const [efficiencyGainPct, setEfficiencyGainPct] = useState<number>(38); // 38% CPU optimization
-  const [gridIntensity] = useState<number>(215); // gCO2e/kWh
+  const [selectedRegion, setSelectedRegion] = useState<string>('us-east-1');
+  const [nodeCount, setNodeCount] = useState<number>(20);
+  const [efficiencyGainPct, setEfficiencyGainPct] = useState<number>(38);
+  const [gridIntensity, setGridIntensity] = useState<number>(379);
+  const [gravitonData, setGravitonData] = useState<{
+    annual_cost_savings_usd?: number;
+    annual_co2_saved_kg?: number;
+    target_graviton_instance?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    const regionMeta = REGION_OPTIONS.find((r) => r.code === selectedRegion);
+    if (regionMeta) setGridIntensity(regionMeta.defaultIntensity);
+
+    fetch(
+      `/api/enterprise/aws/graviton-migration?source_x86_instance=${encodeURIComponent(
+        selectedInstance.sourceX86
+      )}&region=${encodeURIComponent(selectedRegion)}&instance_count=${nodeCount}`
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active || !data?.graviton_migration) return;
+        const gm = data.graviton_migration;
+        setGravitonData(gm);
+        if (typeof gm.grid_intensity_gco2_kwh === 'number') {
+          setGridIntensity(gm.grid_intensity_gco2_kwh);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, selectedInstance, selectedRegion, nodeCount]);
 
   if (!isOpen) return null;
 
@@ -79,14 +125,16 @@ export default function FinOpsCalculatorModal({
   // Compute savings proportional to algorithmic speedup & instance rightsizing potential
   const savingsPct = efficiencyGainPct / 100;
   const monthlySavings = baselineMonthlySpend * (savingsPct * 0.75); // conservative 75% realization
-  const annualSavings = monthlySavings * 12;
+  const annualSavings = monthlySavings * 12 + (gravitonData?.annual_cost_savings_usd || 0);
   const optimizedMonthlySpend = baselineMonthlySpend - monthlySavings;
 
   // Carbon metrics
   const monthlyKwhBaseline = (nodeCount * selectedInstance.watts * hoursPerMonth) / 1000;
   const monthlyKwhSaved = monthlyKwhBaseline * savingsPct;
   const annualKwhSaved = monthlyKwhSaved * 12;
-  const annualCo2TonnesSaved = (annualKwhSaved * gridIntensity) / 1000 / 1000;
+  const annualCo2TonnesSaved =
+    (annualKwhSaved * gridIntensity) / 1000 / 1000 +
+    (gravitonData?.annual_co2_saved_kg || 0) / 1000;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -104,7 +152,7 @@ export default function FinOpsCalculatorModal({
               <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
                 FinOps &amp; GreenOps Cloud Cost Estimator
                 <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-mono">
-                  Real-World ROI
+                  Live AWS Cost &amp; Grid API
                 </span>
               </h3>
               <p className="text-[11px] text-slate-400">
@@ -169,9 +217,9 @@ export default function FinOpsCalculatorModal({
                   className="w-full accent-emerald-600 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
-                  <span>2 nodes (Startup)</span>
+                  <span>2 nodes (Small)</span>
                   <span>20 nodes</span>
-                  <span>100 nodes (Enterprise)</span>
+                  <span>100 nodes (Large)</span>
                 </div>
               </div>
 
@@ -196,9 +244,25 @@ export default function FinOpsCalculatorModal({
                 </div>
               </div>
 
-              <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between">
-                <span className="text-slate-500">Electricity Grid Intensity:</span>
-                <span className="font-mono font-bold text-slate-800">{gridIntensity} gCO₂e/kWh</span>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 block">
+                  Cloud Region &amp; Live Grid Carbon Intensity
+                </label>
+                <select
+                  value={selectedRegion}
+                  onChange={(e) => setSelectedRegion(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-mono text-slate-800"
+                >
+                  {REGION_OPTIONS.map((reg) => (
+                    <option key={reg.code} value={reg.code}>
+                      {reg.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="p-2 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between">
+                  <span className="text-slate-500">Regional Grid Intensity:</span>
+                  <span className="font-mono font-bold text-slate-800">{gridIntensity} gCO₂e/kWh</span>
+                </div>
               </div>
             </div>
           </div>

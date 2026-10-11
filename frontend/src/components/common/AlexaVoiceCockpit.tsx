@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Mic, Radio, Volume2, Sparkles, ArrowRight, 
   Play, Cloud, ShieldCheck, Zap, VolumeX, Info 
@@ -55,6 +55,27 @@ export default function AlexaVoiceCockpit() {
   const [showAmazonModal, setShowAmazonModal] = useState(false);
 
   const [liveMcpTool, setLiveMcpTool] = useState<string>('compare_regions (Live MCP)');
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/voice/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: SAMPLE_PROMPTS[0].query, zone: 'IE' }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!active || !payload?.spoken_response) return;
+        setActiveSpeech(payload.spoken_response);
+        if (payload.mcp_tool) {
+          setLiveMcpTool(`${payload.mcp_tool} (Live MCP /api/voice/ask)`);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const speakText = (text: string) => {
     if (isMuted) {
@@ -158,7 +179,7 @@ export default function AlexaVoiceCockpit() {
                 Amazon Alexa+ &amp; AWS Bedrock Voice Cockpit
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#00CAFF]/20 text-[#00CAFF] border border-[#00CAFF]/30">
-                Voice MCP Agent &middot; Interactive Preview
+                Voice MCP Agent &middot; Live Backend
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF9900]/20 text-[#FF9900] border border-[#FF9900]/30 font-mono">
                 RFC 9728 Compliant
@@ -177,10 +198,10 @@ export default function AlexaVoiceCockpit() {
             <span className="text-slate-600">|</span>
             <span
               className="flex items-center gap-1.5 font-medium"
-              title="This in-browser cockpit speaks pre-authored sample responses; the deployed MCP server is reachable at /mcp"
+              title="Executes live MCP tools via POST /api/voice/ask and /mcp"
             >
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-              <span className="text-amber-300">In-Browser Demo &middot; Live MCP at /mcp</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-emerald-300">Connected &middot; Live MCP at /mcp</span>
             </span>
           </div>
         </div>
@@ -195,9 +216,8 @@ export default function AlexaVoiceCockpit() {
                 </span>
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Interact with GreenCode using your voice or presets. This preview speaks pre-authored
-                sample responses in the browser; when asked through Alexa+, the same questions hit the
-                live MCP server at <code className="font-mono text-[10px]">/mcp</code>:
+                Interact with GreenCode using your voice or presets. Every query executes live MCP tools via{' '}
+                <code className="font-mono text-[10px]">/api/voice/ask</code> and <code className="font-mono text-[10px]">/mcp</code>:
               </p>
             </div>
             

@@ -62,14 +62,45 @@ _PROVIDER_ROLES: Dict[str, Dict[str, str]] = {
 _DEFAULT_ROLES = {"human": "user", "assistant": "assistant"}
 
 
+# Published AWS Bedrock On-Demand pricing ($ per 1k tokens) & accelerator energy profile (Joules/token)
+BEDROCK_MODEL_PROFILES: Dict[str, Dict[str, float]] = {
+    "anthropic.claude-sonnet-4-5-20250929-v1:0": {
+        "input_usd_per_1k": 0.0030,
+        "output_usd_per_1k": 0.0150,
+        "input_joules_per_token": 0.35,
+        "output_joules_per_token": 1.45,
+    },
+    "anthropic.claude-3-5-sonnet-20241022-v2:0": {
+        "input_usd_per_1k": 0.0030,
+        "output_usd_per_1k": 0.0150,
+        "input_joules_per_token": 0.32,
+        "output_joules_per_token": 1.35,
+    },
+    "anthropic.claude-3-5-haiku-20241022-v1:0": {
+        "input_usd_per_1k": 0.0008,
+        "output_usd_per_1k": 0.0040,
+        "input_joules_per_token": 0.12,
+        "output_joules_per_token": 0.48,
+    },
+}
+_DEFAULT_BEDROCK_PROFILE: Dict[str, float] = {
+    "input_usd_per_1k": 0.0030,
+    "output_usd_per_1k": 0.0150,
+    "input_joules_per_token": 0.30,
+    "output_joules_per_token": 1.25,
+}
+
+
 class BedrockError(LLMError):
     """A classified failure from Amazon Bedrock."""
 
 
 def _provider_of(model_id: str) -> str:
     return (model_id or "").split(".", 1)[0].lower()
+
+
 class BedrockClient:
-    """Thin boto3 wrapper over the Bedrock Runtime Converse API."""
+    """Thin boto3 wrapper over the Bedrock Runtime Converse API with GSF SCI-for-AI metering."""
 
     def __init__(
         self,
@@ -89,6 +120,77 @@ class BedrockClient:
         self._client = None
         self._lock = threading.Lock()
         self._healthy_model: Optional[str] = None
+        self._telemetry_totals: Dict[str, float] = {
+            "calls_count": 0.0,
+            "prompt_tokens": 0.0,
+            "completion_tokens": 0.0,
+            "total_cost_usd": 0.0,
+            "total_energy_joules": 0.0,
+            "total_operational_gco2": 0.0,
+        }
+
+    @classmethod
+    def compute_inference_footprint(
+        cls,
+        usage: LLMUsage,
+        model_id: str,
+        region_name: str = DEFAULT_REGION,
+        duration_seconds: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Compute AWS Bedrock token cost (USD) and GSF SCI-for-AI carbon intensity per 1,000 tokens."""
+        from app.cloud_cost_mapper import CloudCostMapper
+        from app.sci import compute_sci
+
+        profile = BEDROCK_MODEL_PROFILES.get(model_id, _DEFAULT_BEDROCK_PROFILE)
+        in_tokens = max(0, int(usage.prompt_tokens))
+        out_tokens = max(0, int(usage.completion_tokens))
+        total_tokens = in_tokens + out_tokens
+
+        cost_usd = (
+            (in_tokens / 1000.0) * profile["input_usd_per_1k"]
+            + (out_tokens / 1000.0) * profile["output_usd_per_1k"]
+        )
+        it_joules = (
+            in_tokens * profile["input_joules_per_token"]
+            + out_tokens * profile["output_joules_per_token"]
+        )
+
+        grid_intensity = CloudCostMapper.REGIONAL_CARBON_FACTORS.get(
+            region_name,
+            CloudCostMapper.REGIONAL_CARBON_FACTORS["default"],
+        )
+        # Functional unit R = 1,000 tokens (GSF SCI for AI specification)
+        functional_unit_1k_tokens = max(0.001, total_tokens / 1000.0) if total_tokens > 0 else 1.0
+
+        sci_res = compute_sci(
+            energy_joules=it_joules,
+            duration_seconds=max(0.01, duration_seconds),
+            carbon_intensity_gco2_per_kwh=grid_intensity,
+            functional_unit=functional_unit_1k_tokens,
+            pue=1.15,  # AWS hyperscale PUE
+            measurement_method="model",
+        )
+
+        return {
+            "model_id": model_id,
+            "region": region_name,
+            "prompt_tokens": in_tokens,
+            "completion_tokens": out_tokens,
+            "total_tokens": total_tokens,
+            "estimated_cost_usd": round(cost_usd, 6),
+            "it_energy_joules": round(it_joules, 4),
+            "facility_energy_kwh": round(sci_res.energy_kwh, 8),
+            "operational_gco2": round(sci_res.operational_gco2, 6),
+            "embodied_gco2": round(sci_res.embodied_gco2, 6),
+            "sci_gco2_per_1k_tokens": round(sci_res.sci_gco2_per_functional_unit, 6),
+            "grid_carbon_intensity_gco2_kwh": grid_intensity,
+            "standard": "GSF SCI for AI (ISO/IEC 21031:2024, R = 1,000 tokens)",
+        }
+
+    def get_session_telemetry(self) -> Dict[str, Any]:
+        """Return cumulative Bedrock token, cost, and carbon metrics for this client instance."""
+        with self._lock:
+            return dict(self._telemetry_totals)
 
     def _runtime(self):
         """Build the Bedrock Runtime client lazily.
@@ -129,6 +231,7 @@ class BedrockClient:
     @staticmethod
     def list_models() -> Tuple[str, ...]:
         return DEFAULT_MODELS
+
     def health(self) -> Dict[str, Any]:
         """Report reachability without raising, for /api/health."""
         report: Dict[str, Any] = {
@@ -196,6 +299,7 @@ class BedrockClient:
         return BedrockError(
             f"Bedrock call failed ({name}): {str(exc)[:300]}", kind="network", retryable=True
         )
+
     def _to_converse(
         self, messages: List[Dict[str, str]]
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -234,6 +338,8 @@ class BedrockClient:
         stop: Optional[List[str]] = None,
     ) -> Tuple[str, LLMUsage, str]:
         """Run one Converse call. Returns ``(content, usage, model_used)``."""
+        import time
+
         candidates: List[str] = []
         if model:
             candidates.append(model)
@@ -272,6 +378,7 @@ class BedrockClient:
         last_error: Optional[BedrockError] = None
         for candidate in candidates:
             self._healthy_model = candidate
+            t0 = time.perf_counter()
             try:
                 runtime = self._runtime()
                 system_block, mapped = self._to_converse(messages)
@@ -293,6 +400,7 @@ class BedrockClient:
                 last_error = self._classify(exc)
                 logger.warning("Bedrock call failed for %s: %s", candidate, last_error.message)
                 continue
+            elapsed_s = max(0.01, time.perf_counter() - t0)
 
             content = ""
             for block in response.get("output", {}).get("message", {}).get("content", []):
@@ -310,6 +418,30 @@ class BedrockClient:
                 prompt_tokens=int(usage_raw.get("inputTokens", 0) or 0),
                 completion_tokens=int(usage_raw.get("outputTokens", 0) or 0),
             )
+            footprint = self.compute_inference_footprint(
+                usage=usage,
+                model_id=candidate,
+                region_name=self.region_name,
+                duration_seconds=elapsed_s,
+            )
+            usage.estimated_cost_usd = footprint["estimated_cost_usd"]
+            usage.estimated_energy_joules = footprint["it_energy_joules"]
+            usage.sci_gco2_per_1k_tokens = footprint["sci_gco2_per_1k_tokens"]
+
+            with self._lock:
+                self._telemetry_totals["calls_count"] += 1.0
+                self._telemetry_totals["prompt_tokens"] += float(usage.prompt_tokens)
+                self._telemetry_totals["completion_tokens"] += float(usage.completion_tokens)
+                self._telemetry_totals["total_cost_usd"] = round(
+                    self._telemetry_totals["total_cost_usd"] + footprint["estimated_cost_usd"], 6
+                )
+                self._telemetry_totals["total_energy_joules"] = round(
+                    self._telemetry_totals["total_energy_joules"] + footprint["it_energy_joules"], 4
+                )
+                self._telemetry_totals["total_operational_gco2"] = round(
+                    self._telemetry_totals["total_operational_gco2"] + footprint["operational_gco2"], 6
+                )
+
             self._healthy_model = candidate
             return content, usage, candidate
 
@@ -330,4 +462,5 @@ def get_client() -> BedrockClient:
             if _client_singleton is None:
                 _client_singleton = BedrockClient()
     return _client_singleton
+
 

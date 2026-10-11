@@ -153,3 +153,97 @@ class CalibratedEnergyModel:
             },
         )
 
+    @classmethod
+    def calculate_from_cloudwatch(
+        cls,
+        instance_id: str,
+        cloud_instance: str = "c6g.xlarge",
+        region_name: str = "us-east-1",
+        period_seconds: int = 3600,
+        memory_mb: float = 4096.0,
+        cloudwatch_client: Optional[Any] = None,
+    ) -> CalibratedEnergyResult:
+        """Compute calibrated instance energy from live AWS CloudWatch CPUUtilization telemetry.
+
+        Queries ``AWS/EC2`` ``CPUUtilization`` datapoints over ``period_seconds``.
+        Never fabricates datapoints: if AWS credentials are absent or CloudWatch
+        returns zero datapoints for ``instance_id``, raises ``RuntimeError`` so
+        callers know no live telemetry was available.
+        """
+        from datetime import timedelta
+
+        if not instance_id or not str(instance_id).strip():
+            raise ValueError("instance_id must be a non-empty EC2 InstanceId (e.g. 'i-0123456789abcdef0').")
+
+        period_seconds = max(60, int(period_seconds))
+        stat_period = max(60, min(period_seconds, 300))
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(seconds=period_seconds)
+
+        cw = cloudwatch_client
+        if cw is None:
+            try:
+                import boto3
+            except ImportError as exc:
+                raise RuntimeError("boto3 is required for CloudWatch telemetry ingestion.") from exc
+            cw = boto3.client("cloudwatch", region_name=region_name)
+
+        response = cw.get_metric_statistics(
+            Namespace="AWS/EC2",
+            MetricName="CPUUtilization",
+            Dimensions=[{"Name": "InstanceId", "Value": str(instance_id).strip()}],
+            StartTime=start_time,
+            EndTime=end_time,
+            Period=stat_period,
+            Statistics=["Average", "Maximum"],
+        )
+
+        datapoints = response.get("Datapoints", []) if isinstance(response, dict) else []
+        if not datapoints:
+            raise RuntimeError(
+                f"No AWS CloudWatch CPUUtilization datapoints returned for instance '{instance_id}' "
+                f"in region '{region_name}' over the last {period_seconds}s. Refusing to fabricate telemetry."
+            )
+
+        averages = [float(dp["Average"]) for dp in datapoints if "Average" in dp]
+        maximums = [float(dp.get("Maximum", dp.get("Average", 0.0))) for dp in datapoints]
+        if not averages:
+            raise RuntimeError(f"CloudWatch datapoints for '{instance_id}' contained no 'Average' values.")
+
+        avg_cpu = sum(averages) / len(averages)
+        peak_cpu = max(maximums) if maximums else avg_cpu
+
+        base_res = cls.calculate_energy(
+            duration_seconds=float(period_seconds),
+            cpu_utilization_pct=avg_cpu,
+            memory_mb=memory_mb,
+            cloud_instance=cloud_instance,
+        )
+
+        provenance = dict(base_res.provenance_details)
+        provenance.update({
+            "telemetry_source": "aws_cloudwatch_get_metric_statistics",
+            "cloudwatch_namespace": "AWS/EC2",
+            "cloudwatch_metric": "CPUUtilization",
+            "instance_id": str(instance_id).strip(),
+            "region": region_name,
+            "datapoints_sampled": len(averages),
+            "peak_cpu_utilization_pct": round(peak_cpu, 2),
+            "window_start_utc": start_time.isoformat(),
+            "window_end_utc": end_time.isoformat(),
+        })
+
+        return CalibratedEnergyResult(
+            duration_seconds=base_res.duration_seconds,
+            cpu_utilization_pct=base_res.cpu_utilization_pct,
+            memory_mb=base_res.memory_mb,
+            energy_joules=base_res.energy_joules,
+            energy_kwh=base_res.energy_kwh,
+            estimated_cost_usd=base_res.estimated_cost_usd,
+            confidence_score=0.92,
+            methodology="AWS_CLOUDWATCH_CALIBRATED_SPECPOWER",
+            cloud_profile_used=base_res.cloud_profile_used,
+            provenance_details=provenance,
+        )
+
+

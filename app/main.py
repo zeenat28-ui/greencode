@@ -1986,6 +1986,81 @@ async def api_get_calibrated_energy(
     return {"success": True, "calibrated_result": res}
 
 
+@app.get("/api/enterprise/aws/graviton-migration", tags=["AWS Enterprise FinOps & GreenOps"])
+async def api_aws_graviton_migration(
+    source_x86_instance: str = Query("c5.xlarge"),
+    target_graviton_instance: Optional[str] = Query(None),
+    cpu_percent: float = Query(55.0, ge=0.0, le=100.0),
+    memory_mb: float = Query(8192.0, ge=128.0),
+    region: str = Query("us-east-1"),
+    instance_count: int = Query(1, ge=1, le=10000),
+):
+    """Calculate verified annual energy (kWh), carbon (kg CO2e), and cost (USD) savings of migrating x86 EC2 to AWS Graviton."""
+    from app.cloud_cost_mapper import CloudCostMapper
+    comparison = CloudCostMapper.compare_graviton_migration(
+        source_x86_instance=source_x86_instance,
+        target_graviton_instance=target_graviton_instance,
+        cpu_utilization_pct=cpu_percent,
+        memory_mb=memory_mb,
+        region=region,
+        instance_count=instance_count,
+    )
+    return {"success": True, "graviton_migration": comparison}
+
+
+@app.get("/api/enterprise/aws/cloudwatch-energy", tags=["AWS Enterprise FinOps & GreenOps"])
+async def api_aws_cloudwatch_energy(
+    instance_id: str = Query(..., min_length=3),
+    cloud_instance: str = Query("c6g.xlarge"),
+    region: str = Query("us-east-1"),
+    period_seconds: int = Query(3600, ge=60, le=86400),
+    memory_mb: float = Query(4096.0, ge=128.0),
+):
+    """Derive instance energy consumption from live AWS CloudWatch CPUUtilization telemetry (fails closed if no datapoints)."""
+    try:
+        res = CalibratedEnergyModel.calculate_from_cloudwatch(
+            instance_id=instance_id,
+            cloud_instance=cloud_instance,
+            region_name=region,
+            period_seconds=period_seconds,
+            memory_mb=memory_mb,
+        )
+        return {"success": True, "telemetry_available": True, "calibrated_result": res}
+    except Exception as exc:
+        return {
+            "success": False,
+            "telemetry_available": False,
+            "error": str(exc),
+        }
+
+
+@app.get("/api/enterprise/aws/bedrock-telemetry", tags=["AWS Enterprise FinOps & GreenOps"])
+async def api_aws_bedrock_telemetry(
+    prompt_tokens: int = Query(1000, ge=0),
+    completion_tokens: int = Query(500, ge=0),
+    model_id: str = Query("anthropic.claude-sonnet-4-5-20250929-v1:0"),
+    region: str = Query("us-east-1"),
+    duration_seconds: float = Query(1.2, ge=0.01),
+):
+    """Compute GSF SCI-for-AI token cost and carbon footprint for Amazon Bedrock inference."""
+    from app.bedrock_client import BedrockClient, get_client as get_bedrock_client
+    from app.huggingface_client import LLMUsage
+
+    usage = LLMUsage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+    footprint = BedrockClient.compute_inference_footprint(
+        usage=usage,
+        model_id=model_id,
+        region_name=region,
+        duration_seconds=duration_seconds,
+    )
+    session_totals = get_bedrock_client().get_session_telemetry()
+    return {
+        "success": True,
+        "inference_footprint": footprint,
+        "session_telemetry": session_totals,
+    }
+
+
 class VoiceAskRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
     zone: str = Field(default="IE")

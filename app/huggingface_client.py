@@ -62,10 +62,13 @@ class LLMError(RuntimeError):
 
 @dataclass
 class LLMUsage:
-    """Token accounting for one call, surfaced so callers can budget."""
+    """Token, financial cost, and SCI-for-AI energy accounting for one LLM call."""
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+    estimated_energy_joules: float = 0.0
+    sci_gco2_per_1k_tokens: float = 0.0
 
     @property
     def total_tokens(self) -> int:

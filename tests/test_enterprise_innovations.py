@@ -317,5 +317,87 @@ def cubic(items):
     assert res["violations"][0]["span_lines"] >= 2
 
 
+def test_aws_cloudwatch_calibrated_energy_bridge():
+    from app.calibrated_energy import CalibratedEnergyModel
+
+    class FakeCloudWatchClient:
+        def __init__(self, datapoints):
+            self._datapoints = datapoints
+
+        def get_metric_statistics(self, **kwargs):
+            return {"Datapoints": self._datapoints}
+
+    cw_ok = FakeCloudWatchClient([
+        {"Average": 40.0, "Maximum": 75.0},
+        {"Average": 60.0, "Maximum": 85.0},
+    ])
+    res = CalibratedEnergyModel.calculate_from_cloudwatch(
+        instance_id="i-0abc123def456",
+        cloud_instance="c8g.2xlarge",
+        region_name="us-east-1",
+        period_seconds=3600,
+        memory_mb=16384.0,
+        cloudwatch_client=cw_ok,
+    )
+    assert res.cpu_utilization_pct == 50.0
+    assert res.methodology == "AWS_CLOUDWATCH_CALIBRATED_SPECPOWER"
+    assert res.confidence_score == 0.92
+    assert res.provenance_details["datapoints_sampled"] == 2
+    assert res.provenance_details["peak_cpu_utilization_pct"] == 85.0
+
+    # Empty datapoints must fail closed rather than fabricating numbers
+    cw_empty = FakeCloudWatchClient([])
+    with pytest.raises(RuntimeError) as exc_info:
+        CalibratedEnergyModel.calculate_from_cloudwatch(
+            instance_id="i-0empty000000",
+            cloudwatch_client=cw_empty,
+        )
+    assert "Refusing to fabricate telemetry" in str(exc_info.value)
+
+
+def test_aws_graviton_migration_roi_engine():
+    comp = CloudCostMapper.compare_graviton_migration(
+        source_x86_instance="m5.2xlarge",
+        target_graviton_instance="c8g.2xlarge",
+        cpu_utilization_pct=60.0,
+        memory_mb=16384.0,
+        region="us-east-1",
+        instance_count=10,
+    )
+    assert comp.instance_count == 10
+    assert comp.target_graviton_instance == "c8g.2xlarge"
+    assert 40.0 <= comp.energy_reduction_pct <= 68.0
+    assert comp.annual_kwh_saved > 0.0
+    assert comp.annual_usd_saved > 0.0
+    assert comp.annual_co2_saved_kg > 0.0
+
+
+def test_bedrock_sci_for_ai_token_metering():
+    from app.bedrock_client import BedrockClient
+    from app.huggingface_client import LLMUsage
+
+    usage = LLMUsage(prompt_tokens=1000, completion_tokens=500)
+    sonnet_fp = BedrockClient.compute_inference_footprint(
+        usage=usage,
+        model_id="anthropic.claude-sonnet-4-5-20250929-v1:0",
+        region_name="us-east-1",
+        duration_seconds=1.5,
+    )
+    haiku_fp = BedrockClient.compute_inference_footprint(
+        usage=usage,
+        model_id="anthropic.claude-3-5-haiku-20241022-v1:0",
+        region_name="us-east-1",
+        duration_seconds=0.6,
+    )
+
+    # 1,000 input * $0.003/1k + 500 output * $0.015/1k = $0.0105
+    assert abs(sonnet_fp["estimated_cost_usd"] - 0.0105) < 1e-6
+    # 1,000 input * $0.0008/1k + 500 output * $0.004/1k = $0.0028
+    assert abs(haiku_fp["estimated_cost_usd"] - 0.0028) < 1e-6
+    assert sonnet_fp["it_energy_joules"] > haiku_fp["it_energy_joules"]
+    assert sonnet_fp["sci_gco2_per_1k_tokens"] > 0.0
+
+
+
 
 

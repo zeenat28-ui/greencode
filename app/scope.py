@@ -202,15 +202,18 @@ class ScopeCalculator:
         """Calculate Scope 3 upstream cloud manufacturing and network emissions."""
         safe_duration = max(0.001, duration_seconds)
         safe_vcpus = max(1, vcpu_count)
+        safe_mem_gb = max(0.5, float(memory_gb))
         safe_runs = max(1, runs_per_year)
         provider_key = cloud_provider.lower().replace("-", "_")
         provider_embodied = CLOUD_EMBODIED_GCO2_PER_VCPU_HOUR.get(
             provider_key, CLOUD_EMBODIED_GCO2_PER_VCPU_HOUR["generic"]
         )
 
-        # Hardware manufacturing emissions amortized over duration (hours)
+        # Hardware manufacturing emissions amortized over duration (hours):
+        # vCPU logic board/die share + DRAM DIMM embodied carbon (~0.35 gCO2e per GB-hour per Boavizta LCA)
         total_runtime_hours = (safe_duration * safe_runs) / 3600.0
-        hardware_embodied_gco2e = total_runtime_hours * safe_vcpus * provider_embodied
+        dram_embodied_gco2e = total_runtime_hours * safe_mem_gb * 0.35
+        hardware_embodied_gco2e = (total_runtime_hours * safe_vcpus * provider_embodied) + dram_embodied_gco2e
 
         # Downstream Network Data Transfer emissions (kWh/GB * GB * grid intensity)
         total_data_gb = max(0.0, data_transfer_gb) * safe_runs
@@ -223,7 +226,7 @@ class ScopeCalculator:
         return Scope3Result(
             cloud_provider=cloud_provider,
             vcpu_count=safe_vcpus,
-            memory_gb=memory_gb,
+            memory_gb=safe_mem_gb,
             duration_seconds=round(safe_duration, 4),
             runs_per_year=safe_runs,
             embodied_hardware_gco2e_annual=round(hardware_embodied_gco2e, 4),

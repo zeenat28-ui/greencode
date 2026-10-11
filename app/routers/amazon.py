@@ -58,6 +58,22 @@ async def get_aws_region_carbon_intensity(region: str):
     return amazon_service.get_region_carbon_intensity(region=region)
 
 
+@router.get("/regions/recommend-migration")
+async def recommend_aws_region_migration(
+    current_region: str = Query("us-east-1"),
+    monthly_kwh: float = Query(1000.0, ge=0.0),
+    data_residency: str = Query("GLOBAL"),
+    max_candidates: int = Query(5, ge=1, le=20),
+):
+    """Recommend carbon-optimal AWS target regions respecting data residency and latency partitions."""
+    return amazon_service.recommend_optimal_aws_region(
+        current_region=current_region,
+        monthly_kwh=monthly_kwh,
+        data_residency=data_residency,
+        max_candidates=max_candidates,
+    )
+
+
 @router.post("/accounts/link", status_code=status.HTTP_200_OK)
 async def link_aws_account_endpoint(
     payload: LinkAWSAccountRequest,
@@ -110,12 +126,18 @@ async def get_account_cost_carbon(
     account_id: str,
     region: str = Query("us-east-1"),
     org_id: int = Query(1),
+    instance_type: str = Query("c6g.xlarge"),
     actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Fetch month-to-date AWS Budgets spend and physics-calibrated carbon footprint for a linked account."""
     _enforce_tenant(actor, org_id)
     try:
-        return amazon_service.get_aws_cost_carbon_data(region=region, account_id=account_id)
+        return amazon_service.get_aws_cost_carbon_data(
+            region=region,
+            account_id=account_id,
+            org_id=org_id,
+            instance_type=instance_type,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except amazon_service.AWSSTSError as exc:

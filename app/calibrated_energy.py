@@ -51,12 +51,35 @@ CLOUD_POWER_PROFILES: Dict[str, CloudInstanceProfile] = {
     "c5.xlarge": CloudInstanceProfile("AWS", "c5.xlarge", 4, 8.0, 7.8, 36.4, "x86_64"),
     "m5.2xlarge": CloudInstanceProfile("AWS", "m5.2xlarge", 8, 32.0, 15.2, 72.8, "x86_64"),
     "t3.xlarge": CloudInstanceProfile("AWS", "t3.xlarge", 4, 16.0, 5.1, 28.6, "x86_64"),
-    # Azure Compute
+    # GCP Compute Engine (x86_64 & Tau T2A Ampere Altra ARM64)
+    "e2-standard-4": CloudInstanceProfile("GCP", "e2-standard-4", 4, 16.0, 6.9, 33.5, "x86_64"),
+    "n2-standard-8": CloudInstanceProfile("GCP", "n2-standard-8", 8, 32.0, 14.5, 70.2, "x86_64"),
+    "c3-standard-4": CloudInstanceProfile("GCP", "c3-standard-4", 4, 16.0, 7.4, 35.8, "x86_64"),
+    "t2a-standard-4": CloudInstanceProfile("GCP", "t2a-standard-4", 4, 16.0, 3.6, 20.4, "arm64_ampere"),
+    # Azure Compute (x86_64 & Cobalt/Ampere ARM64)
     "Standard_D4s_v5": CloudInstanceProfile("Azure", "Standard_D4s_v5", 4, 16.0, 8.0, 39.2, "x86_64"),
     "Standard_D8s_v5": CloudInstanceProfile("Azure", "Standard_D8s_v5", 8, 32.0, 16.0, 78.4, "x86_64"),
+    "Standard_D4ps_v5": CloudInstanceProfile("Azure", "Standard_D4ps_v5", 4, 16.0, 3.8, 21.0, "arm64"),
     # Default Cloud Node Container (Kubernetes Pod / Serverless)
     "generic_container": CloudInstanceProfile("Generic", "container_pod", 2, 4.0, 2.5, 14.0, "x86_64"),
 }
+
+
+def _resolve_cloud_profile(cloud_instance: str) -> CloudInstanceProfile:
+    """Resolve an instance identifier (including CloudCostMapper underscore keys) to a CloudInstanceProfile."""
+    raw = (cloud_instance or "generic_container").strip()
+    if raw in CLOUD_POWER_PROFILES:
+        return CLOUD_POWER_PROFILES[raw]
+    stripped = raw[4:] if raw.startswith("ec2_") else raw
+    candidates = (
+        stripped,
+        stripped.replace("_", "."),
+        stripped.replace("_", "-"),
+    )
+    for cand in candidates:
+        if cand in CLOUD_POWER_PROFILES:
+            return CLOUD_POWER_PROFILES[cand]
+    return CLOUD_POWER_PROFILES["generic_container"]
 
 
 @dataclass
@@ -94,10 +117,20 @@ class CalibratedEnergyModel:
         duration_seconds = max(0.001, duration_seconds)
         cpu_util = min(100.0, max(0.0, cpu_utilization_pct))
 
-        # Case 1: True Hardware RAPL Direct Measurement (when running on native Linux bare-metal)
+        # Case 1: True Hardware Counter Direct Measurement (Linux RAPL, Windows EMI, macOS IOReport, Scaphandre)
         if is_hardware_counter_available and raw_hardware_joules is not None and raw_hardware_joules > 0.0:
-            kwh = (raw_hardware_joules / 3_600_000.0) * cls.PUE_ENTERPRISE_CLOUD
+            facility_joules = raw_hardware_joules * cls.PUE_ENTERPRISE_CLOUD
+            kwh = facility_joules / 3_600_000.0
             cost = kwh * cls.DEFAULT_KWH_COST_USD
+            sensor_label = "/sys/class/powercap/intel-rapl"
+            try:
+                from app.energy_sensors import probe_capabilities
+                caps = probe_capabilities()
+                best = caps.get("best_available")
+                if best and best != "model":
+                    sensor_label = f"{best} ({platform.system()})"
+            except Exception:
+                pass
             return CalibratedEnergyResult(
                 duration_seconds=round(duration_seconds, 3),
                 cpu_utilization_pct=round(cpu_util, 2),
@@ -109,16 +142,18 @@ class CalibratedEnergyModel:
                 methodology="HARDWARE_RAPL_DIRECT",
                 cloud_profile_used="native_bare_metal_rapl",
                 provenance_details={
-                    "sensor": "/sys/class/powercap/intel-rapl",
+                    "sensor": sensor_label,
+                    "it_energy_joules": round(raw_hardware_joules, 4),
+                    "facility_energy_joules": round(facility_joules, 4),
                     "pue_applied": cls.PUE_ENTERPRISE_CLOUD,
                     "platform": platform.platform(),
                 },
             )
 
         # Case 2: Calibrated Hypervisor Cloud Power Model (SPECpower / CCF Quadratic Curve)
-        profile = CLOUD_POWER_PROFILES.get(cloud_instance, CLOUD_POWER_PROFILES["generic_container"])
+        profile = _resolve_cloud_profile(cloud_instance)
 
-        # SPECpower non-linear CPU curve: P(u) = P_idle + (P_max - P_idle) * (2*u - u^1.4) / 1.0
+        # SPECpower non-linear CPU curve: P(u) = P_idle + (P_max - P_idle) * (1.5*u - 0.5*u^2)
         norm_u = cpu_util / 100.0
         active_power_fraction = (1.5 * norm_u - 0.5 * math.pow(norm_u, 2.0))
         active_power_fraction = min(1.0, max(0.0, active_power_fraction))
@@ -220,6 +255,18 @@ class CalibratedEnergyModel:
             cloud_instance=cloud_instance,
         )
 
+        # Also compute the Riemann sum across each datapoint slice on the non-linear SPECpower curve
+        slice_sec = float(period_seconds) / max(1, len(averages))
+        integrated_joules = sum(
+            cls.calculate_energy(
+                duration_seconds=slice_sec,
+                cpu_utilization_pct=dp_u,
+                memory_mb=memory_mb,
+                cloud_instance=cloud_instance,
+            ).energy_joules
+            for dp_u in averages
+        )
+
         provenance = dict(base_res.provenance_details)
         provenance.update({
             "telemetry_source": "aws_cloudwatch_get_metric_statistics",
@@ -229,6 +276,7 @@ class CalibratedEnergyModel:
             "region": region_name,
             "datapoints_sampled": len(averages),
             "peak_cpu_utilization_pct": round(peak_cpu, 2),
+            "time_series_integrated_joules": round(integrated_joules, 4),
             "window_start_utc": start_time.isoformat(),
             "window_end_utc": end_time.isoformat(),
         })

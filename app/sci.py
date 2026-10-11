@@ -73,6 +73,7 @@ def compute_sci(
     memory_joules: float = 0.0,
     pue: float = DEFAULT_PUE,
     measurement_method: str = "model",
+    vcpu_count: int | None = None,
 ) -> SCIResult:
     """Compute SCI from a measured (or modelled) energy figure.
 
@@ -86,6 +87,7 @@ def compute_sci(
         pue: Facility overhead multiplier.
         measurement_method: ``rapl``/``perf``/``battery`` for real measurement,
             ``model`` for a TDP estimate.
+        vcpu_count: Optional vCPU share multiplier for embodied hardware carbon (M).
     """
     warnings: List[str] = []
 
@@ -101,8 +103,9 @@ def compute_sci(
 
     energy_kwh = facility_joules / 3_600_000.0
 
+    vcpu_scale = max(1, int(vcpu_count)) if vcpu_count is not None else 1
     operational = energy_kwh * carbon_intensity_gco2_per_kwh   # E x I
-    embodied = max(0.0, duration_seconds) * EMBODIED_GCO2_PER_SECOND  # M
+    embodied = max(0.0, duration_seconds) * EMBODIED_GCO2_PER_SECOND * vcpu_scale  # M
     sci = (operational + embodied) / functional_unit
 
     if measurement_method == "model":
@@ -181,6 +184,6 @@ def carbon_equivalents(grams_co2e: float) -> Dict[str, float]:
         "km_driven_petrol_car": g / 171.0,       # ~171 g CO2e per vehicle-km
         "hours_watching_1080p_video": g / 36.0,  # ~36 g CO2e per hour
         "tree_years_absorbed": g / 21770.0,     # ~21,770 g per tree-year
-        "meals_vegetarian": g / 1.1,            # ~1.1 g per meal
+        "meals_vegetarian": g / 1100.0,          # ~1,100 g (1.1 kg) CO2e per vegetarian meal
     }
 

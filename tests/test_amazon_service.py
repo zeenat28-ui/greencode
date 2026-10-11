@@ -172,6 +172,13 @@ def test_cross_account_cost_and_calibrated_carbon_attribution(monkeypatch):
     )
 
     sts = FakeSTSClient(account_id="123456789012")
+    amazon_service.link_aws_account(
+        account_id="123456789012",
+        role_arn="arn:aws:iam::123456789012:role/GreenCodeAuditor",
+        region="us-east-1",
+        org_id=1,
+        sts_client=sts,
+    )
     # $136.00 spend = 1,000 hours of c6g.xlarge ($0.136/hr)
     budgets = FakeBudgetsClient(actual_usd=136.0, forecast_usd=180.0)
 
@@ -206,4 +213,56 @@ def test_amazon_router_endpoints():
     r_ci = client.get("/api/aws/regions/eu-south-1/carbon-intensity")
     assert r_ci.status_code == 200
     assert r_ci.json()["grid_zone"] == "IT"
+
+    r_mig = client.get("/api/aws/regions/recommend-migration?current_region=eu-central-1&data_residency=EU_STRICT")
+    assert r_mig.status_code == 200
+    mig_body = r_mig.json()
+    assert mig_body["data_residency_enforced"] == "EU_STRICT"
+    assert all(c["region"].startswith("eu-") for c in mig_body["candidates"])
+    assert mig_body["recommended_region"] == "eu-north-1"
+    assert mig_body["max_carbon_reduction_pct"] > 80.0
+
+
+def test_aws_tenant_isolation_and_calibrated_profiles_and_sci_scope():
+    from app.calibrated_energy import CalibratedEnergyModel
+    from app.sci import carbon_equivalents, compute_sci
+    from app.scope import ScopeCalculator
+
+    # 1. Cross-tenant BOLA protection: account linked to org_id=2 cannot be queried by org_id=1
+    sts = FakeSTSClient(account_id="222233334444")
+    amazon_service.link_aws_account(
+        account_id="222233334444",
+        role_arn="arn:aws:iam::222233334444:role/GreenCodeAuditor",
+        region="us-east-1",
+        org_id=2,
+        sts_client=sts,
+    )
+    with pytest.raises(amazon_service.AWSSTSError) as exc_info:
+        amazon_service.get_aws_cost_carbon_data(
+            region="us-east-1",
+            account_id="222233334444",
+            org_id=1,
+            sts_client=sts,
+        )
+    assert exc_info.value.error_code == "ACCOUNT_NOT_LINKED"
+    amazon_service.delete_aws_account("222233334444", org_id=2)
+
+    # 2. CalibratedEnergyModel resolves GCP/Azure ARM & x86 profiles and ec2_ prefixed keys
+    gcp_arm = CalibratedEnergyModel.calculate_energy(10.0, 50.0, cloud_instance="t2a-standard-4")
+    assert gcp_arm.cloud_profile_used == "t2a-standard-4"
+    assert gcp_arm.provenance_details["provider"] == "GCP"
+
+    ec2_norm = CalibratedEnergyModel.calculate_energy(10.0, 50.0, cloud_instance="ec2_c6g_xlarge")
+    assert ec2_norm.cloud_profile_used == "c6g.xlarge"
+
+    # 3. SCI vCPU embodied scaling and 1,100g vegetarian meal equivalency fix
+    sci_1 = compute_sci(energy_joules=1000.0, duration_seconds=100.0, carbon_intensity_gco2_per_kwh=300.0, vcpu_count=1)
+    sci_8 = compute_sci(energy_joules=1000.0, duration_seconds=100.0, carbon_intensity_gco2_per_kwh=300.0, vcpu_count=8)
+    assert abs(sci_8.embodied_gco2 - sci_1.embodied_gco2 * 8.0) < 1e-6
+    assert abs(carbon_equivalents(1100.0)["meals_vegetarian"] - 1.0) < 1e-6
+
+    # 4. Scope 3 DRAM memory manufacturing embodied carbon scaling
+    s3_small = ScopeCalculator.calculate_scope_3(duration_seconds=3600.0, vcpu_count=4, memory_gb=4.0, runs_per_year=100)
+    s3_large = ScopeCalculator.calculate_scope_3(duration_seconds=3600.0, vcpu_count=4, memory_gb=64.0, runs_per_year=100)
+    assert s3_large.embodied_hardware_gco2e_annual > s3_small.embodied_hardware_gco2e_annual
 

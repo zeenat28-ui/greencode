@@ -344,6 +344,7 @@ def get_cost_and_usage(
     granularity: str = "MONTHLY",
     role_arn: Optional[str] = None,
     external_id: Optional[str] = None,
+    org_id: Optional[int] = None,
     sts_client: Optional[Any] = None,
     budgets_client: Optional[Any] = None,
 ) -> Dict[str, Any]:
@@ -360,14 +361,14 @@ def get_cost_and_usage(
     resolved_external_id = external_id
     if not resolved_role_arn:
         from app.database import get_aws_account
-        linked = get_aws_account(clean_acct)
+        linked = get_aws_account(clean_acct, org_id=org_id)
         if linked:
             resolved_role_arn = linked.role_arn
             resolved_external_id = resolved_external_id or linked.external_id
 
     if not resolved_role_arn:
         raise AWSSTSError(
-            f"Account {clean_acct} is not linked or missing an IAM Role ARN for STS AssumeRole.",
+            f"Account {clean_acct} is not linked to this organization or missing an IAM Role ARN for STS AssumeRole.",
             error_code="ACCOUNT_NOT_LINKED",
             account_id=clean_acct,
         )
@@ -444,6 +445,8 @@ def get_aws_cost_carbon_data(
     region: str,
     account_id: str,
     role_arn: Optional[str] = None,
+    org_id: Optional[int] = None,
+    instance_type: str = "c6g.xlarge",
     sts_client: Optional[Any] = None,
     budgets_client: Optional[Any] = None,
 ) -> Dict[str, Any]:
@@ -451,12 +454,14 @@ def get_aws_cost_carbon_data(
 
     Replaces arbitrary dollar-times-intensity formulas with `CalibratedEnergyModel`:
     1. Converts actual EC2/compute spend (`actual_spend_usd`) into equivalent active
-       `c6g.xlarge` (4 vCPU) compute hours using AWS's published on-demand rate ($0.136/hr).
+       compute hours using AWS's published on-demand rate for `instance_type` (default `c6g.xlarge` @ $0.136/hr).
     2. Calculates PUE-adjusted energy consumption (`estimated_energy_kwh`) via
        `CalibratedEnergyModel.calculate_energy`.
     3. Multiplies `estimated_energy_kwh * (carbon_intensity_g_per_kwh / 1000)` to yield
        physically dimensional `estimated_co2e_kg`.
     """
+    from app.cloud_cost_mapper import CloudCostMapper
+
     now_utc = datetime.now(timezone.utc)
     mtd_start = now_utc.strftime("%Y-%m-01")
     mtd_end = now_utc.strftime("%Y-%m-%d")
@@ -468,6 +473,7 @@ def get_aws_cost_carbon_data(
         start_date=mtd_start,
         end_date=mtd_end,
         role_arn=role_arn,
+        org_id=org_id,
         sts_client=sts_client,
         budgets_client=budgets_client,
     )
@@ -475,15 +481,21 @@ def get_aws_cost_carbon_data(
     spend_usd = float(cost.get("actual_spend_usd") or 0.0)
     intensity_g_kwh = float(carbon.get("carbon_intensity") or 383.78)
 
-    # AWS c6g.xlarge (4 vCPU, 8 GB) on-demand rate is $0.136/hour ($0.034/vCPU-hour)
-    reference_hourly_rate_usd = 0.136
+    # Resolve published AWS on-demand hourly rate for the specified instance type
+    normalized_inst = (instance_type or "c6g.xlarge").strip()
+    mapper_key = f"ec2_{normalized_inst.replace('.', '_').replace('-', '_')}_hourly"
+    aws_rates = CloudCostMapper.CLOUD_RATES.get("aws", {})
+    reference_hourly_rate_usd = aws_rates.get(
+        mapper_key,
+        aws_rates.get(normalized_inst, 0.136),
+    )
     if spend_usd > 0.0:
-        equivalent_instance_hours = spend_usd / reference_hourly_rate_usd
+        equivalent_instance_hours = spend_usd / max(0.001, reference_hourly_rate_usd)
         calibrated = CalibratedEnergyModel.calculate_energy(
             duration_seconds=equivalent_instance_hours * 3600.0,
             cpu_utilization_pct=45.0,
             memory_mb=8192.0,
-            cloud_instance="c6g.xlarge",
+            cloud_instance=normalized_inst,
         )
         estimated_energy_kwh = round(calibrated.energy_kwh, 4)
         estimated_co2e_kg = round(estimated_energy_kwh * (intensity_g_kwh / 1000.0), 4)
@@ -495,6 +507,7 @@ def get_aws_cost_carbon_data(
         "region": region,
         "grid_zone": carbon.get("grid_zone"),
         "account_id": account_id,
+        "instance_type": normalized_inst,
         "period_start": mtd_start,
         "period_end": mtd_end,
         "carbon_intensity_gco2_kwh": intensity_g_kwh,
@@ -518,8 +531,97 @@ def get_aws_cost_carbon_data(
                 "method": cost.get("method"),
                 "tier": cost.get("tier"),
             },
-            "energy_conversion_model": "CalibratedEnergyModel (c6g.xlarge @ $0.136/hr on-demand baseline, PUE=1.15)",
+            "energy_conversion_model": (
+                f"CalibratedEnergyModel ({normalized_inst} @ ${reference_hourly_rate_usd:.4f}/hr on-demand baseline, PUE=1.15)"
+            ),
         },
+    }
+
+
+def recommend_optimal_aws_region(
+    current_region: str = "us-east-1",
+    monthly_kwh: float = 1000.0,
+    data_residency: str = "GLOBAL",
+    max_candidates: int = 5,
+) -> Dict[str, Any]:
+    """Recommend carbon-optimal AWS target regions respecting data residency and latency partitions.
+
+    Args:
+        current_region: Current AWS region where the workload runs (e.g. 'us-east-1', 'eu-central-1').
+        monthly_kwh: Monthly energy consumption of the workload in kWh.
+        data_residency: Sovereignty boundary: 'EU_STRICT' (only eu-*), 'US_STRICT' (only us-*/ca-*),
+            'APAC_STRICT' (only ap-*), or 'GLOBAL' (all supported AWS regions).
+        max_candidates: Maximum number of ranked cleaner candidate regions to return.
+    """
+    src_region = (current_region or "us-east-1").strip().lower()
+    if src_region not in REGION_CARBON_FALLBACK:
+        src_region = "us-east-1"
+
+    safe_kwh = max(0.0, float(monthly_kwh))
+    residency_norm = (data_residency or "GLOBAL").strip().upper()
+
+    src_carbon = get_region_carbon_intensity(src_region)
+    src_intensity = float(src_carbon["carbon_intensity"])
+    src_monthly_co2_kg = round(safe_kwh * (src_intensity / 1000.0), 3)
+    src_prefix = src_region.split("-")[0]
+
+    all_regions = list_available_regions()
+    if residency_norm == "EU_STRICT":
+        allowed_regions = [r for r in all_regions if r.startswith("eu-")]
+    elif residency_norm == "US_STRICT":
+        allowed_regions = [r for r in all_regions if r.startswith("us-") or r.startswith("ca-")]
+    elif residency_norm == "APAC_STRICT":
+        allowed_regions = [r for r in all_regions if r.startswith("ap-")]
+    else:
+        allowed_regions = list(all_regions)
+
+    candidates: List[Dict[str, Any]] = []
+    for cand in allowed_regions:
+        if cand == src_region:
+            continue
+        c_info = get_region_carbon_intensity(cand)
+        c_intensity = float(c_info["carbon_intensity"])
+        c_monthly_co2_kg = round(safe_kwh * (c_intensity / 1000.0), 3)
+        monthly_saved_kg = round(src_monthly_co2_kg - c_monthly_co2_kg, 3)
+        annual_saved_kg = round(monthly_saved_kg * 12.0, 3)
+        reduction_pct = (
+            round(((src_intensity - c_intensity) / max(src_intensity, 1e-6)) * 100.0, 2)
+            if src_intensity > 0
+            else 0.0
+        )
+        same_partition = cand.split("-")[0] == src_prefix
+        candidates.append({
+            "region": cand,
+            "grid_zone": c_info["grid_zone"],
+            "carbon_intensity_gco2_kwh": c_intensity,
+            "source": c_info["source"],
+            "tier": c_info["tier"],
+            "citation": c_info["citation"],
+            "same_geography_partition": same_partition,
+            "latency_impact": "LOW (Same Continental Partition)" if same_partition else "MODERATE (Cross-Continental Batch/Async)",
+            "carbon_reduction_pct": reduction_pct,
+            "monthly_co2_saved_kg": monthly_saved_kg,
+            "annual_co2_saved_kg": annual_saved_kg,
+        })
+
+    # Sort primarily by lowest carbon intensity, breaking ties by same geography partition
+    candidates.sort(key=lambda item: (item["carbon_intensity_gco2_kwh"], not item["same_geography_partition"]))
+    cleaner_candidates = [c for c in candidates if c["carbon_reduction_pct"] > 0]
+    top_candidates = (cleaner_candidates or candidates)[: max(1, int(max_candidates))]
+    best = top_candidates[0] if top_candidates else None
+
+    return {
+        "current_region": src_region,
+        "current_grid_zone": src_carbon["grid_zone"],
+        "current_carbon_intensity_gco2_kwh": src_intensity,
+        "current_monthly_co2_kg": src_monthly_co2_kg,
+        "monthly_kwh_evaluated": safe_kwh,
+        "data_residency_enforced": residency_norm,
+        "recommended_region": best["region"] if best and best["carbon_reduction_pct"] > 0 else src_region,
+        "max_carbon_reduction_pct": best["carbon_reduction_pct"] if best and best["carbon_reduction_pct"] > 0 else 0.0,
+        "max_annual_co2_saved_kg": best["annual_co2_saved_kg"] if best and best["carbon_reduction_pct"] > 0 else 0.0,
+        "candidates": top_candidates,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 

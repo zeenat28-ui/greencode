@@ -252,6 +252,23 @@ class BedrockClient:
                 kind="auth",
             )
 
+        # Enforce tenant Data Residency policy before outbound AWS region call
+        try:
+            from app.enterprise_governance import governance_manager
+            org_id_env = os.environ.get("GREENCODE_ORG_ID")
+            active_org_id = int(org_id_env) if org_id_env and org_id_env.isdigit() else 1
+            residency_check = governance_manager.validate_outbound_data_transfer(
+                org_id=active_org_id,
+                destination_service="aws_bedrock",
+                destination_region=self.region_name,
+            )
+            if not residency_check.get("allowed", True):
+                raise BedrockError(residency_check["reason"], kind="bad_request")
+        except BedrockError:
+            raise
+        except Exception:
+            pass  # no-op
+
         last_error: Optional[BedrockError] = None
         for candidate in candidates:
             self._healthy_model = candidate

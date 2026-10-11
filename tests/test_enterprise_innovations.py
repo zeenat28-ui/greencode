@@ -210,3 +210,112 @@ def test_multi_tenant_carbon_budgets():
     assert c_breach["is_breached"] is True
 
 
+def test_sci_joules_to_kwh_physics_conversion():
+    from app.sci import compute_sci
+
+    # 1 kWh = 1,000 W * 3,600 s = 3,600,000 Joules
+    res = compute_sci(
+        energy_joules=3_600_000.0,
+        duration_seconds=0.0,
+        carbon_intensity_gco2_per_kwh=400.0,
+        functional_unit=1.0,
+        pue=1.0,
+    )
+    assert abs(res.energy_kwh - 1.0) < 1e-6
+    assert abs(res.operational_gco2 - 400.0) < 1e-4
+    assert abs(res.sci_gco2_per_functional_unit - 400.0) < 1e-4
+
+
+def test_dynamic_violation_energy_span_and_complexity():
+    # Two HIGH severity violations with different AST patterns and line spans must produce distinct estimates
+    v_nested_cubic = {
+        "violation_type": "NESTED_LOOPS_DEPTH_3+",
+        "severity": "HIGH",
+        "deduction": 15.0,
+        "line_number": 10,
+        "end_line_number": 22,
+    }
+    v_cursor = {
+        "violation_type": "RAW_DB_CURSOR_NO_CONTEXT",
+        "severity": "HIGH",
+        "deduction": 10.0,
+        "line_number": 30,
+        "end_line_number": 31,
+    }
+    impact_cubic = EnergyDebtTracker.estimate_violation_impact(v_nested_cubic)
+    impact_cursor = EnergyDebtTracker.estimate_violation_impact(v_cursor)
+
+    assert impact_cubic["joules_per_1k_calls"] > impact_cursor["joules_per_1k_calls"]
+    assert impact_cubic["co2_kg"] > impact_cursor["co2_kg"]
+    assert impact_cubic["cost_usd"] > impact_cursor["cost_usd"]
+
+
+def test_governance_sqlite_persistence_and_residency_enforcement(monkeypatch):
+    from app.enterprise_governance import DataResidencyZone, EnterpriseGovernanceManager
+    from app.bedrock_client import BedrockClient, BedrockError
+
+    mgr1 = EnterpriseGovernanceManager()
+    mgr1.set_data_residency_policy(org_id=77, policy=DataResidencyZone.EU_STRICT)
+    mgr1.configure_sso(
+        org_id=77,
+        idp_entity_id="urn:okta:greencode-eu",
+        sso_url="https://login.eu.example.com/sso/saml",
+        certificate_x509="-----BEGIN CERTIFICATE-----MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A-----END CERTIFICATE-----",
+        issuer="https://login.eu.example.com",
+        allowed_domains=["eu.example.com"],
+    )
+
+    # Fresh instance must hydrate from SQLite enterprise_governance_kv table
+    mgr2 = EnterpriseGovernanceManager()
+    assert mgr2.get_data_residency_policy(77) == DataResidencyZone.EU_STRICT
+    sso = mgr2.get_sso_config(77)
+    assert sso is not None
+    assert sso.idp_entity_id == "urn:okta:greencode-eu"
+
+    # Outbound call to us-east-1 must be blocked for org 77 under EU_STRICT
+    monkeypatch.setenv("GREENCODE_ORG_ID", "77")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+    client = BedrockClient(region_name="us-east-1", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+    with pytest.raises(BedrockError) as exc_info:
+        client.chat([{"role": "human", "content": "optimize loop"}])
+    assert "GDPR Breach Prevented" in str(exc_info.value)
+
+    # Reset org 77 back to GLOBAL
+    mgr2.set_data_residency_policy(org_id=77, policy=DataResidencyZone.GLOBAL)
+
+
+def test_compliance_runtime_checks_and_retention():
+    from app.compliance import ComplianceManager
+
+    posture = ComplianceManager.evaluate_security_posture(org_id=1)
+    assert posture["compliance_checks"]["rbac_enforcement"]["passed"] is True
+    assert posture["compliance_checks"]["ghg_sci_methodology"]["passed"] is True
+    assert "3.6e6 J = 1.0 kWh" in posture["compliance_checks"]["ghg_sci_methodology"]["details"]
+
+    ret = ComplianceManager.enforce_data_retention(retention_days=365, prune_expired=True)
+    assert "scan_records_pruned" in ret
+    assert "violation_records_pruned" in ret
+    assert ret["status"] == "RETENTION_ACTIVE"
+
+
+def test_parser_complexity_and_kloc_density():
+    from app.parser import audit_source_code
+
+    code = """
+def cubic(items):
+    for a in items:
+        for b in items:
+            for c in items:
+                _ = a + b + c
+"""
+    res = audit_source_code(code, language="python", file_path="cubic.py")
+    assert res["green_score"] < 100.0
+    assert "density_adjusted_score" in res
+    assert "violations_per_kloc" in res
+    assert res["violations_per_kloc"] > 0.0
+    assert res["violations"][0]["complexity_class"] == "O(N^3)"
+    assert res["violations"][0]["span_lines"] >= 2
+
+
+
+

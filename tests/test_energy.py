@@ -176,7 +176,7 @@ class TestSCI(unittest.TestCase):
     def test_matches_the_gsf_formula(self):
         """SCI = (E x I + M) / R, with E in kWh and M in gCO2e."""
         r = compute_sci(
-            energy_joules=3_600_000_000.0,  # exactly 1 kWh
+            energy_joules=3_600_000.0,  # exactly 1 kWh (1000 W * 3600 s)
             duration_seconds=3600.0,
             carbon_intensity_gco2_per_kwh=400.0,
             functional_unit=10.0,

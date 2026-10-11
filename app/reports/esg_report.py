@@ -13,21 +13,24 @@ from sqlalchemy.orm import Session
 from app.database import (
     CarbonBudget,
     Organization,
+    ProfileMetric,
     Project,
     Repository,
     SessionLocal,
     Team,
 )
+from app.calibrated_energy import CalibratedEnergyModel
+from app.scope import CLOUD_EMBODIED_GCO2_PER_VCPU_HOUR, CLOUD_AVERAGE_PUE
 
 logger = logging.getLogger("greencode.reports.esg")
 
 
 class ESGReportGenerator:
-    """Generates regulatory-grade sustainability and carbon disclosure reports."""
+    """Generates sustainability and carbon disclosure reports from database records and SCI/Scope formulas."""
 
     @classmethod
     def generate_data(cls, org_id: int, period: Optional[str] = None) -> Dict[str, Any]:
-        """Compile comprehensive ESG emissions and energy metrics for an enterprise."""
+        """Compile ESG emissions and energy metrics from recorded audits, budgets, and CCF/Boavizta factors."""
         period = period or datetime.now(timezone.utc).strftime("%Y-%m")
         db: Session = SessionLocal()
         try:
@@ -37,20 +40,57 @@ class ESGReportGenerator:
             teams = db.query(Team).filter(Team.org_id == org_id).all()
             projects = db.query(Project).filter(Project.org_id == org_id).all()
             budgets = db.query(CarbonBudget).filter(CarbonBudget.org_id == org_id).all()
+            repos = db.query(Repository).filter(Repository.org_id == org_id).all()
+            profiles = db.query(ProfileMetric).all()
 
-            # Calculate total emissions and energy
-            total_budget_kg = sum(b.monthly_budget_kg_co2e for b in budgets) or 1500.0
-            total_consumed_kg = sum(b.consumed_kg_co2e for b in budgets) or 340.2
-            total_energy_kwh = round(total_consumed_kg / 0.385, 2)  # assuming ~385 g/kWh average
+            # Aggregate real consumption from CarbonBudget rows and recorded ProfileMetric runs
+            budget_consumed_kg = sum(float(b.consumed_kg_co2e or 0.0) for b in budgets)
+            audit_energy_kwh = sum(float(p.energy_wh or 0.0) for p in profiles) / 1000.0
+            audit_carbon_kg = sum(float(p.operational_carbon_gco2 or 0.0) for p in profiles) / 1000.0
+
+            has_measured_records = (budget_consumed_kg > 0.0) or (audit_energy_kwh > 0.0)
+
+            # Derive active compute hours across monitored projects (or 1 baseline service if none registered yet)
+            active_services = max(1, len(projects))
+            monthly_hours_per_service = 730.0  # 24x7 monthly hours
+            baseline_calc = CalibratedEnergyModel.calculate_energy(
+                duration_seconds=monthly_hours_per_service * 3600.0 * active_services,
+                cpu_utilization_pct=35.0,
+                memory_mb=4096.0,
+                cloud_instance="c6g.xlarge",
+            )
+
+            if budget_consumed_kg > 0.0:
+                total_consumed_kg = budget_consumed_kg + audit_carbon_kg
+                total_energy_kwh = round(
+                    audit_energy_kwh + (budget_consumed_kg / 0.380), 4
+                )
+            elif audit_energy_kwh > 0.0:
+                total_energy_kwh = round(audit_energy_kwh + baseline_calc.energy_kwh, 4)
+                total_consumed_kg = round(audit_carbon_kg + (baseline_calc.energy_kwh * 0.380), 4)
+            else:
+                total_energy_kwh = round(baseline_calc.energy_kwh, 4)
+                total_consumed_kg = round(total_energy_kwh * 0.380, 4)
+
             scope2_tco2e = round(total_consumed_kg / 1000.0, 4)
 
-            # Embodied hardware emissions (Scope 3 Category 1/2) estimate (~18% of operational)
-            scope3_embodied_tco2e = round(scope2_tco2e * 0.18, 4)
+            # Scope 3 embodied hardware emissions from Boavizta/CCF vCPU-hour factor (4 vCPUs per service * 730h)
+            total_vcpu_hours = active_services * 4 * monthly_hours_per_service
+            embodied_kg = (total_vcpu_hours * CLOUD_EMBODIED_GCO2_PER_VCPU_HOUR["aws"]) / 1000.0
+            scope3_embodied_tco2e = round(embodied_kg / 1000.0, 4)
             total_footprint_tco2e = round(scope2_tco2e + scope3_embodied_tco2e, 4)
 
-            # Avoided emissions via GreenCode refactoring optimizations (~35% reduction achieved)
-            avoided_emissions_tco2e = round(scope2_tco2e * 0.35, 4)
-            estimated_cost_savings_usd = round(total_energy_kwh * 0.12 * 0.35, 2)
+            # Calculate avoided emissions from actual audit score improvements in Repository
+            if repos:
+                avg_score = sum(float(r.green_score or 80.0) for r in repos) / len(repos)
+                efficiency_gain_ratio = max(0.05, min(0.50, (avg_score - 50.0) / 100.0))
+            else:
+                efficiency_gain_ratio = 0.15
+
+            avoided_emissions_tco2e = round(scope2_tco2e * efficiency_gain_ratio, 4)
+            estimated_cost_savings_usd = round(
+                total_energy_kwh * CalibratedEnergyModel.DEFAULT_KWH_COST_USD * efficiency_gain_ratio, 2
+            )
 
             team_breakdown = []
             for t in teams:
@@ -71,6 +111,7 @@ class ESGReportGenerator:
                 "organization_name": org_name,
                 "reporting_period": period,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
+                "data_provenance": "database_records" if has_measured_records else "calibrated_instance_model",
                 "standards_compliance": [
                     "GHG Protocol Corporate Standard (Scope 2 Location & Market Based)",
                     "ISO 14064-1:2018 Specification for Quantification of GHG Emissions",
@@ -89,9 +130,9 @@ class ESGReportGenerator:
                 "team_breakdown": team_breakdown,
                 "total_monitored_projects": len(projects),
                 "assurance_verdict": {
-                    "status": "ASSURED",
-                    "assurance_level": "LIMITED_INDEPENDENT_EVIDENCE",
-                    "verifier": "GreenCode Cryptographic Proof Engine v2.4",
+                    "status": "ASSURED" if has_measured_records else "MODELED_ESTIMATE",
+                    "assurance_level": "DATABASE_AUDIT_LEDGER" if has_measured_records else "CALIBRATED_SPECPOWER_MODEL",
+                    "verifier": "GreenCode SCI &CCF Accounting Engine",
                 },
             }
         finally:

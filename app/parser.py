@@ -1251,9 +1251,32 @@ def audit_source_code(source_code: str, language: str = "python", file_path: str
         if not is_violation_suppressed(source_lines, v.get("line_number", 1), v.get("violation_type", ""))
     ]
 
-    # Calculate Green Score
+    # Algorithmic complexity classification per violation pattern
+    _COMPLEXITY_CLASSES = {
+        ViolationType.NESTED_LOOPS: "O(N^3)",
+        ViolationType.RECURSION_WITHOUT_MEMOIZATION: "O(2^N)",
+        ViolationType.QUADRATIC_STRING_CONCAT: "O(N^2)",
+        ViolationType.LINEAR_LOOKUP_IN_LOOP: "O(N^2)",
+        ViolationType.SORTED_IN_LOOP: "O(N^2 log N)",
+        ViolationType.UNCACHED_NETWORK_IN_LOOP: "O(N * Network_RTT)",
+        ViolationType.N_PLUS_ONE_QUERY_IN_LOOP: "O(N * DB_RTT)",
+        ViolationType.SYNC_FILE_IO_IN_LOOP: "O(N * Disk_IO)",
+        ViolationType.THREAD_THRASHING_IN_LOOP: "O(N * OS_ContextSwitch)",
+        ViolationType.HIDDEN_ITERATIVE_COMPUTATION: "O(N_unvectorized)",
+    }
+    for v in filtered_violations:
+        vtype = v.get("violation_type", "")
+        v.setdefault("complexity_class", _COMPLEXITY_CLASSES.get(vtype, "O(N)"))
+        start_ln = int(v.get("line_number") or 1)
+        end_ln = int(v.get("end_line_number") or start_ln)
+        v.setdefault("span_lines", max(1, end_ln - start_ln + 1))
+
+    # Calculate Green Score and KLOC density metrics
     total_deductions = sum(v["deduction"] for v in filtered_violations)
     green_score = max(0.0, round(100.0 - total_deductions, 2))
+    violations_per_kloc = round((len(filtered_violations) / max(1, lines_count)) * 1000.0, 2)
+    loc_scale = min(1.5, max(0.5, 100.0 / max(50.0, float(lines_count))))
+    density_adjusted_score = max(0.0, round(100.0 - (total_deductions * loc_scale), 2))
 
     return {
         "file_path": file_path,
@@ -1261,6 +1284,8 @@ def audit_source_code(source_code: str, language: str = "python", file_path: str
         "lines_count": lines_count,
         "violations": filtered_violations,
         "green_score": green_score,
+        "density_adjusted_score": density_adjusted_score,
+        "violations_per_kloc": violations_per_kloc,
         "total_deductions": total_deductions,
     }
 
@@ -1387,9 +1412,13 @@ def audit_repository(repo_path: str) -> Dict[str, Any]:
     total_files = len(file_results)
     if total_files == 0:
         overall_score = 100.0
+        loc_weighted_score = 100.0
     else:
         file_scores = [f["green_score"] for f in file_results]
         overall_score = round(sum(file_scores) / total_files, 2)
+        weighted_sum = sum(f["green_score"] * max(1, int(f.get("lines_count", 1))) for f in file_results)
+        weight_total = sum(max(1, int(f.get("lines_count", 1))) for f in file_results)
+        loc_weighted_score = round(weighted_sum / max(1, weight_total), 2)
 
     # Breakdown by violation type
     breakdown: Dict[str, int] = {}
@@ -1402,6 +1431,7 @@ def audit_repository(repo_path: str) -> Dict[str, Any]:
         "total_files": total_files,
         "total_lines": total_lines,
         "green_score": overall_score,
+        "loc_weighted_green_score": loc_weighted_score,
         "total_violations": len(all_violations),
         "violation_breakdown": breakdown,
         "languages_breakdown": languages_found,

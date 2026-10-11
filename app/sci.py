@@ -99,7 +99,7 @@ def compute_sci(
     it_joules = max(0.0, energy_joules)
     facility_joules = it_joules * max(1.0, pue)
 
-    energy_kwh = facility_joules / 3_600_000_000.0
+    energy_kwh = facility_joules / 3_600_000.0
 
     operational = energy_kwh * carbon_intensity_gco2_per_kwh   # E x I
     embodied = max(0.0, duration_seconds) * EMBODIED_GCO2_PER_SECOND  # M

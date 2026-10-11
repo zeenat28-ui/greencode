@@ -34,19 +34,13 @@ class EnergyDiagnostic:
 
 
 class EnergyLinter:
-    """Real-Time IDE Energy Linter."""
-
-    # Cost model: average enterprise invocation volume (100k runs/day) * energy waste per anti-pattern
-    ANNUAL_WASTE_ESTIMATES = {
-        "CRITICAL": {"cost_usd": 420.0, "co2_kg": 1330.0},
-        "HIGH": {"cost_usd": 185.0, "co2_kg": 585.0},
-        "MEDIUM": {"cost_usd": 65.0, "co2_kg": 205.0},
-        "LOW": {"cost_usd": 15.0, "co2_kg": 45.0},
-    }
+    """Real-Time IDE Energy Linter backed by CalibratedEnergyModel."""
 
     @classmethod
     def lint_code(cls, source_code: str, language: str = "python", file_path: str = "snippet.py") -> List[EnergyDiagnostic]:
-        """Lint code buffer and return LSP diagnostics with carbon and dollar impact."""
+        """Lint code buffer and return LSP diagnostics with physics-calibrated carbon and dollar impact."""
+        from app.energy_debt import EnergyDebtTracker
+
         raw_audit = audit_source_code(source_code, language=language, file_path=file_path)
         violations = raw_audit.get("violations", [])
 
@@ -54,7 +48,7 @@ class EnergyLinter:
 
         for v in violations:
             sev = v.get("severity", "MEDIUM").upper()
-            impact = cls.ANNUAL_WASTE_ESTIMATES.get(sev, cls.ANNUAL_WASTE_ESTIMATES["MEDIUM"])
+            impact = EnergyDebtTracker.estimate_violation_impact(v)
 
             lsp_severity = "ERROR" if sev in ("CRITICAL", "HIGH") else "WARNING" if sev == "MEDIUM" else "INFORMATION"
 
@@ -66,7 +60,8 @@ class EnergyLinter:
                 title=v.get("title", "Energy Inefficiency"),
                 message=(
                     f"{v.get('title')}: {v.get('description')} "
-                    f"[Estimated Impact: ~${impact['cost_usd']:.0f}/yr & {impact['co2_kg']:.0f} kg CO2e]"
+                    f"[Estimated Impact: ~${impact['cost_usd']:.2f}/yr, {impact['co2_kg']:.1f} kg CO2e, "
+                    f"{impact['joules_per_1k_calls']:.1f} J/1k calls]"
                 ),
                 annual_cost_usd=impact["cost_usd"],
                 annual_co2_kg=impact["co2_kg"],

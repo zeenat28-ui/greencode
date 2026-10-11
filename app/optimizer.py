@@ -471,6 +471,20 @@ def get_zone_carbon_intensity(
     """
     fallback = VERIFIED_ZONE_INTENSITIES.get(zone) or VERIFIED_ZONE_INTENSITIES[DEFAULT_ZONE]
 
+    # Enforce tenant Data Residency policy on outbound grid telemetry queries
+    residency_verdict = {"allowed": True, "reason": "Global routing permitted"}
+    try:
+        from app.enterprise_governance import governance_manager
+        org_id_env = os.environ.get("GREENCODE_ORG_ID")
+        active_org_id = int(org_id_env) if org_id_env and org_id_env.isdigit() else None
+        residency_verdict = governance_manager.validate_outbound_data_transfer(
+            org_id=active_org_id,
+            destination_service="carbon_intensity_api",
+            destination_region=zone,
+        )
+    except Exception:
+        pass  # no-op
+
     # An explicitly supplied key must reach the provider chain. The previous
     # refactor dropped this argument on the floor, so a caller passing
     # api_key=... silently got the static matrix instead - which then surfaced

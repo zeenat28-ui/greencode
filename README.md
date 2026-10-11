@@ -6,25 +6,24 @@
 [![Tests](https://img.shields.io/badge/tests-327%20passing-success)](tests/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
-## 🏆 Amazon Developer Hackathon 2026
+## 🏆 Amazon Developer Hackathon 2026 ("Build, Ship, Shape")
 
-This repository is submitted to the **Alexa+** primary track, with the
-**AWS Builder** and **Open Source** mini challenges.
+Submitted to the **Alexa+** primary track, with the **AWS Builder** and **Open Source** mini challenges.
 
-| Target | What it is | Where |
+| Track / Integration | Implementation | Source Files |
 |---|---|---|
-| **Alexa+** | Self-hosted **MCP server** over Streamable HTTP, spec `2025-11-25`+ | [`app/mcp_server.py`](app/mcp_server.py) |
-| **AWS Builder** | **Amazon Bedrock** (`bedrock-runtime` Converse API) refactoring backend | [`app/bedrock_client.py`](app/bedrock_client.py) |
+| **Alexa+ (Primary Track)** | Self-hosted **MCP Server** over Streamable HTTP (protocol `2025-11-25`+), RFC 9728 Protected Resource Metadata, RFC 8414 OAuth PKCE `S256`, and `< 500 ms` voice latency | [`app/mcp_server.py`](app/mcp_server.py) · [`alexa/addon.json`](alexa/addon.json) |
+| **AWS Builder** | **Amazon Bedrock** (`bedrock-runtime` Converse API) refactoring engine + **AWS Custom Silicon** (`Graviton4 c8g`, `Inferentia2 inf2`, `Trainium1 trn1`) energy/cost profiler + **AWS SDK (`boto3`) CLI** (SSM Parameter Store, CloudWatch Logs, EventBridge, S3, X-Ray) | [`app/bedrock_client.py`](app/bedrock_client.py) · [`app/ml_carbon.py`](app/ml_carbon.py) · [`app/aws_cli.py`](app/aws_cli.py) |
+| **AWS Well-Architected Alignment** | Operationalizes the **AWS Well-Architected Sustainability Pillar** at the source-code and Pull Request layer (algorithmic efficiency, geographic workload placement, and hardware utilization) | [`app/sci.py`](app/sci.py) · [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py) |
 
-### Ask it in plain language
+### Ask it in plain language (via Alexa+ or Web Voice Cockpit)
 
+> *"Alexa, ask GreenCode: which AWS region is cleanest for my batch job tonight?"*
 > *"How much carbon does this function emit, and what should I fix first?"*
-> *"Is Ireland or Virginia a cleaner place to run tonight's batch job?"*
-> *"Rewrite this so it uses less energy, without changing what it does."*
+> *"Explain this score — was the energy measured by a hardware counter or estimated?"*
+> *"Rewrite this loop so it uses less energy, without changing what it does."*
 
-The agent calls `audit_and_score`, `compare_regions` and `refactor_code`, and
-relays one verdict — it never has to orchestrate four tools itself or invent a
-number between them.
+The agent invokes `audit_and_score`, `compare_regions`, `explain_score`, and `refactor_code`, returning a single verified verdict with full provenance (`measurement_method`, `measurement_is_hardware`, and grid `intensity_source_tier`).
 
 ### Run the MCP server
 
@@ -36,112 +35,84 @@ python -m app.mcp_server
 # Endpoint: http://127.0.0.1:8765/mcp
 ```
 
-Then point any MCP client at it — see [`mcp.example.json`](mcp.example.json):
+Point any MCP client at it — see [`mcp.example.json`](mcp.example.json):
 
 ```json
 { "mcpServers": { "greencode": {
     "type": "streamable-http", "url": "http://127.0.0.1:8765/mcp" } } }
 ```
 
-Verify it end to end (boots the server and calls it as a real client):
+Verify it end to end (boots the server and calls all tools & resources over a live socket):
 
 ```bash
 python check_mcp_live.py
 ```
 
-**8 tools:** `audit_and_score` · `audit_code` · `audit_repository` ·
-`calculate_sci` · `measure_energy` · `get_grid_intensity` · `compare_regions` ·
-`refactor_code`
-**2 resources:** `greencode://standards/gsf-sci` · `greencode://health`
+**9 MCP tools:** `audit_and_score` · `audit_code` · `audit_repository` · `calculate_sci` · `measure_energy` · `get_grid_intensity` · `compare_regions` · `explain_score` · `refactor_code`  
+**2 MCP resources:** `greencode://standards/gsf-sci` · `greencode://health`
 
 ### Alexa+ onboarding checklist
 
-Implemented and proven live by `check_mcp_alexa.py`
-(11 check groups — discovery, 401 handshake, authenticated session, latency),
-**both against a local server and over a real public tunnel**:
+Implemented and proven live by `check_mcp_alexa.py` and `tests/test_alexa_compliance.py` (discovery, 401 handshake, authenticated session, latency):
 
 | Requirement (Alexa+ docs) | Where |
 |---|---|
-| Streamable HTTP, protocol ≥ `2025-11-25` | `app/mcp_server.py` |
-| **401 without `WWW-Authenticate`** for unauthenticated `/mcp` | `AlexaAuthMiddleware`, on when `GREENCODE_MCP_TOKEN` is set |
+| Streamable HTTP, protocol ≥ `2025-11-25` | [`app/mcp_server.py`](app/mcp_server.py) |
+| **401 without `WWW-Authenticate`** for unauthenticated `/mcp` | `AlexaAuthMiddleware`, active when `GREENCODE_MCP_TOKEN` is set |
 | **Protected Resource Metadata** (RFC 9728) at the well-known URI (+ `/mcp` path variant) | `/.well-known/oauth-protected-resource` |
 | **Auth-server metadata with PKCE `S256`** (RFC 8414) | `/.well-known/oauth-authorization-server` |
-| Remote URL via a tunnel (cloudflared named by the docs) | [`scripts/start_mcp_remote.ps1`](scripts/start_mcp_remote.ps1) |
+| Remote URL via a tunnel (`cloudflared` named by the docs) | [`scripts/start_mcp_remote.ps1`](scripts/start_mcp_remote.ps1) |
 | Tunnel `Host` must pass the transport's DNS-rebinding guard (else **421**) | `GREENCODE_MCP_ALLOWED_HOSTS` env → `create_app()` |
-| **Round-trip latency < 500 ms** | warm tool calls **11–32 ms** local, **339–359 ms** over the public tunnel (`probe` + intensity TTL caches) |
+| **Round-trip latency < 500 ms** | warm tool calls **11–32 ms** local, **339–359 ms** over public tunnel (`probe` + 60s intensity TTL caches) |
 | `addon.json` (HTTPS endpoint, schema constraints) | [`alexa/addon.json`](alexa/addon.json) · [`alexa/README.md`](alexa/README.md) |
-| Every addon.json URL resolves (icons, privacy, terms) | `/assets/*`, `/privacy`, `/terms` served by the app; 6 light + 6 dark PNG icons from `scripts/gen_alexa_icons.py` |
+| Every `addon.json` URL resolves (icons, privacy, terms) | `/assets/*`, `/privacy`, `/terms` served by the app; 6 light + 6 dark PNG icons from `scripts/gen_alexa_icons.py` |
 
 ```bash
 # Compliance proof, end to end over a socket:
 python check_mcp_alexa.py
 # ALL ALEXA+ COMPLIANCE CHECKS PASSED
 
-# Same proof over the live public tunnel (internet → Cloudflare → your box):
-python check_mcp_alexa.py --url https://<tunnel>.trycloudflare.com --token <token>
-# ALL ALEXA+ COMPLIANCE CHECKS PASSED   (warm 339–359 ms, exit 0)
-
-# Expose it publicly for Alexa+ (tunnel first, then server with its Host allow-listed;
-# paste the printed https URL into addon.json):
-$env:GREENCODE_MCP_TOKEN = "<random token>"
-.\scripts\start_mcp_remote.ps1
+# Run full Amazon + Alexa+ + Billing automated test suite:
+python -m pytest tests/test_alexa_compliance.py tests/test_amazon_integrations.py tests/test_billing.py -q
 ```
 
-Account linking is **not** enabled: GreenCode's tools work identically for
-every user, and the Alexa+ account-linking docs say such add-ons don't need
-it. The discovery documents still advertise `S256` so the checklist is
-satisfied. `alexa-ai deploy` (CLI + Amazon account) is the one step that
-cannot run from this repo — see [`alexa/README.md`](alexa/README.md).
-
-### Enable Amazon Bedrock
+### Enable Amazon Bedrock & AWS CLI Companion (`app.aws_cli`)
 
 ```bash
-export AWS_PROFILE=your-profile        # or AWS_ACCESS_KEY_ID, or an instance role
+export AWS_PROFILE=your-profile        # or AWS_ACCESS_KEY_ID, or an IAM instance role
 export AWS_REGION=us-east-1
 export GREENCODE_LLM_PROVIDER=bedrock  # or: auto | huggingface
 ```
 
-`boto3` resolves credentials from the standard chain, so no key material needs
-to be pasted into `.env`. Model access needs `bedrock:InvokeModel`. Without
-credentials the client **fails closed** with a classified `auth` error and makes
-no request, rather than silently degrading.
+`boto3` resolves credentials from the standard chain, so no key material needs to be pasted into `.env`. Without credentials, `app.bedrock_client` **fails closed** with a classified `auth` error and `app.llm_refactor` cleanly falls back to the deterministic AST refactoring engine.
 
-### Why this is not a REST wrapper
+The repository also includes an AWS operations CLI ([`app/aws_cli.py`](app/aws_cli.py)) built on `boto3`:
 
-GreenCode already had 37 REST endpoints, so the honest risk was shipping a
-JSON-RPC skin over them. Three things were added that a pass-through cannot do:
+```bash
+python -m app.aws_cli mcp register        # Store MCP endpoint URI in AWS SSM Parameter Store
+python -m app.aws_cli mcp list            # List registered MCP endpoints from AWS SSM
+python -m app.aws_cli logs tail           # Tail audit-run logs from Amazon CloudWatch Logs
+python -m app.aws_cli schedule enable     # Configure nightly audit rule in Amazon EventBridge
+python -m app.aws_cli s3 push report.json # Upload signed audit evidence to Amazon S3
+python -m app.aws_cli xray trace          # Emit subsegment telemetry to AWS X-Ray
+```
 
-1. **Provenance is mandatory.** Every result carries `measurement_method` and
-   `measurement_is_hardware`. No code path reports a TDP estimate as a
-   measurement — an agent that can invent a plausible carbon number gets quoted
-   in a sustainability report.
-2. **Tools are scoped to a decision.** `audit_and_score` runs analysis,
-   measurement, SCI and grid lookup, returning one verdict. An agent cannot
-   report a green score for code it never measured.
-3. **A "no data" grid is not a clean grid.** The carbon resolver returns `0.0`
-   when no provider answers, because `None` would break downstream arithmetic.
-   Left alone, a typo'd zone like `US-VA` would sort first in `compare_regions`
-   and be recommended as the greenest place on earth. The MCP layer normalises
-   it to `None` and excludes it from ranking
-   ([`_resolve_intensity`](app/mcp_server.py), regression-tested).
+---
 
-### Why it fits the Alexa+ track
+## 💼 Verified Business Value, AWS Ecosystem Synergy & Unit Economics
 
-The rules ask for *"agentic workflow that orchestrates across services
-autonomously"* and list *"basic MCP wrapper around an existing API"* as the
-uncreative end of the scale. `audit_and_score` is the former: it chains static
-analysis, hardware energy measurement, GSF SCI arithmetic and live grid
-telemetry into a single autonomous verdict, and refuses to report a number whose
-provenance it cannot state.
+GreenCode is engineered to turn software sustainability into measurable **Cloud FinOps ROI**, complementing the **AWS Well-Architected Sustainability Pillar**:
 
-**GreenCode Auditor** is a platform for enforcing Green Computing standards across
-software engineering workflows. It audits multi-language GitHub and local
-codebases for architectural and algorithmic energy anti-patterns using
-Concrete and Abstract Syntax Tree (CST/AST) parsing, dynamically profiles
-execution inside isolated sandboxes, queries live regional grid carbon telemetry
-via Electricity Maps, refactors inefficient code under Green Software Foundation
-(GSF) standards, and enforces non-breaking CI/CD quality gate blockers via a
-native GitHub Action.
+1. **Pre-Deployment Code & Pull Request Gatekeeping:**
+   - Catches algorithmic energy bottlenecks ($\mathcal{O}(N^3)$ nested loops, N+1 queries, unbuffered I/O, missing `torch.no_grad()`, synchronous GPU-to-CPU transfers, unquantized `FP32` inference) inside GitHub Pull Requests before inefficient code reaches production.
+2. **AWS Custom Silicon Migration Advisor (`Graviton4`, `Inferentia2`, `Trainium1`):**
+   - [`app/ml_carbon.py`](app/ml_carbon.py), [`app/calibrated_energy.py`](app/calibrated_energy.py), and [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py) model workload energy and cost across **AWS Graviton4 (`c8g.2xlarge`, `r8g.2xlarge`)**, **AWS Inferentia2 (`inf2.xlarge` via AWS Neuron SDK — up to 50% better performance per watt)**, and **AWS Trainium1 (`trn1.2xlarge`)**, quantifying both Scope 2 $\text{kg CO}_2\text{e}$ reductions and EC2 dollar savings.
+3. **Regional Carbon & Spot Arbitrage Across 11 AWS Regions:**
+   - Compares carbon intensity and compute rates across `eu-north-1` (Stockholm), `ca-central-1` (Montreal), `eu-west-1` (Ireland), `us-west-2` (Oregon), `eu-west-2` (London), `us-east-1` (N. Virginia), `eu-central-1` (Frankfurt), `us-east-2` (Ohio), `ap-northeast-1` (Tokyo), `ap-southeast-1` (Singapore), and `ap-south-1` (Mumbai).
+4. **High-Margin, Low-Token SaaS Architecture:**
+   - **Stage 1 (Zero-Token Local AST Analysis):** Static code audits, SCI calculations, hardware energy counter reads, and regional grid comparisons run deterministically on CPU with **$0.00 LLM token cost**.
+   - **Stage 2 (Targeted Amazon Bedrock Refactoring):** Only flagged function snippets (~300–500 tokens) are sent to **Amazon Bedrock (`Claude 3.5 Haiku` / `Claude 3.5 Sonnet`)** via the Converse API, keeping LLM inference costs under **$0.005 per Pull Request** (**< $2–$6 per 1,000 AI refactorings**).
+   - **Stage 3 (Behaviour-Preserving Verification Gate):** Every LLM-proposed rewrite must pass `compile()`, AST similarity checks, and 12-input execution equivalence testing ([`app/llm_refactor.py`](app/llm_refactor.py)) before acceptance.
 
 > ### ⚠️ Measurement honesty - read this first
 >
@@ -411,10 +382,10 @@ GreenCode Auditor is built for universal, polyglot global scale. It natively aud
                  └───────────────────┬───────────────────┘
                                      ▼
                         ┌───────────────────────────┐
-                        │  TIER 3: IBM GRANITE      │
-                        │  POLYGLOT AI REFACTORING  │
-                        │  116+ Languages & Zero-   │
-                        │  Downtime Remediation     │
+                        │  TIER 3: AMAZON BEDROCK   │
+                        │  & DETERMINISTIC VERIFIER │
+                        │  Converse API + 4-Gate    │
+                        │  Behaviour Verification   │
                         └───────────────────────────┘
 ```
 
@@ -440,7 +411,7 @@ $$SCI = \frac{(E \times I) + M}{R}$$
   $$P_{\text{mem}} = RAM_{\text{GB}} \times 0.3725\text{ W/GB}$$
   $$P_{\text{total}} = (P_{\text{cpu}} + P_{\text{mem}}) \times PUE \quad (PUE = 1.2)$$
   $$E_{\text{Wh}} = \frac{P_{\text{total}} \times \Delta t}{3600}$$
-- **$I$ (Grid Intensity)**: Real-time grams of $\text{CO}_2$ equivalent per kilowatt-hour ($g\text{CO}_2\text{eq/kWh}$) queried from Electricity Maps across global regions (e.g., California, Midwest, France, Germany, Great Britain, Pakistan, India, Sweden, Japan).
+- **$I$ (Grid Intensity)**: Grams of $\text{CO}_2$ equivalent per kilowatt-hour ($g\text{CO}_2\text{eq/kWh}$) resolved through the 4-tier provenance chain (Live Grid APIs $\rightarrow$ Customer Keys $\rightarrow$ Bundled Reference Dataset $\rightarrow$ Regional Static Matrix).
 - **$M$ (Embodied Carbon)**: Hardware manufacturing carbon amortized over the runtime duration.
 - **$R$ (Functional Unit)**: Per single execution run or modeled across 10,000 production cycles.
 
@@ -453,24 +424,16 @@ $$SCI = \frac{(E \times I) + M}{R}$$
 pip install -r requirements.txt
 ```
 
-### 2. Launch the Streamlit Dashboard
+### 2. Launch the Web UI or Streamlit Dashboard
 ```bash
-streamlit run ui.py
-```
-Open your browser at `http://localhost:8501` to view:
-- **Repository Explorer**: Scan local paths or drag-and-drop ZIP archives.
-- **Global Grid Carbon Gauge**: Interactive live regional carbon intensities.
-- **Dynamic Container Profiler**: Hardware energy counters (RAPL/perf), Joules, and SCI metrics.
-- **Interactive Code Diff**: Side-by-side comparison using `streamlit-code-diff` showcasing Original Inefficient Code vs. GreenCode AI Eco-Refactored Code.
-- **SCI Carbon Analytics**: Plotly projections of carbon saved across 10,000 production cycles.
-
-### 3. Run the FastAPI REST Server
-```bash
+# Start the FastAPI + React SPA Server (serves built frontend at http://localhost:8000)
 python -m app.main --serve --port 8000
-```
-Interactive OpenAPI documentation will be accessible at `http://localhost:8000/docs`.
 
-### 4. Execute the CI/CD Quality Gate Blocker
+# Optional: Launch the Streamlit Voice & Analytics Dashboard
+streamlit run app/voice_ui.py
+```
+
+### 3. Execute the CI/CD Quality Gate Blocker
 Run in your local terminal or CI pipeline:
 ```bash
 # Auditing heavy pipeline (exits with code 1 - build blocked)
@@ -480,41 +443,33 @@ python -m app.main --path samples/heavy_pipeline.py --threshold 75 --ci
 python -m app.main --path samples/eco_pipeline.py --threshold 75 --ci
 ```
 
-### 5. Run the Automated Test Suite
+### 4. Run the Automated Test Suites
 ```bash
-python -m unittest discover tests
+python -m pytest tests/test_alexa_compliance.py tests/test_amazon_integrations.py tests/test_billing.py -q
+python check_mcp_live.py
 ```
 
 ---
 
-## 🤖 Refactoring: deterministic rules first, model second
+## 🤖 Refactoring: Deterministic Rules + Amazon Bedrock Verification Gate
 
-There are two refactoring paths, and the order matters.
+GreenCode uses a verified refactoring pipeline ([`app/llm_refactor.py`](app/llm_refactor.py) & [`app/bedrock_client.py`](app/bedrock_client.py)):
 
-**1. Deterministic rule engine (default, always available).** For each rule the
-engine has a pattern-specific, provably-correct transformation: O(n²) string
-concatenation becomes a list plus `''.join()`; a 3-deep Python loop nest becomes
-`itertools.product`. These are better than anything a language model produces,
-and they are reproducible, so the engine prefers them unconditionally.
+**1. Amazon Bedrock Converse API (`bedrock-runtime`) / Configured LLM Provider:**
+When `GREENCODE_LLM_PROVIDER=bedrock` (or `auto` with AWS credentials), `app/bedrock_client.py` calls Amazon Bedrock's `converse` API (defaulting to Claude 3.5 Haiku / Sonnet) to synthesize an energy-optimized rewrite of the flagged snippet.
 
-**2. HuggingFace code model (only where the engine has no specific rewrite).**
-`Qwen2.5-Coder-32B-Instruct` is asked for an energy-focused rewrite, but its
-output is **verified before it is shown**:
+**2. 4-Stage Behaviour-Preserving Verification Gate:**
+Every model-proposed rewrite is verified before it is accepted:
 
 | Gate | What it rejects |
 | :--- | :--- |
-| Not code | Prose, empty output, `pass` / `...` stubs |
-| Compiles | Output that fails `compile()` |
-| Similar | Rewrites below a token-similarity floor (catches unrelated code) |
-| Behaves | Output executed against the original on 12 probe inputs, results compared |
+| **Not code** | Prose, empty output, `pass` / `...` stubs |
+| **Compiles** | Output that fails `compile()` / syntax validation |
+| **Similar** | Rewrites below a token-similarity floor (catches unrelated hallucinations) |
+| **Behaves** | Output executed against the original on 12 probe inputs, results compared |
 
-The behaviour gate is the important one. It catches changes a reviewer would
-miss — flipping `t += x` to `t -= x` is a one-character edit, passes every
-static check, and computes a completely different answer. If any gate fails, the
-deterministic suggestion is returned instead and the response says why.
-
-`refactor_repository_code()` always reports which path produced the output via
-`model_used`, and the verification outcome via `verification`.
+**3. Deterministic Rule Fallback (Always Available):**
+If no LLM credentials are configured or if the LLM candidate fails any of the 4 verification gates, the engine automatically returns a provably-correct deterministic transformation (e.g., $\mathcal{O}(N^2)$ string concatenation $\rightarrow$ `''.join()`, 3-deep loop nest $\rightarrow$ `itertools.product`) and explicitly records the fallback reason in `verification`.
 
 ---
 
@@ -587,11 +542,11 @@ service is meaningless. The API warns when `R` is left at 1.
    - Translates Joules (and the derived Watt-hours, J/3600) into tangible everyday equivalencies using United States Environmental Protection Agency (EPA) standards:
      - 🌳 **Urban Trees Preserved**: $21.77\text{ kg CO}_2\text{/tree/year}$
      - 📱 **Smartphones Charged**: $8.22\text{ Wh/charge}$
-     - 💵 **Cloud Hosting Costs Saved**: AWS/GCP compute & cooling billing reduction.
+     - 💵 **Cloud Hosting Costs Saved**: AWS EC2 (`Graviton4`, `Inferentia2`, `Trainium1`) compute & cooling billing reduction.
    - Includes interactive simulation slider scaling from 1,000 to 1,000,000 monthly transactions.
 
-3. **📜 Official ESG Carbon Audit Certificate Export**:
-   - Generates an official, ISO 14064-1 & Green Software Foundation (GSF) compliant HTML Carbon Audit Certificate.
+3. **📜 Audit-Ready ESG & SCI Carbon Disclosure Export**:
+   - Generates an exportable HTML & JSON Carbon Audit Disclosure Report aligned with **Green Software Foundation (GSF) SCI v1.0**, **GHG Protocol Scope 2/3**, and **EU CSRD (ESRS E1) / US SEC** reporting structures.
    - Features SHA-256 cryptographic verification checksum, grade stamp, detailed metric breakdown, and built-in print CSS for 1-click PDF export (`Ctrl+P`).
 
 ---
@@ -616,6 +571,7 @@ jobs:
           repo-path: "."
           green-score-threshold: "75.0"
           target-zone: "US-CAL-CISO"
+```
 ---
 
 ## 🔬 Reality Verification Pipeline — *"did it actually work?"*

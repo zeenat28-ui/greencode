@@ -6,7 +6,7 @@
 #
 # Regenerate after an intentional upgrade:  pip list --format=freeze
 fastapi==0.141.1
-uvicorn==0.52.4
+uvicorn==0.54.0
 streamlit==1.64.0
 streamlit-code-diff==0.1.2
 pandas==3.0.6

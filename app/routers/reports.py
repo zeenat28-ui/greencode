@@ -85,3 +85,43 @@ async def get_compliance_posture(org_id: int):
     return ComplianceManager.evaluate_security_posture(org_id=org_id)
 
 
+@router.get("/impact-framework-manifest")
+async def get_gsf_impact_framework_manifest(
+    component_name: str = Query("greencode-workload"),
+    energy_joules: float = Query(42.5, ge=0.0),
+    duration_seconds: float = Query(10.0, gt=0.0),
+    grid_intensity: float = Query(320.0, ge=0.0),
+    functional_unit: float = Query(100.0, gt=0.0),
+    vcpu_count: int = Query(4, ge=1),
+    cloud_instance: str = Query("c7g.xlarge"),
+):
+    """Export a Green Software Foundation Impact Framework (.imp.yaml) manifest."""
+    from app.sci import export_impact_framework_manifest
+
+    return export_impact_framework_manifest(
+        component_name=component_name,
+        energy_joules=energy_joules,
+        duration_seconds=duration_seconds,
+        carbon_intensity_gco2_per_kwh=grid_intensity,
+        functional_unit=functional_unit,
+        vcpu_count=vcpu_count,
+        cloud_instance=cloud_instance,
+    )
+
+
+@router.post("/impact-framework-manifest")
+async def create_gsf_impact_framework_manifest(payload: Dict[str, Any]):
+    """Generate a custom Green Software Foundation Impact Framework (.imp.yaml) manifest from workload telemetry."""
+    from app.sci import export_impact_framework_manifest
+
+    return export_impact_framework_manifest(
+        component_name=str(payload.get("component_name") or "greencode-workload"),
+        energy_joules=float(payload.get("energy_joules") or 42.5),
+        duration_seconds=float(payload.get("duration_seconds") or 10.0),
+        carbon_intensity_gco2_per_kwh=float(payload.get("grid_intensity") or 320.0),
+        functional_unit=float(payload.get("functional_unit") or 100.0),
+        vcpu_count=int(payload.get("vcpu_count") or 4),
+        cloud_instance=str(payload.get("cloud_instance") or "c7g.xlarge"),
+    )
+
+

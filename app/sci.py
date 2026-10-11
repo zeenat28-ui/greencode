@@ -187,3 +187,115 @@ def carbon_equivalents(grams_co2e: float) -> Dict[str, float]:
         "meals_vegetarian": g / 1100.0,          # ~1,100 g (1.1 kg) CO2e per vegetarian meal
     }
 
+
+def export_impact_framework_manifest(
+    *,
+    component_name: str = "greencode-workload",
+    energy_joules: float = 42.5,
+    duration_seconds: float = 10.0,
+    carbon_intensity_gco2_per_kwh: float = 320.0,
+    functional_unit: float = 100.0,
+    pue: float = DEFAULT_PUE,
+    vcpu_count: int = 4,
+    cloud_instance: str = "c7g.xlarge",
+    timestamp: str = "2026-10-12T00:00:00Z",
+) -> Dict[str, Any]:
+    """Export an observation and SCI calculation as a Green Software Foundation Impact Framework (.imp.yaml) manifest."""
+    sci_res = compute_sci(
+        energy_joules=energy_joules,
+        duration_seconds=duration_seconds,
+        carbon_intensity_gco2_per_kwh=carbon_intensity_gco2_per_kwh,
+        functional_unit=functional_unit,
+        pue=pue,
+        measurement_method="rapl",
+        vcpu_count=vcpu_count,
+    )
+
+    input_obs = {
+        "timestamp": timestamp,
+        "duration": round(duration_seconds, 4),
+        "cloud/instance-type": cloud_instance,
+        "vcpus-allocated": vcpu_count,
+        "energy": round(sci_res.energy_kwh, 8),
+        "grid/carbon-intensity": round(carbon_intensity_gco2_per_kwh, 2),
+        "requests": functional_unit,
+    }
+    output_obs = {
+        **input_obs,
+        "carbon-operational": round(sci_res.operational_gco2, 6),
+        "carbon-embodied": round(sci_res.embodied_gco2, 6),
+        "carbon": round(sci_res.operational_gco2 + sci_res.embodied_gco2, 6),
+        "sci": round(sci_res.sci_gco2_per_functional_unit, 8),
+    }
+
+    yaml_text = (
+        f"name: {component_name}-sci-audit\n"
+        "description: GreenCode Auditor GSF Impact Framework Manifest (ISO/IEC 21031:2024)\n"
+        "initialize:\n"
+        "  plugins:\n"
+        "    sci-e:\n"
+        "      method: SciE\n"
+        "      path: \"@grnsft/if-plugins\"\n"
+        "    sci-o:\n"
+        "      method: SciO\n"
+        "      path: \"@grnsft/if-plugins\"\n"
+        "    sci-m:\n"
+        "      method: SciM\n"
+        "      path: \"@grnsft/if-plugins\"\n"
+        "    sci:\n"
+        "      method: Sci\n"
+        "      path: \"@grnsft/if-plugins\"\n"
+        "      global-config:\n"
+        "        functional-unit: requests\n"
+        "tree:\n"
+        "  children:\n"
+        f"    {component_name}:\n"
+        "      pipeline:\n"
+        "        - sci-e\n"
+        "        - sci-o\n"
+        "        - sci-m\n"
+        "        - sci\n"
+        "      inputs:\n"
+        f"        - timestamp: \"{timestamp}\"\n"
+        f"          duration: {round(duration_seconds, 4)}\n"
+        f"          cloud/instance-type: \"{cloud_instance}\"\n"
+        f"          vcpus-allocated: {vcpu_count}\n"
+        f"          energy: {round(sci_res.energy_kwh, 8)}\n"
+        f"          grid/carbon-intensity: {round(carbon_intensity_gco2_per_kwh, 2)}\n"
+        f"          requests: {functional_unit}\n"
+        "      outputs:\n"
+        f"        - timestamp: \"{timestamp}\"\n"
+        f"          duration: {round(duration_seconds, 4)}\n"
+        f"          energy: {round(sci_res.energy_kwh, 8)}\n"
+        f"          carbon-operational: {round(sci_res.operational_gco2, 6)}\n"
+        f"          carbon-embodied: {round(sci_res.embodied_gco2, 6)}\n"
+        f"          sci: {round(sci_res.sci_gco2_per_functional_unit, 8)}\n"
+    )
+
+    return {
+        "name": f"{component_name}-sci-audit",
+        "standard": "GSF Impact Framework v0.4 / ISO/IEC 21031:2024",
+        "initialize": {
+            "plugins": {
+                "sci-e": {"method": "SciE", "path": "@grnsft/if-plugins"},
+                "sci-o": {"method": "SciO", "path": "@grnsft/if-plugins"},
+                "sci-m": {"method": "SciM", "path": "@grnsft/if-plugins"},
+                "sci": {
+                    "method": "Sci",
+                    "path": "@grnsft/if-plugins",
+                    "global-config": {"functional-unit": "requests"},
+                },
+            }
+        },
+        "tree": {
+            "children": {
+                component_name: {
+                    "pipeline": ["sci-e", "sci-o", "sci-m", "sci"],
+                    "inputs": [input_obs],
+                    "outputs": [output_obs],
+                }
+            }
+        },
+        "yaml_manifest": yaml_text,
+    }
+

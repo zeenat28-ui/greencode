@@ -775,6 +775,95 @@ def test_part4_validator_and_gatekeeper_hardening(tmp_path):
     assert rb["status"] in ("LOCAL_EMULATION", "SUCCESS")
 
 
+def test_spine_memory_and_lawyer_upgrades():
+    """Verify Part 7 (Spine, Memory & Lawyer) upgrades: SHA-256 tamper detection, ESG bundle, budget & billing guards."""
+    import json
+    import pytest
+    from app.audit_logs import AuditLogManager
+    from app.database import AuditLog, Repository, SessionLocal, reset_password_with_token
+    from app.reports.esg_report import ESGReportGenerator
+    from app.services.billing_service import BillingService
+    from app.services.budget_service import BudgetService
+
+    # 1. AuditLogManager.verify_integrity detects payload tampering even if prev_hash & record_hash are untouched
+    org_id = 77701
+    db = SessionLocal()
+    try:
+        db.query(AuditLog).filter(AuditLog.org_id == org_id).delete()
+        db.commit()
+    finally:
+        db.close()
+
+    ev = AuditLogManager.record_event(
+        org_id=org_id,
+        action="budget:allocate",
+        resource_type="carbon_budget",
+        resource_id="core:2026-10",
+        details={"monthly_budget_kg": 500.0},
+    )
+    assert AuditLogManager.verify_integrity(org_id)["valid"] is True
+
+    # Tamper with the stored payload without changing prev_hash or record_hash
+    db = SessionLocal()
+    try:
+        row = db.query(AuditLog).filter(AuditLog.id == ev["id"]).first()
+        tampered = json.loads(row.details)
+        tampered["monthly_budget_kg"] = 999999.0
+        row.details = json.dumps(tampered, sort_keys=True)
+        db.commit()
+    finally:
+        db.close()
+
+    tamper_check = AuditLogManager.verify_integrity(org_id)
+    assert tamper_check["valid"] is False
+    assert tamper_check["error"] == "RECORD_HASH_TAMPERED"
+
+    # Clean up tampered row
+    db = SessionLocal()
+    try:
+        db.query(AuditLog).filter(AuditLog.org_id == org_id).delete()
+        # 2. ESGReportGenerator.generate_evidence_bundle works when org has Repository rows
+        repo = Repository(
+            org_id=org_id,
+            name="acme/core-engine",
+            path_or_url="https://github.com/acme/core-engine",
+            total_files=12,
+            total_lines=1400,
+            green_score=91.5,
+        )
+        db.add(repo)
+        db.commit()
+    finally:
+        db.close()
+
+    zip_bytes, manifest = ESGReportGenerator.generate_evidence_bundle(org_id=org_id)
+    assert len(zip_bytes) > 200
+    assert manifest["audit_ledger_verified"] is True
+    esg_data = ESGReportGenerator.generate_data(org_id=org_id)
+    assert "scope_2_tonnes_co2e" in esg_data
+    assert "scope_3_tonnes_co2e" in esg_data
+
+    # 3. BudgetService.get_team_status & evaluate_pr_impact auto-initialize fresh team budget without crashing
+    fresh_status = BudgetService.get_team_status(org_id=org_id, team_id="new-unallocated-team")
+    assert fresh_status["monthly_budget_kg_co2e"] == 500.0
+    pr_impact = BudgetService.evaluate_pr_impact(
+        org_id=org_id, team_id="new-unallocated-team", additional_projected_kg_co2e=15.0
+    )
+    assert pr_impact["verdict"] == "PASSED"
+
+    # 4. BillingService rejects unknown tiers and sets a 30-day billing period
+    with pytest.raises(KeyError):
+        BillingService.change_tier(org_id=org_id, new_tier="nonexistent_platinum_tier")
+    sub = BillingService.change_tier(org_id=org_id, new_tier="pro")
+    assert sub["tier"] == "pro"
+    assert sub["current_period_end"] > sub["current_period_start"]
+
+    # 5. reset_password_with_token enforces 12-char 3-class password policy
+    weak_res = reset_password_with_token("any-token", "weakpass1")
+    assert weak_res["success"] is False
+    assert "12 characters" in weak_res["error"]
+
+
 
 
 

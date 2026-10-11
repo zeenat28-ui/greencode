@@ -94,6 +94,13 @@ class BudgetService:
         """Get comprehensive budget consumption, burn rate, and alert level."""
         period = period or cls._current_period()
         budget = get_team_carbon_budget(org_id, team_id, period)
+        if not budget:
+            budget = set_team_carbon_budget(
+                org_id=org_id,
+                team_id=team_id,
+                monthly_budget_kg=500.0,
+                period=period,
+            )
 
         now = datetime.now(timezone.utc)
         year, month = map(int, period.split("-"))

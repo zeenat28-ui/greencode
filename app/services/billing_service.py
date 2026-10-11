@@ -9,7 +9,7 @@ call allowance (using the real ``usage_events`` ledger).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 from typing import Any, Dict, Optional
@@ -22,7 +22,7 @@ from app.database import (
     SessionLocal,
     Subscription,
 )
-from app.pricing import PricingManager
+from app.pricing import PRICING_CATALOG, PricingManager
 from app.services.usage_service import UsageService
 
 logger = logging.getLogger("greencode.services.billing")
@@ -66,22 +66,26 @@ class BillingService:
         seats: int = 1,
         status: str = "active",
     ) -> Dict[str, Any]:
+        clean_tier = tier.lower().strip()
+        if clean_tier not in PRICING_CATALOG:
+            raise KeyError(f"Unknown pricing tier: {tier}")
         now = datetime.now(timezone.utc)
+        period_end = now + timedelta(days=30)
         db: Session = SessionLocal()
         try:
             sub = Subscription(
                 org_id=org_id,
-                tier=tier.lower(),
+                tier=clean_tier,
                 status=status,
                 seats=seats,
                 current_period_start=now,
-                current_period_end=now,
+                current_period_end=period_end,
             )
             db.add(sub)
             db.commit()
             db.refresh(sub)
             result = cls._sub_to_dict(sub)
-            cls._audit(org_id, "subscription:create", str(sub.id), f"tier={tier}")
+            cls._audit(org_id, "subscription:create", str(sub.id), f"tier={clean_tier}")
             return result
         finally:
             db.close()
@@ -94,9 +98,12 @@ class BillingService:
         seats: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Upgrade/downgrade a tenant's plan (moves to a fresh billing period)."""
-        new_tier = new_tier.lower()
-        PricingManager.get_tier(new_tier)  # validates tier, raises KeyError if unknown
+        new_tier = new_tier.lower().strip()
+        if new_tier not in PRICING_CATALOG:
+            raise KeyError(f"Unknown pricing tier: {new_tier}")
+        PricingManager.get_tier(new_tier)
         now = datetime.now(timezone.utc)
+        period_end = now + timedelta(days=30)
         db: Session = SessionLocal()
         try:
             sub = (
@@ -105,12 +112,12 @@ class BillingService:
                 .one_or_none()
             )
             if not sub:
-                sub = Subscription(org_id=org_id, tier=new_tier, current_period_start=now, current_period_end=now)
+                sub = Subscription(org_id=org_id, tier=new_tier, current_period_start=now, current_period_end=period_end)
                 db.add(sub)
             sub.tier = new_tier
             sub.status = "active"
             sub.current_period_start = now
-            sub.current_period_end = now
+            sub.current_period_end = period_end
             if seats is not None:
                 sub.seats = seats
             db.commit()

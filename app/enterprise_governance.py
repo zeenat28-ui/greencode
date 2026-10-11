@@ -48,6 +48,7 @@ class SCIMUser:
     user_name: str
     display_name: str
     email: str
+    org_id: int = 1
     active: bool = True
     roles: List[str] = field(default_factory=lambda: ["engineer"])
     external_id: Optional[str] = None
@@ -384,11 +385,24 @@ class EnterpriseGovernanceManager:
             user_name=user_name,
             display_name=display_name,
             email=email,
+            org_id=org_id,
             roles=roles,
             external_id=external_id,
         )
         self._scim_users[scim_id] = scim_user
         self._kv_put("scim_user", scim_id, asdict(scim_user))
+        try:
+            from app.audit_logs import AuditLogManager
+            AuditLogManager.record_event(
+                org_id=org_id,
+                action="scim:user_provisioned",
+                resource_type="scim_user",
+                resource_id=scim_id,
+                status="SUCCESS",
+                details={"user_name": user_name, "email": email, "roles": roles},
+            )
+        except Exception:
+            pass
 
         return {
             "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
@@ -437,6 +451,18 @@ class EnterpriseGovernanceManager:
         if u:
             u.active = False
             self._kv_put("scim_user", user_id, asdict(u))
+            try:
+                from app.audit_logs import AuditLogManager
+                AuditLogManager.record_event(
+                    org_id=u.org_id,
+                    action="scim:user_deprovisioned",
+                    resource_type="scim_user",
+                    resource_id=user_id,
+                    status="SUCCESS",
+                    details={"user_name": u.user_name, "active": False},
+                )
+            except Exception:
+                pass
             return True
         return False
 

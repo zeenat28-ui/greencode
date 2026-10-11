@@ -41,7 +41,11 @@ class ESGReportGenerator:
             projects = db.query(Project).filter(Project.org_id == org_id).all()
             budgets = db.query(CarbonBudget).filter(CarbonBudget.org_id == org_id).all()
             repos = db.query(Repository).filter(Repository.org_id == org_id).all()
-            profiles = db.query(ProfileMetric).all()
+            repo_ids = [r.id for r in repos]
+            if repo_ids:
+                profiles = db.query(ProfileMetric).filter(ProfileMetric.repo_id.in_(repo_ids)).all()
+            else:
+                profiles = db.query(ProfileMetric).filter(ProfileMetric.repo_id.is_(None)).all()
 
             # Aggregate real consumption from CarbonBudget rows and recorded ProfileMetric runs
             budget_consumed_kg = sum(float(b.consumed_kg_co2e or 0.0) for b in budgets)
@@ -112,6 +116,8 @@ class ESGReportGenerator:
                 "reporting_period": period,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "data_provenance": "database_records" if has_measured_records else "calibrated_instance_model",
+                "scope_2_tonnes_co2e": scope2_tco2e,
+                "scope_3_tonnes_co2e": scope3_embodied_tco2e,
                 "standards_compliance": [
                     "GHG Protocol Corporate Standard (Scope 2 Location & Market Based)",
                     "ISO 14064-1:2018 Specification for Quantification of GHG Emissions",
@@ -256,12 +262,17 @@ class ESGReportGenerator:
             writer = csv.writer(csv_buf)
             writer.writerow(["record_type", "identifier", "metric_primary", "metric_secondary", "timestamp"])
             for r in repos:
+                score_val = float(r.green_score if r.green_score is not None else 100.0)
+                grade_val = getattr(r, "grade", None) or (
+                    "A" if score_val >= 90 else "B" if score_val >= 80 else "C" if score_val >= 70 else "D" if score_val >= 60 else "F"
+                )
+                r_ts = getattr(r, "created_at", None) or getattr(r, "timestamp", None)
                 writer.writerow([
                     "repository_audit",
                     r.name,
-                    f"green_score={r.green_score}",
-                    f"grade={r.grade}",
-                    r.timestamp.isoformat() if r.timestamp else "",
+                    f"green_score={score_val}",
+                    f"grade={grade_val}",
+                    r_ts.isoformat() if r_ts else "",
                 ])
             for b in budgets:
                 b_ts = getattr(b, "updated_at", None) or getattr(b, "created_at", None)

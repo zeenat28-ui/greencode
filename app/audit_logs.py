@@ -54,7 +54,7 @@ class AuditLogManager:
         try:
             now = datetime.now(timezone.utc)
             timestamp_str = now.isoformat()
-            details_dict = details or {}
+            details_dict = dict(details) if details else {}
             details_dict["actor"] = actor
             details_dict["recorded_at"] = timestamp_str
 
@@ -145,7 +145,7 @@ class AuditLogManager:
 
     @classmethod
     def verify_integrity(cls, org_id: int) -> Dict[str, Any]:
-        """Verify the cryptographic hash chain for compliance auditors."""
+        """Verify the cryptographic hash chain and payload digest for compliance auditors."""
         db: Session = SessionLocal()
         try:
             query = db.query(AuditLog).filter(AuditLog.org_id == org_id)
@@ -164,13 +164,32 @@ class AuditLogManager:
 
                 rec_prev = payload.get("prev_hash")
                 rec_hash = payload.get("record_hash")
-                if rec_prev and rec_prev != last_hash and i > 0:
+                if rec_prev is not None and rec_prev != last_hash:
                     return {
                         "valid": False,
                         "records_verified": i,
                         "broken_at_id": r.id,
                         "error": "HASH_CHAIN_DISCONTINUITY",
                     }
+                if rec_hash and "recorded_at" in payload:
+                    clean_payload = {
+                        k: v for k, v in payload.items() if k not in ("prev_hash", "record_hash")
+                    }
+                    expected_hash = cls._compute_hash(
+                        prev_hash=rec_prev if rec_prev is not None else last_hash,
+                        timestamp_str=str(payload["recorded_at"]),
+                        org_id=r.org_id,
+                        action=r.action or "",
+                        resource_id=r.resource_id or "",
+                        details_str=json.dumps(clean_payload, sort_keys=True),
+                    )
+                    if expected_hash != rec_hash:
+                        return {
+                            "valid": False,
+                            "records_verified": i,
+                            "broken_at_id": r.id,
+                            "error": "RECORD_HASH_TAMPERED",
+                        }
                 last_hash = rec_hash or last_hash
 
             return {

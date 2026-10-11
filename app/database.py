@@ -1900,6 +1900,10 @@ def reset_password_with_token(token: str, new_password: str) -> Dict[str, Any]:
     """Verify reset token and update user password."""
     if not new_password or len(new_password) < 6:
         return {"success": False, "error": "Password must be at least 6 characters long."}
+    try:
+        validate_password_policy(new_password)
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
 
     init_db()
     db = SessionLocal()
@@ -2084,10 +2088,12 @@ def set_team_carbon_budget(
                 monthly_budget_kg_co2e=monthly_budget_kg,
                 consumed_kg_co2e=0.0,
                 period_year_month=now_period,
+                is_breached=False,
             )
             db.add(budget)
         else:
             budget.monthly_budget_kg_co2e = monthly_budget_kg
+            budget.is_breached = bool(budget.consumed_kg_co2e >= monthly_budget_kg)
         db.commit()
         db.refresh(budget)
         return {
@@ -2151,20 +2157,21 @@ def record_carbon_consumption(org_id: int, team_id: str, consumed_kg: float, per
                 monthly_budget_kg_co2e=500.0,
                 consumed_kg_co2e=consumed_kg,
                 period_year_month=now_period,
+                is_breached=bool(consumed_kg >= 500.0),
             )
             db.add(budget)
         else:
             budget.consumed_kg_co2e += consumed_kg
-            if budget.consumed_kg_co2e >= budget.monthly_budget_kg_co2e:
-                budget.is_breached = True
+            budget.is_breached = bool(budget.consumed_kg_co2e >= budget.monthly_budget_kg_co2e)
 
         db.commit()
         db.refresh(budget)
+        denom = max(float(budget.monthly_budget_kg_co2e or 0.0), 1e-6)
         return {
             "team_id": budget.team_id,
             "consumed_kg_co2e": budget.consumed_kg_co2e,
             "monthly_budget_kg_co2e": budget.monthly_budget_kg_co2e,
-            "utilization_pct": round((budget.consumed_kg_co2e / budget.monthly_budget_kg_co2e) * 100.0, 1),
+            "utilization_pct": round((budget.consumed_kg_co2e / denom) * 100.0, 1),
             "is_breached": budget.is_breached,
         }
     except Exception:

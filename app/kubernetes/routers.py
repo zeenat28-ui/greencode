@@ -41,3 +41,31 @@ async def evaluate_rollback(
         auto_trigger=payload.auto_trigger,
     )
 
+
+@router.get("/iac-rules")
+async def get_iac_rules_catalog():
+    """Return the catalog of Terraform, Kubernetes, and Dockerfile FinOps/GreenOps rules."""
+    from app.iac_linter import IAC_RULES_CATALOG
+
+    return {
+        "count": len(IAC_RULES_CATALOG),
+        "rules": IAC_RULES_CATALOG,
+    }
+
+
+@router.post("/iac-audit")
+async def audit_iac_manifest(payload: Dict[str, Any]):
+    """Audit Terraform (.tf), Kubernetes (.yaml), or Dockerfile content for cost and carbon waste."""
+    from app.iac_linter import audit_iac_content
+
+    content = str(payload.get("content") or payload.get("source_code") or "")
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="content is required for IaC auditing")
+    file_path = str(payload.get("file_path") or "main.tf")
+    iac_type = payload.get("iac_type")
+    return audit_iac_content(
+        content=content,
+        file_path=file_path,
+        iac_type=str(iac_type) if iac_type else None,
+    )
+

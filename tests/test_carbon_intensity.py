@@ -426,6 +426,50 @@ class TestExplicitKeyOverride(_CacheIsolation):
         by_id = {p["provider_id"]: p for p in status["providers"]}
         self.assertTrue(by_id["electricity_maps"]["usable_now"])
 
+    def test_cache_serves_second_and_third_calls_without_refetching(self):
+        calls = {"count": 0}
+
+        def factory():
+            providers = _REAL_PROVIDERS()
+            for p in providers:
+                p.requires_key = False
+                if p.provider_id == "uk_eso":
+                    def fetch(z, k=None):
+                        calls["count"] += 1
+                        return {"carbon_intensity": 88.0, "observed_at": "2026-01-01T00:00Z"}
+                    p.fetch = fetch
+                else:
+                    p.fetch = lambda z, k=None: None
+            return providers
+
+        with patch.object(ci, "_providers", factory):
+            r1 = ci.resolve_carbon_intensity("GB", use_cache=True)
+            r2 = ci.resolve_carbon_intensity("GB", use_cache=True)
+            r3 = ci.resolve_carbon_intensity("GB", use_cache=True)
+
+        self.assertEqual(calls["count"], 1)
+        self.assertEqual(r1.freshness, ci.FRESHNESS_LIVE)
+        self.assertEqual(r2.freshness, ci.FRESHNESS_CACHED)
+        self.assertEqual(r3.freshness, ci.FRESHNESS_CACHED)
+
+    def test_watttime_lbs_per_mwh_converts_to_gco2_per_kwh(self):
+        payload = (
+            {
+                "data": {
+                    "value": 1000.0,
+                    "units": "lbs_co2_per_mwh",
+                    "datetime": "2026-01-01T00:00Z",
+                }
+            },
+            None,
+        )
+        with patch.dict(os.environ, {"WATTTIME_API_TOKEN": "tok"}):
+            with patch.object(ci, "_get_json", return_value=payload):
+                datum = ci._fetch_watttime("US-CAL-CISO")
+        self.assertIsNotNone(datum)
+        self.assertAlmostEqual(datum["carbon_intensity"], 453.59237, places=3)
+
 
 if __name__ == "__main__":
     unittest.main()
+

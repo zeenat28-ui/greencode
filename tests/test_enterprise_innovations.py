@@ -647,6 +647,30 @@ def test_aws_marketplace_batch_meter_usage_sync():
     assert mp_client.calls[0]["ProductCode"] == "prod-greencode-enterprise"
 
 
+def test_kepler_prometheus_parser_does_not_double_count_rapl_hierarchy():
+    monitor = KubernetesEnergyMonitor(cluster_name="eks-prod")
+    # Container 1 reports total (120J) AND sub-domains (package=100J, core=80J, dram=20J) -> must be 120J, NOT 320J
+    # Container 2 reports package (60J), core (50J), and dram (15J) without total -> must be 60+15 = 75J, NOT 125J
+    metrics = """
+    kepler_container_joules_total{container_namespace="prod",pod_name="api-1",container_name="app",mode="dynamic"} 120.0
+    kepler_container_package_joules_total{container_namespace="prod",pod_name="api-1",container_name="app"} 100.0
+    kepler_container_core_joules_total{container_namespace="prod",pod_name="api-1",container_name="app"} 80.0
+    kepler_container_dram_joules_total{container_namespace="prod",pod_name="api-1",container_name="app"} 20.0
+    kepler_container_package_joules_total{container_namespace="prod",pod_name="worker-1",container_name="job"} 60.0
+    kepler_container_core_joules_total{container_namespace="prod",pod_name="worker-1",container_name="job"} 50.0
+    kepler_container_dram_joules_total{container_namespace="prod",pod_name="worker-1",container_name="job"} 15.0
+    """
+    samples = monitor.parse_prometheus_kepler_metrics(metrics, duration_seconds=60.0)
+    by_pod = {s.pod_name: s for s in samples}
+    # 120 J over 60s = 2.0 W
+    assert abs(by_pod["api-1"].energy_joules - 120.0) < 1e-4
+    assert abs(by_pod["api-1"].power_watts - 2.0) < 1e-4
+    # 75 J over 60s = 1.25 W
+    assert abs(by_pod["worker-1"].energy_joules - 75.0) < 1e-4
+    assert abs(by_pod["worker-1"].power_watts - 1.25) < 1e-4
+
+
+
 
 
 

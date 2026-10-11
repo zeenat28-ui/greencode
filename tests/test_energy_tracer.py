@@ -158,3 +158,42 @@ class TestEnergyTracer(unittest.TestCase):
     def test_no_meter_does_not_crash(self):
         _, report = self._run(lambda: sum(range(1000)), meter=None)
         self.assertIn("measurement_method", report)
+
+    def test_snapshot_meter_and_cumulative_timeline_attribution(self):
+        """A counter-based meter (read + joules_between) must accumulate joules monotonically."""
+        import time
+
+        class _CounterMeter:
+            def __init__(self):
+                self.counter = 0.0
+
+            def read(self):
+                self.counter += 2.5
+                return self.counter
+
+            def joules_between(self, a, b):
+                return {"cpu_joules": b - a, "memory_joules": 0.0, "total_joules": b - a}
+
+            def describe(self):
+                return {"backend": "scaphandre"}
+
+        def work():
+            time.sleep(0.015)
+            return "done"
+
+        res, report = self._run(work, meter=_CounterMeter())
+        self.assertEqual(res, "done")
+        self.assertEqual(report["measurement_method"], "scaphandre")
+        self.assertTrue(report["measurement_is_hardware"])
+        self.assertGreater(report["total_joules"], 0.0)
+        by_name = self._by_name(report)
+        self.assertGreater(by_name["work"]["joules"], 0.0)
+
+    def test_tracer_instance_is_reusable_across_runs(self):
+        tracer = EnergyTracer(interval=0.001)
+        with mock.patch("app.energy_sensors.select_meter", return_value=_FakeMeter(1.0)):
+            _, rep1 = tracer.run(lambda: sum(range(5000)))
+            _, rep2 = tracer.run(lambda: sum(range(5000)))
+        self.assertEqual(rep1["hotspots"][0]["calls"], 1)
+        self.assertEqual(rep2["hotspots"][0]["calls"], 1)
+

@@ -77,6 +77,16 @@ class TestHardwareMethodClassification(unittest.TestCase):
         """`ScaphhandreMeter` shipped as public API; the rename must not break it."""
         self.assertIs(ScaphhandreMeter, ScaphandreMeter)
 
+    def test_scaphandre_meter_measure_method(self):
+        meter = ScaphandreMeter("http://127.0.0.1:8080/metrics")
+        readings = iter([1_000_000.0, 3_500_000.0])
+        with mock.patch.object(meter, "_scrape", side_effect=lambda: next(readings)):
+            res, wall, joules = meter.measure(lambda x: x + 1, 41)
+        self.assertEqual(res, 42)
+        self.assertGreaterEqual(wall, 0.0)
+        self.assertAlmostEqual(joules["total_joules"], 2.5, places=6)
+        self.assertAlmostEqual(joules["cpu_joules"], 2.5, places=6)
+
 
 class TestCounterArithmetic(unittest.TestCase):
     def test_no_wrap(self):

@@ -161,24 +161,51 @@ class EnergyTracer:
         self._total_joules: float = 0.0
         self._stop = threading.Event()
         self._meter: Any = None
+        self._last_snapshot: Any = None
+
+    def _sample_once(self) -> None:
+        """Read hardware energy delta since the previous sample and append cumulative joules."""
+        if self._meter is None:
+            return
+        try:
+            if (
+                self._last_snapshot is not None
+                and hasattr(self._meter, "read")
+                and hasattr(self._meter, "joules_between")
+            ):
+                curr_snap = self._meter.read()
+                if curr_snap is not None:
+                    joules = self._meter.joules_between(self._last_snapshot, curr_snap)
+                    self._last_snapshot = curr_snap
+                    delta_j = max(0.0, float(joules.get("total_joules", 0.0)))
+                    self._total_joules += delta_j
+                    self._energy_timeline.append((time.perf_counter(), self._total_joules))
+                    return
+            if hasattr(self._meter, "measure"):
+                _, _, joules = self._meter.measure(lambda: None)
+                delta_j = max(0.0, float(joules.get("total_joules", 0.0)))
+                self._total_joules += delta_j
+                self._energy_timeline.append((time.perf_counter(), self._total_joules))
+        except Exception:
+            # A failed counter read must never abort the workload.
+            pass
 
     # -- energy sampling ---------------------------------------------------
     def _start_sampler(self) -> None:
         self._sampling = True
         self._stop.clear()
+        self._total_joules = 0.0
+        self._last_snapshot = None
+        if self._meter is not None and hasattr(self._meter, "read"):
+            try:
+                self._last_snapshot = self._meter.read()
+            except Exception:
+                self._last_snapshot = None
         self._energy_timeline = [(time.perf_counter(), 0.0)]
 
         def _pump() -> None:
             while not self._stop.wait(self.interval):
-                if self._meter is None:
-                    continue
-                try:
-                    _, _, joules = self._meter.measure(lambda: None)
-                    self._energy_timeline.append((time.perf_counter(), joules["total_joules"]))
-                    self._total_joules += joules["total_joules"]
-                except Exception:
-                    # A failed counter read must never abort the workload.
-                    continue
+                self._sample_once()
 
         self._sampler = threading.Thread(target=_pump, name="greencode-energy", daemon=True)
         self._sampler.start()
@@ -188,14 +215,17 @@ class EnergyTracer:
         if self._sampler is not None:
             self._sampler.join(timeout=2.0)
             self._sampler = None
+        # Capture final counter delta if the workload finished before or between ticks
+        if self._last_snapshot is not None:
+            self._sample_once()
         self._sampling = False
 
     def _energy_between(self, t_start: float, t_end: float) -> float:
-        """Linearly interpolate the sampler timeline across [t_start, t_end].
+        """Linearly interpolate the cumulative sampler timeline across [t_start, t_end].
 
         With a single sample there is no rate to infer, so nothing is charged.
-        Otherwise the piecewise-linear curve is integrated, which is an honest
-        interpolation of what was actually measured.
+        Otherwise the piecewise-linear cumulative energy curve is integrated,
+        which is an honest interpolation of what was actually measured.
         """
         if len(self._energy_timeline) < 2:
             return 0.0
@@ -207,10 +237,10 @@ class EnergyTracer:
         if t_end <= t0:
             return 0.0
         if t_start >= t1:
-            return e1 - e0
+            return max(0.0, e1 - e0)
 
         acc = 0.0
-        timeline = self._energy_timeline
+        timeline = list(self._energy_timeline)
         for (ta, ea), (tb, eb) in zip(timeline, timeline[1:]):
             seg_start, seg_end = max(ta, t_start), min(tb, t_end)
             if seg_end <= seg_start:
@@ -218,7 +248,7 @@ class EnergyTracer:
             span = tb - ta
             if span <= 0:
                 continue
-            acc += ((eb - ea) / span) * (seg_end - seg_start)
+            acc += (max(0.0, eb - ea) / span) * (seg_end - seg_start)
         return acc
 
     # -- tracing hooks -----------------------------------------------------
@@ -276,6 +306,11 @@ class EnergyTracer:
     def run(self, fn: Callable, *args, **kwargs) -> Tuple[Any, Dict[str, Any]]:
         """Execute ``fn`` with tracing and energy sampling enabled."""
         from app.energy_sensors import select_meter
+
+        with self._lock:
+            self._functions.clear()
+        self._stack.clear()
+        self._total_joules = 0.0
 
         self._meter = select_meter()
         self._start_sampler()

@@ -123,7 +123,11 @@ def discover_rapl_domains() -> List[RaplDomain]:
     domains: List[RaplDomain] = []
     seen: set[str] = set()
 
-    for base in sorted(glob.glob("/sys/class/powercap/intel-rapl:*")):
+    candidate_paths = sorted(
+        set(glob.glob("/sys/class/powercap/intel-rapl:*"))
+        | set(glob.glob("/sys/class/powercap/intel-rapl:*/intel-rapl:*:*"))
+    )
+    for base in candidate_paths:
         energy_path = os.path.join(base, "energy_uj")
         if not os.path.isfile(energy_path):
             continue
@@ -476,6 +480,17 @@ class ScaphandreMeter:
             "memory_joules": 0.0,
             "total_joules": total_j,
         }
+
+    def measure(self, fn, *args, **kwargs) -> Tuple[Any, float, Dict[str, float]]:
+        """Run ``fn`` while sampling Scaphandre; return (result, seconds, joules)."""
+        before = self.read()
+        t0 = time.perf_counter()
+        result = fn(*args, **kwargs)
+        wall = time.perf_counter() - t0
+        after = self.read()
+        if before is None or after is None:
+            return result, wall, {"cpu_joules": 0.0, "memory_joules": 0.0, "total_joules": 0.0}
+        return result, wall, self.joules_between(before, after)
 
     def describe(self) -> Dict[str, Any]:
         return {"backend": "scaphandre", "url": self._url}

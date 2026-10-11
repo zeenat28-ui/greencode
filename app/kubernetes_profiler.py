@@ -217,9 +217,16 @@ class KubernetesEnergyMonitor:
             try:
                 import urllib.request
                 import ssl
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
+                ca_cert = os.environ.get(
+                    "KUBERNETES_CA_CERT_PATH",
+                    "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt",
+                )
+                if os.path.isfile(ca_cert):
+                    ctx = ssl.create_default_context(cafile=ca_cert)
+                else:
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
                 url = f"https://{kube_host}/apis/apps/v1/namespaces/{namespace}/deployments/{deployment_name}/rollback"
                 req = urllib.request.Request(
                     url,
@@ -286,8 +293,12 @@ class KubernetesEnergyMonitor:
         line_re = re.compile(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)\{([^}]*)\}\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)")
         label_re = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"')
 
-        joules_by_container: Dict[Tuple[str, str, str], float] = {}
+        total_by_container: Dict[Tuple[str, str, str], float] = {}
+        pkg_by_container: Dict[Tuple[str, str, str], float] = {}
+        core_by_container: Dict[Tuple[str, str, str], float] = {}
+        dram_by_container: Dict[Tuple[str, str, str], float] = {}
         memory_by_container: Dict[Tuple[str, str, str], int] = {}
+        seen_containers: set[Tuple[str, str, str]] = set()
 
         for raw_line in (metrics_text or "").splitlines():
             line = raw_line.strip()
@@ -310,16 +321,28 @@ class KubernetesEnergyMonitor:
                 continue
             key = (ns, pod, container)
 
-            if metric_name in (
-                "kepler_container_joules_total",
-                "kepler_container_package_joules_total",
-                "kepler_container_dram_joules_total",
-                "kepler_container_core_joules_total",
-            ):
-                if val >= 0.0:
-                    joules_by_container[key] = joules_by_container.get(key, 0.0) + val
+            if metric_name == "kepler_container_joules_total" and val >= 0.0:
+                seen_containers.add(key)
+                total_by_container[key] = total_by_container.get(key, 0.0) + val
+            elif metric_name == "kepler_container_package_joules_total" and val >= 0.0:
+                seen_containers.add(key)
+                pkg_by_container[key] = pkg_by_container.get(key, 0.0) + val
+            elif metric_name == "kepler_container_core_joules_total" and val >= 0.0:
+                seen_containers.add(key)
+                core_by_container[key] = core_by_container.get(key, 0.0) + val
+            elif metric_name == "kepler_container_dram_joules_total" and val >= 0.0:
+                seen_containers.add(key)
+                dram_by_container[key] = dram_by_container.get(key, 0.0) + val
             elif metric_name == "container_memory_working_set_bytes":
                 memory_by_container[key] = max(0, int(val))
+
+        joules_by_container: Dict[Tuple[str, str, str], float] = {}
+        for key in seen_containers:
+            if key in total_by_container:
+                joules_by_container[key] = total_by_container[key]
+            else:
+                cpu_j = pkg_by_container[key] if key in pkg_by_container else core_by_container.get(key, 0.0)
+                joules_by_container[key] = cpu_j + dram_by_container.get(key, 0.0)
 
         samples: List[PodEnergySample] = []
         now_ts = datetime.now(timezone.utc).isoformat()

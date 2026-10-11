@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import os
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -405,12 +405,24 @@ def _fetch_watttime(zone: str, key_override: Optional[Dict[str, str]] = None) ->
     )
     if err or not payload:
         return None
-    value = (payload.get("data") or {}).get("value")
+    data_block = payload.get("data") or {}
+    if isinstance(data_block, list):
+        data_block = data_block[-1] if data_block else {}
+    value = data_block.get("value")
     if value is None:
         return None
+    raw_val = float(value)
+    units = (
+        data_block.get("units")
+        or (payload.get("meta") or {}).get("units")
+        or ""
+    ).strip().lower()
+    if units in ("lbs_co2_per_mwh", "lb_co2_per_mwh", "lbs/mwh"):
+        # 1 lb/MWh = 453.59237 g / 1000 kWh = 0.45359237 gCO2/kWh
+        raw_val *= 0.45359237
     return {
-        "carbon_intensity": float(value),
-        "observed_at": (payload.get("data") or {}).get("datetime"),
+        "carbon_intensity": raw_val,
+        "observed_at": data_block.get("datetime") or data_block.get("point_time"),
         "resolution": "PT1H",
         "citation": f"WattTime v3 signal-index co2_moer, region {region} (customer token)",
     }
@@ -484,6 +496,8 @@ def _providers() -> List[Provider]:
 # Cache and helpers
 # ---------------------------------------------------------------------------
 _CACHE: Dict[str, CarbonIntensityResult] = {}
+_CACHE_TS: Dict[str, float] = {}
+_CACHE_TTL_SECONDS: float = float(os.environ.get("GREENCODE_CI_CACHE_TTL", "300"))
 
 
 def _cache_key(zone: str) -> str:
@@ -577,13 +591,21 @@ def resolve_carbon_intensity(
     """
     normalized = (zone or "").upper()
     tried: List[Dict[str, str]] = []
+    ckey = _cache_key(normalized)
+
+    if not _CACHE:
+        _CACHE_TS.clear()
 
     if use_cache:
-        cached = _CACHE.get(_cache_key(normalized))
-        if cached and cached.freshness == FRESHNESS_LIVE:
-            cached.freshness = FRESHNESS_CACHED
-            cached.fallback_chain = list(FALLBACK_CHAIN)
-            return cached
+        cached = _CACHE.get(ckey)
+        cached_at = _CACHE_TS.get(ckey, 0.0)
+        if cached is not None and (time.monotonic() - cached_at) < _CACHE_TTL_SECONDS:
+            return replace(
+                cached,
+                freshness=FRESHNESS_CACHED,
+                age_seconds=_age_seconds(cached.observed_at),
+                fallback_chain=list(FALLBACK_CHAIN),
+            )
 
     for provider in _providers():
         if not provider.supports(normalized):
@@ -615,7 +637,8 @@ def resolve_carbon_intensity(
             provider_verified=True,
             citation=datum.get("citation") or provider.citation,
         )
-        _CACHE[_cache_key(normalized)] = result
+        _CACHE[ckey] = result
+        _CACHE_TS[ckey] = time.monotonic()
         return result
 
     # Tier 4: the caller's static matrix, labelled as exactly that.

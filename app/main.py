@@ -328,6 +328,8 @@ from app.routers.pr_gate import router as pr_gate_router
 from app.routers.reports import router as reports_router
 from app.routers.policies import router as policies_router
 from app.tenants.routers import router as tenants_modular_router
+from app.routers.billing import router as billing_router
+from app.routers.support import router as support_router
 from app.auth.routers import router as auth_modular_router
 from app.audit.routers import router as audit_modular_router
 from app.energy.routers import router as energy_modular_router
@@ -349,6 +351,8 @@ app.include_router(energy_modular_router)
 app.include_router(kubernetes_modular_router)
 app.include_router(notifications_modular_router)
 app.include_router(admin_modular_router)
+app.include_router(billing_router)
+app.include_router(support_router)
 
 # A published literal is worse than no check at all: it invites operators to
 # believe the deployment is protected while every access token in the fleet is

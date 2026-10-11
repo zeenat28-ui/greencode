@@ -381,6 +381,93 @@ class TenantQuota(Base):
     )
 
 
+class UsageEvent(Base):
+    """Append-only durable usage metering ledger for billing & quota accounting.
+
+    Every billable API action writes one immutable row here so that invoices,
+    quota enforcement and customer usage reports are backed by real events
+    rather than an in-memory counter.
+    """
+
+    __tablename__ = "usage_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    event_type = Column(String(100), nullable=False, index=True)  # e.g. "api_call", "scan", "ml_audit"
+    quantity = Column(Integer, default=1, nullable=False)
+    unit = Column(String(50), default="call", nullable=False)  # call | scan | carbon_kg
+    period_year_month = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    request_id = Column(String(64), nullable=True, index=True)  # idempotency key
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+
+class Subscription(Base):
+    """Billing subscription lifecycle for an enterprise tenant."""
+
+    __tablename__ = "subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), unique=True, nullable=False, index=True)
+    tier = Column(String(50), default="free", nullable=False)  # free | pro | enterprise
+    status = Column(String(50), default="active", nullable=False)  # active | trialing | past_due | canceled
+    seats = Column(Integer, default=1, nullable=False)
+    current_period_start = Column(DateTime, nullable=False)
+    current_period_end = Column(DateTime, nullable=False)
+    cancel_at_period_end = Column(Boolean, default=False, nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+class Invoice(Base):
+    """Generated billing invoice derived from a subscription + metered usage."""
+
+    __tablename__ = "invoices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    subscription_id = Column(Integer, ForeignKey("subscriptions.id"), nullable=True)
+    invoice_number = Column(String(50), unique=True, nullable=False, index=True)  # GC-YYYYMM-####
+    period_year_month = Column(String(7), nullable=False, index=True)
+    status = Column(String(50), default="open", nullable=False)  # open | paid | void
+    base_amount_usd = Column(Float, default=0.0, nullable=False)
+    usage_overage_usd = Column(Float, default=0.0, nullable=False)
+    total_amount_usd = Column(Float, default=0.0, nullable=False)
+    currency = Column(String(8), default="USD", nullable=False)
+    line_items_json = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+
+class SupportTicket(Base):
+    """SaaS support & operations ticket with tier-driven SLA targets."""
+
+    __tablename__ = "support_tickets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    requester_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    subject = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    severity = Column(String(50), default="normal", nullable=False)  # low | normal | high | critical
+    status = Column(String(50), default="open", nullable=False)  # open | pending | resolved | closed
+    tier = Column(String(50), default="free", nullable=False)
+    sla_response_minutes = Column(Integer, nullable=False)  # target first-response time
+    sla_due_at = Column(DateTime, nullable=False)
+    first_responded_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True
+    )
+
+
 class CarbonBudget(Base):
     """Enforces multi-tenant organizational and team-level carbon caps (kg CO2e / month)."""
 

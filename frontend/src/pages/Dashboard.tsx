@@ -16,11 +16,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   ArrowRight,
-  Play,
   RefreshCw,
-  Sparkles,
   FileCode2,
-  Cpu,
   FileText,
   DollarSign,
   Bot,
@@ -32,7 +29,6 @@ import CiCdBadgeModal from '../components/common/CiCdBadgeModal';
 import FinOpsCalculatorModal from '../components/common/FinOpsCalculatorModal';
 import GitHubBotPreviewModal from '../components/common/GitHubBotPreviewModal';
 import { DEMO_SCAN_DATA } from '../utils/demoData';
-import { theme } from '../styles/theme';
 
 export default function Dashboard() {
   const [scanData, setScanData] = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
@@ -83,7 +79,6 @@ export default function Dashboard() {
   const energyWh        = scanData?.energy_wh ?? 0;
   const carbonG         = scanData?.carbon_g ?? 0;
   const marginalRate    = gridData?.marginal_carbon_intensity ?? gridData?.carbon_intensity ?? null;
-  const cleanPct        = gridData?.clean_energy_percentage ?? null;
   const isLive          = gridData?.is_live ?? false;
 
   // Prevent flicker during initial state reconciliation

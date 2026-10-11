@@ -4,7 +4,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import { ScanResult, BenchmarkScript, ProfilingResult } from '../types';
 import ScoreBadge from '../components/common/ScoreBadge';
 import MetricCard from '../components/common/MetricCard';
-import { Play, Cpu, MemoryStick, Zap, Leaf, Download, Copy, CheckCircle2, AlertCircle, Terminal, Clock, Loader2 } from 'lucide-react';
+import { Play, Cpu, MemoryStick, Zap, Download, Copy, CheckCircle2, AlertCircle, Terminal, Clock, Loader2 } from 'lucide-react';
 
 /**
  * Runtime Profiler
@@ -17,7 +17,6 @@ import { Play, Cpu, MemoryStick, Zap, Leaf, Download, Copy, CheckCircle2, AlertC
 export default function Profiler() {
   const [scanData] = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
   const [zone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
-  const [threshold] = useLocalStorage('greencode_threshold', 75);
 
   const [benchmarks, setBenchmarks] = useState<BenchmarkScript[]>([]);
   const [benchmarksLoading, setBenchmarksLoading] = useState(true);

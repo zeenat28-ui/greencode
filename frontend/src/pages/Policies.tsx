@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import { ShieldCheck, ShieldAlert, Sliders, Save, CheckCircle2 } from 'lucide-react';
+import { ShieldAlert, Sliders, Save, CheckCircle2 } from 'lucide-react';
 
 export default function Policies() {
   const [maxRegression, setMaxRegression] = useState(25.0);
   const [minGreenScore, setMinGreenScore] = useState(80.0);
-  const [warningThreshold, setWarningThreshold] = useState(70.0);
-  const [criticalThreshold, setCriticalThreshold] = useState(90.0);
   const [autoBlock, setAutoBlock] = useState(true);
   const [autoRollback, setAutoRollback] = useState(true);
   const [dirtyGridLimit, setDirtyGridLimit] = useState(450.0);

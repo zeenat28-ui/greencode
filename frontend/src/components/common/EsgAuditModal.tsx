@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { 
   FileText, Printer, Copy, Check, X, ShieldCheck, 
-  Leaf, Zap, DollarSign, Calendar, Cpu, Award
+  Leaf, Zap, DollarSign, Award
 } from 'lucide-react';
 import { ScanResult } from '../../types';
 

@@ -9,7 +9,7 @@ import {
   Legend,
   Title,
 } from 'chart.js';
-import { AlertTriangle, BarChart3, ListFilter, CheckCircle2 } from 'lucide-react';
+import { BarChart3, ListFilter, CheckCircle2 } from 'lucide-react';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, Title);
 

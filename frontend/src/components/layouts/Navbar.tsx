@@ -2,8 +2,8 @@ import { Link, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard, GitBranch, AlertCircle,
-  Gauge, History, Settings, ShieldCheck, Leaf,
-  Loader2, LogOut, Github, ChevronDown, Cpu,
+  Gauge, Settings, ShieldCheck, Leaf,
+  Loader2, LogOut, Github, ChevronDown,
   Sliders, DollarSign, Activity, FileText
 } from 'lucide-react';
 import { gridService } from '../../services/greencodeApi';

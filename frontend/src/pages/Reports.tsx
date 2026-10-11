@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, Download, CheckCircle, ShieldCheck, ExternalLink } from 'lucide-react';
+import { Download, ShieldCheck, ExternalLink } from 'lucide-react';
 
 export default function Reports() {
   const [integrityStatus, setIntegrityStatus] = useState<string | null>(null);

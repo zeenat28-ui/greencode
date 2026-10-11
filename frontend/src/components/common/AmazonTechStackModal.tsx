@@ -1,6 +1,6 @@
 import { 
-  Radio, Zap, Cloud, ShieldCheck, Terminal, 
-  ExternalLink, CheckCircle2, X, Cpu, Server, Layers 
+  ShieldCheck, Terminal, 
+  X, Layers 
 } from 'lucide-react';
 
 interface AmazonTechStackModalProps {

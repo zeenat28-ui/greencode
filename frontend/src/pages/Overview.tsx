@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
-  Building2, Users, ShieldAlert, CheckCircle2, TrendingDown,
-  DollarSign, Activity, GitPullRequest, ArrowUpRight
+  Building2, CheckCircle2, TrendingDown,
+  DollarSign, Activity, GitPullRequest
 } from 'lucide-react';
 
 export default function Overview() {

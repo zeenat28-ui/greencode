@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { DollarSign, AlertTriangle, CheckCircle, TrendingUp, AlertCircle, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 export default function Budgets() {
-  const [activeTab, setActiveTab] = useState<'teams' | 'calculator'>('teams');
   const [prEmissionsInput, setPrEmissionsInput] = useState<number>(25.0);
 
   const teamBudgets = [

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
-  Mic, Radio, Volume2, Sparkles, CheckCircle2, ArrowRight, 
-  Play, Cloud, ShieldCheck, Zap, VolumeX, Info, Layers 
+  Mic, Radio, Volume2, Sparkles, ArrowRight, 
+  Play, Cloud, ShieldCheck, Zap, VolumeX, Info 
 } from 'lucide-react';
 import AmazonTechStackModal from './AmazonTechStackModal';
 

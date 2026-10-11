@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { 
-  DollarSign, Calculator, Server, Leaf, Zap, ArrowRight, 
-  CheckCircle2, X, Sliders, TrendingDown, Cpu, Sparkles 
+  DollarSign, Leaf, Zap, 
+  X, TrendingDown, Sparkles 
 } from 'lucide-react';
 
 interface FinOpsCalculatorModalProps {
@@ -57,12 +57,11 @@ const INSTANCE_OPTIONS: InstanceTypeOption[] = [
 export default function FinOpsCalculatorModal({
   isOpen,
   onClose,
-  violationsCount = 4,
 }: FinOpsCalculatorModalProps) {
   const [selectedInstance, setSelectedInstance] = useState<InstanceTypeOption>(INSTANCE_OPTIONS[0]);
   const [nodeCount, setNodeCount] = useState<number>(20); // 20 production instances
   const [efficiencyGainPct, setEfficiencyGainPct] = useState<number>(38); // 38% CPU optimization
-  const [gridIntensity, setGridIntensity] = useState<number>(215); // gCO2e/kWh
+  const [gridIntensity] = useState<number>(215); // gCO2e/kWh
 
   if (!isOpen) return null;
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { 
-  GitPullRequest, CheckCircle2, AlertTriangle, ShieldCheck, 
-  ArrowRight, Sparkles, X, Terminal, Bot, GitCommit, Play, Copy, Check 
+  GitPullRequest, CheckCircle2, AlertTriangle, 
+  Sparkles, X, Bot 
 } from 'lucide-react';
 
 interface GitHubBotPreviewModalProps {
@@ -13,11 +13,9 @@ interface GitHubBotPreviewModalProps {
 export default function GitHubBotPreviewModal({
   isOpen,
   onClose,
-  repoName = 'zeenat28-ui/greencode',
 }: GitHubBotPreviewModalProps) {
   const [isPatched, setIsPatched] = useState(false);
   const [isPatching, setIsPatching] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
 

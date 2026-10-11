@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, RotateCcw, AlertTriangle, CheckCircle, ShieldCheck } from 'lucide-react';
+import { RotateCcw, AlertTriangle } from 'lucide-react';
 
 export default function Deployments() {
   const [rollbackStatus, setRollbackStatus] = useState<string | null>(null);

@@ -68,7 +68,7 @@ for (const chunk of largeDataset) {
 
 export default function Issues() {
   const [scanData]        = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
-  const [ghToken, setGhToken] = useLocalStorage<string>('greencode_gh_token', '');
+  const [ghToken]        = useLocalStorage<string>('greencode_gh_token', '');
   const [searchQuery, setSearchQuery]       = useState('');
   const [severityFilter, setSeverityFilter] = useState('All');
   const [sortOrder, setSortOrder]           = useState('Highest Penalty');

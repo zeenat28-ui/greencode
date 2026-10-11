@@ -6,16 +6,8 @@ import {
   FileCheck,
   Zap,
   Activity,
-  Layers,
-  Sparkles,
-  Server,
-  ArrowRight,
-  ShieldCheck,
-  CheckCircle2,
-  AlertTriangle,
   RefreshCw,
-  Sliders,
-  Database
+  Sliders
 } from 'lucide-react';
 
 export default function CloudCarbon() {

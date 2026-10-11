@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { 
   ShieldCheck, Copy, Check, X, GitPullRequest, Terminal, 
-  ExternalLink, Code2, Sparkles 
+  Code2 
 } from 'lucide-react';
 
 interface CiCdBadgeModalProps {
@@ -14,7 +14,6 @@ interface CiCdBadgeModalProps {
 export default function CiCdBadgeModal({
   isOpen,
   onClose,
-  repoName = 'your-org/your-repo',
   score = 92,
 }: CiCdBadgeModalProps) {
   const [copiedType, setCopiedType] = useState<string | null>(null);

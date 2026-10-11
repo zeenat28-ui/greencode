@@ -12,7 +12,6 @@ interface CodeDiffViewerProps {
 export default function CodeDiffViewer({
   originalCode,
   refactoredCode,
-  language = 'python',
   onApply,
   showActions = true,
   isApplying = false,

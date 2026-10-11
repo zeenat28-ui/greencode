@@ -6,7 +6,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import {
   Search, Loader2, AlertCircle, RefreshCw, GitBranch, Star,
   Lock, Globe, ChevronDown, CheckCircle2, Cpu, ArrowRight,
-  Sparkles, Play, Zap, FileCode2
+  Sparkles, Play, FileCode2
 } from 'lucide-react';
 import { DEMO_REPOSITORIES, DEMO_SCAN_DATA } from '../utils/demoData';
 

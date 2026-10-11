@@ -1236,11 +1236,19 @@ def scan_local_workspace_endpoint(
         "success": True,
         "repo_id": saved_repo.id,
         "repo_name": slug,
+        "repo_path": slug,
+        "full_name": slug,
+        "source": "local_workspace",
+        "is_github": False,
         "team_id": req.team_id,
         "green_score": scan_result["green_score"],
         "total_files": scan_result["total_files"],
         "total_lines": scan_result["total_lines"],
         "total_violations": scan_result["total_violations"],
+        "violation_breakdown": scan_result.get("violation_breakdown", {}),
+        "languages_breakdown": scan_result.get("languages_breakdown", {}),
+        "violations": scan_result.get("violations", []),
+        "file_results": scan_result.get("file_results", []),
         "recorded_emission_kg": estimated_kg_co2e,
     }
 
@@ -1251,11 +1259,11 @@ def get_repository_details_endpoint(
     repo_id: int,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Retrieve full audit details for a given repository ID if owned by the current user."""
+    """Retrieve full audit details for a given repository ID if owned by the current user or workspace."""
     details = get_repository_details(repo_id)
     if not details:
         raise HTTPException(status_code=404, detail="Repository record not found.")
-    if details.get("user_id") != current_user["id"]:
+    if details.get("user_id") is not None and details.get("user_id") != current_user["id"]:
         raise HTTPException(status_code=403, detail="You do not have permission to access this repository.")
     return details
 

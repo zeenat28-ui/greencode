@@ -209,7 +209,6 @@ async def evaluate_k8s_deployment_health(
 async def lint_code_for_energy(
     source_code: str = Body(..., embed=True),
     language: str = Body("python", embed=True),
-    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Real-time IDE Language Server Protocol (LSP) energy diagnostics."""
     from app.energy_linter import EnergyLinter

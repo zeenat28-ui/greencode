@@ -39,8 +39,8 @@ export default function History() {
   };
 
   /**
-   * Re-run a stored audit. In GitHub-only mode every record is a GitHub
-   * repository, so there is no local-path branch to worry about.
+   * Re-run a stored audit (routes local_workspace records to /api/scan/local-workspace
+   * and GitHub repositories to /api/scan/github).
    */
   const handleRescan = async (record: RepositoryRecord) => {
     const slug = record.full_name || record.path_or_url;
@@ -51,37 +51,76 @@ export default function History() {
     setRescanningId(record.id);
     setRescanError(null);
     try {
-      const resp = await scanService.scanGitHub(slug, record.default_branch || undefined);
-      setScanData(resp.data);
+      const isLocal =
+        (record as any).source === 'local_workspace' || slug.startsWith('local-workspace/');
+      if (isLocal) {
+        const subpath = slug.replace(/^local-workspace\//, '') || 'samples';
+        const res = await fetch('/api/scan/local-workspace', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subpath, repo_name: slug, team_id: 'core-infra' }),
+        });
+        if (!res.ok) {
+          throw new Error(`Could not re-audit local path ${subpath}`);
+        }
+        const data = await res.json();
+        setScanData(data);
+      } else {
+        const resp = await scanService.scanGitHub(slug, record.default_branch || undefined);
+        setScanData(resp.data);
+      }
       await loadHistory(true);
       navigate('/dashboard');
     } catch (err: any) {
       setRescanError(
-        err?.response?.data?.detail || `Could not re-audit ${slug}. Verify the repository still exists and is accessible.`
+        err?.response?.data?.detail ||
+          err?.message ||
+          `Could not re-audit ${slug}. Verify the repository still exists and is accessible.`
       );
     } finally {
       setRescanningId(null);
     }
   };
 
-  /** Load a stored audit into the active session (score + provenance only). */
-  const handleViewRecord = (record: RepositoryRecord) => {
+  /** Load a stored audit into the active session, hydrating stored violations from the backend. */
+  const handleViewRecord = async (record: RepositoryRecord) => {
+    let hydrated: any = record;
+    try {
+      const resp = await scanService.getRepositoryDetails(record.id);
+      if (resp?.data) {
+        hydrated = resp.data;
+      }
+    } catch {
+      // Fall back to summary fields on record if details endpoint is unreachable
+    }
+
+    const rawViolations = Array.isArray(hydrated.violations) ? hydrated.violations : [];
+    const breakdown: Record<string, number> = {};
+    for (const v of rawViolations) {
+      const vt = v.violation_type || 'UNKNOWN';
+      breakdown[vt] = (breakdown[vt] || 0) + 1;
+    }
+
+    const isLocal =
+      hydrated.source === 'local_workspace' ||
+      String(hydrated.full_name || hydrated.path_or_url || '').startsWith('local-workspace/');
+
     const loadedScan: ScanResult = {
-      repo_path: record.full_name || record.path_or_url || record.name,
-      repo_id: record.id,
-      full_name: record.full_name || undefined,
-      default_branch: record.default_branch || undefined,
-      html_url: record.html_url || undefined,
-      source: 'github',
-      is_github: true,
-      total_files: record.total_files || 0,
-      total_lines: record.total_lines || 0,
-      green_score: record.green_score || 0,
-      total_violations: 0,
-      violation_breakdown: {},
-      languages_breakdown: {},
-      violations: [],
-      file_results: [],
+      repo_path: hydrated.full_name || hydrated.path_or_url || hydrated.name,
+      repo_id: hydrated.id,
+      full_name: hydrated.full_name || undefined,
+      default_branch: hydrated.default_branch || undefined,
+      html_url: hydrated.html_url || undefined,
+      source: isLocal ? 'local_workspace' : 'github',
+      is_github: !isLocal,
+      total_files: hydrated.total_files || 0,
+      total_lines: hydrated.total_lines || 0,
+      green_score: hydrated.green_score || 0,
+      total_violations: rawViolations.length || (record as any).total_violations || 0,
+      violation_breakdown: hydrated.violation_breakdown || breakdown,
+      languages_breakdown: hydrated.languages_breakdown || {},
+      violations: rawViolations,
+      file_results: hydrated.file_results || [],
     };
 
     setScanData(loadedScan);

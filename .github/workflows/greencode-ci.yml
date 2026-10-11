@@ -5,7 +5,13 @@ name: GreenCode Quality
 # a regression in the auditor itself could pass every check. This workflow runs
 # the test suite and the frontend type-check, and both must be green.
 
+# Runs on every pull request and on pushes to main, so a red test suite blocks
+# the merge instead of being discovered later by hand. workflow_dispatch is kept
+# for on-demand re-runs.
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:

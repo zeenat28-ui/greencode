@@ -1,0 +1,43 @@
+# Pre-commit hooks: run secret detection and basic hygiene *before* a commit is
+# created, so a leaked key never reaches history in the first place. CI re-runs
+# the same scans on every push and pull request; this is the local-first guard.
+#
+#   pip install pre-commit
+#   pre-commit install         # install the git hook (once per clone)
+#   pre-commit run --all-files # scan everything now
+#
+minimum_pre_commit_version: "3.0.0"
+
+repos:
+  # --- Secret detection (the control that actually matters here) -------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: |
+          (?x)^(
+              \.env\.example|
+              frontend/package-lock\.json|
+              frontend/pnpm-lock\.yaml
+          )$
+
+  # --- Generic file hygiene ------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=5120"]
+      - id: detect-private-key
+      - id: check-case-conflict

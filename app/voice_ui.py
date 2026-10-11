@@ -1,22 +1,24 @@
-"""Voice web UI (Alexa+-simulated) driving the GreenCode engine end-to-end.
+"""Voice web cockpit driving the GreenCode engine end-to-end.
 
 Streamlit page. The agent answers carbon-audit questions and surfaces the
 "explain this score" provenance view the Alexa+ MCP track is judged on.
 Run:  streamlit run app/voice_ui.py
 
 Every answer uses the same engine the self-hosted MCP server exposes over
-Streamable HTTP (app.sci, app.audit_intel, app.optimizer, app.energy_sensors),
-so the voice UI runs standalone, with no server.
+Streamable HTTP (app.mcp_server -> app.parser, app.energy_sensors, app.optimizer),
+so the voice cockpit runs standalone, with no server. No figure is invented:
+grid intensity comes from the live provider chain, the green score from the
+real static analyser, and energy from a hardware counter when the host exposes
+one (otherwise an explicitly-labelled TDP model).
 """
 
 from __future__ import annotations
 
 import streamlit as st
 
-from app.energy_sensors import probe_capabilities
+from app.mcp_server import SERVER_VERSION
 from app.optimizer import get_zone_carbon_intensity
 from app import __version__ as SCI_VERSION
-from app.sci import compute_sci, sci_grade
 
 STYLE = """
 <style>
@@ -42,6 +44,8 @@ if "dialogue" not in st.session_state:
     st.session_state.dialogue = []
 if "region" not in st.session_state:
     st.session_state.region = "IE"
+if "last_audit" not in st.session_state:
+    st.session_state.last_audit = None
 
 
 def _say(text: str) -> None:
@@ -58,12 +62,30 @@ def _voice_speak(text: str) -> None:
 
 
 def _region_snapshots() -> dict:
-    """Pre-seeded region demo: Ireland / Virginia / ap-southeast-1."""
+    """Provider-chain readings for three representative zones.
+
+    Each value comes from ``get_zone_carbon_intensity`` (EIA-930 / Electricity
+    Maps -> annual dataset -> bundled static reference), so every number carries
+    the source tier that actually produced it - live when a live provider
+    answered, a cited static reference otherwise. The AWS region
+    ``ap-southeast-1`` is mapped to its grid zone (Singapore) via the same table
+    the AWS carbon endpoints use.
+    """
+    try:
+        from app.amazon_service import AWS_REGION_TO_GRID_ZONE
+        sg_zone = AWS_REGION_TO_GRID_ZONE.get("ap-southeast-1", "SG")
+    except Exception:  # optional dependency missing -> documented static zone
+        sg_zone = "SG"
+    targets = (
+        ("Ireland (IE)", "IE"),
+        ("Virginia (US-VA)", "US-VA"),
+        ("ap-southeast-1 (" + sg_zone + ")", sg_zone),
+    )
     out = {}
-    for zone in ("IE", "US-VA", "ap-southeast-1"):
+    for label, zone in targets:
         data = get_zone_carbon_intensity(zone)
-        out[zone] = {
-            "zone": zone,
+        out[label] = {
+            "zone": data.get("zone") or zone,
             "carbon": data.get("carbon_intensity"),
             "source": data.get("intensity_source"),
             "tier": data.get("intensity_source_tier"),
@@ -80,64 +102,93 @@ def _explain_score(score: float, **kw) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Tabs: region demo + explain score
+# Tabs: region readings + explain score
 # --------------------------------------------------------------------------- #
-tab_voice, tab_region_demo, tab_explain = st.tabs(["Voice agent", "Region demo (pre-seeded)", "Explain this score"])
+tab_voice, tab_region_demo, tab_explain = st.tabs(["Voice agent", "Live grid readings", "Explain this score"])
 
-with tab_region_demo:
-    st.markdown("### Pre-seeded region snapshot - Ireland / Virginia / ap-southeast-1")
-    st.caption("Live grid data was not available in every storefront at ship time, "
-               "so the demo seeds three representative zones with their real static "
-               "matrix values + tier + liveliness.")
-    snapshots = _region_snapshots()
-    col_r1, col_r2, col_r3 = st.columns(3)
-    for (zone, info), col in zip(snapshots.items(), (col_r1, col_r2, col_r3)):
-        with col:
-            val = info["carbon"] if info["carbon"] is not None else "no data"
-            delta = ("live" if info["is_live"] else "static reference") + " - " + info["tier"]
-            st.metric(label=zone, value=str(val) + " gCO2e/kWh", delta=delta)
-    with st.expander("Full readings (source + tier + region)", expanded=False):
-        for zone, info in snapshots.items():
-            st.json(info)
+def _render_region_tab(container) -> None:
+    """Render the live grid-intensity comparison into the given tab container.
 
-with tab_explain:
-    st.markdown("### 'Explain this score' - traceability")
-    st.caption("Hardware vs model, data source + freshness, and the SCI that backs the number.")
-    with st.form("explain_form"):
-        score = st.slider("Green score (0-100)", 0.0, 100.0, 73.5, 0.5)
-        zone = st.selectbox("Zone to explain", ["IE", "US-VA", "ap-southeast-1", "US-MIDW-MISO"])
-        method = st.selectbox("Energy source", ["model", "rapl", "perf", "battery"], index=0)
-        submit = st.form_submit_button("Explain")
-    if submit:
-        res = _explain_score(float(score), zone=zone, measurement_method=method, violation_count=2)
-        if res["status"] == "ok":
-            d = res["data"]
-            c1, c2 = st.columns(2)
-            with c1:
-                st.metric("Grade", d["grade"])
-                st.metric("Score", str(round(d["green_score"], 1)))
-                st.metric("Hardware?", d["measurement_is_hardware"])
-                st.metric("Method", d["measurement_method"])
-            with c2:
-                gi = d["grid_intensity"]
-                gin = ("%.3f" % gi["carbon_intensity"]) if gi["carbon_intensity"] is not None else "-"
-                st.metric("Grid intensity", gin + " gCO2e/kWh")
-                st.metric("Grid source", gi["source"])
-                st.metric("Grid tier", gi["tier"] + " (live=" + str(gi["is_live"]) + ")")
-            with st.expander("SCI breakdown", expanded=True):
-                sc = d["scientific_context"]
+    Every value is resolved through the real provider chain; none is seeded.
+    """
+    with container:
+        st.markdown("### Live grid intensity - Ireland / Virginia / ap-southeast-1")
+        st.caption("Each reading is resolved through the provider chain (Electricity Maps "
+                   "/ EIA-930 -> annual dataset -> bundled static reference), so the value "
+                   "shown is whatever tier actually answered - live when a live provider "
+                   "responded, a cited static reference otherwise. No value is invented.")
+        snapshots = _region_snapshots()
+        col_r1, col_r2, col_r3 = st.columns(3)
+        for (label, info), col in zip(snapshots.items(), (col_r1, col_r2, col_r3)):
+            with col:
+                val = info["carbon"] if info["carbon"] is not None else "no data"
+                delta = ("live" if info["is_live"] else "static reference") + " - " + str(info["tier"])
+                st.metric(label=label, value=str(val) + " gCO2e/kWh", delta=delta)
+        with st.expander("Full readings (source + tier + region)", expanded=False):
+            for label, info in snapshots.items():
+                st.json(info)
+
+
+def _render_explain_tab(container) -> None:
+    """Render the 'explain this score' traceability view.
+
+    The SCI breakdown is shown only when the caller supplies the energy
+    measurement that produced the score. Without it the tool withholds the
+    number rather than inventing inputs, and the panel says so explicitly
+    instead of crashing on a missing figure.
+    """
+    with container:
+        st.markdown("### 'Explain this score' - traceability")
+        st.caption("Hardware vs model, data source + freshness, and the SCI that backs the number.")
+        with st.form("explain_form"):
+            score = st.slider("Green score (0-100)", 0.0, 100.0, 73.5, 0.5)
+            zone = st.selectbox("Zone to explain", ["IE", "US-VA", "ap-southeast-1", "US-MIDW-MISO"])
+            method = st.selectbox("Energy source", ["model", "rapl", "perf", "battery"], index=0)
+            energy_joules = st.number_input(
+                "Energy that produced the score (Joules, optional)",
+                min_value=0.0, value=0.0, step=1.0,
+                help="Leave at 0 to see the withheld-SCI behaviour: without a real "
+                     "measurement the tool refuses to fabricate an SCI.",
+            )
+            submit = st.form_submit_button("Explain")
+        if not submit:
+            return
+        kwargs = {"zone": zone, "measurement_method": method}
+        if energy_joules and energy_joules > 0.0:
+            kwargs["energy_joules"] = float(energy_joules)
+        res = _explain_score(float(score), **kwargs)
+        if res["status"] != "ok":
+            st.error(res["data"].get("reason", "unexplained"))
+            return
+        d = res["data"]
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric("Grade", d["grade"])
+            st.metric("Score", str(round(d["green_score"], 1)))
+            st.metric("Hardware?", d["measurement_is_hardware"])
+            st.metric("Method", d["measurement_method"])
+        with c2:
+            gi = d["grid_intensity"]
+            gin = ("%.3f" % gi["carbon_intensity"]) if gi["carbon_intensity"] is not None else "-"
+            st.metric("Grid intensity", gin + " gCO2e/kWh")
+            st.metric("Grid source", gi["source"])
+            st.metric("Grid tier", str(gi["tier"]) + " (live=" + str(gi["is_live"]) + ")")
+        with st.expander("SCI breakdown", expanded=True):
+            sc = d["scientific_context"]
+            if sc.get("sci_gco2_per_functional_unit") is not None:
                 st.write("SCI = " + ("%.3e" % sc["sci_gco2_per_functional_unit"]) + " gCO2e/unit")
-                st.write("Grade = " + sc["grade"]["grade"] + " - " + sc["grade"]["label"])
+                grade = sc.get("grade") or {}
+                st.write("Grade = " + str(grade.get("grade")) + " - " + str(grade.get("label")))
                 eqs = []
-                for k, v in sc["carbon_equivalents"].items():
+                for k, v in (sc.get("carbon_equivalents") or {}).items():
                     eqs.append(k.replace("_", "-") + "=" + ("%.4g" % v))
                 st.write("Equivalents: " + ", ".join(eqs))
-                st.write("Freshness: " + d["data_freshness"]["as_of"] + " (" + d["data_freshness"]["tier"] + ")")
-            st.markdown("### Caveats")
-            for i, c in enumerate(d["caveats"], 1):
-                st.write(str(i) + ". " + c)
-        else:
-            st.error(res["data"].get("reason", "unexplained"))
+            else:
+                st.info(sc.get("reason", "No SCI computed: no energy measurement was supplied."))
+            st.write("Freshness: " + d["data_freshness"]["as_of"] + " (" + d["data_freshness"]["tier"] + ")")
+        st.markdown("### Caveats")
+        for i, c in enumerate(d["caveats"], 1):
+            st.write(str(i) + ". " + c)
 
 
 
@@ -145,64 +196,110 @@ with tab_explain:
 # --------------------------------------------------------------------------- #
 # Voice agent chat
 # --------------------------------------------------------------------------- #
-def _answer(user_text: str) -> str:
-    """Map a natural-language question to a deterministic, spoken answer."""
-    low = user_text.lower()
-    snippet = ("for i in range(1000):\n    total += i * i\n"
-               "total = sum(i * i for i in range(1000))")
+def _live_audit(zone: str) -> dict:
+    """Run the real end-to-end MCP pipeline on a canned quadratic-concat snippet.
 
-    if "explain" in low and "score" in low:
-        res = _explain_score(64.0, zone=st.session_state.region,
-                             violation_count=2,
-                             severity_counts={"HIGH": 1, "MEDIUM": 1, "LOW": 1})
-        if res["status"] == "ok":
-            d = res["data"]
-            return ("Your score of 64 is a C. The upgrade to 78 comes from hoisting "
-                    "the accumulator out of the loop (O(n^2) to O(n)) - one less "
-                    "allocation per iteration. The energy figure is modelled from TDP, "
-                    "not a hardware counter; the grid intensity came from the static "
-                    "reference matrix for " + st.session_state.region +
-                    " (not a live reading). Say 'explain score' again and I will walk "
-                    "the provenance.")
-        return "I could not explain that score right now."
+    This is exactly the ``audit_and_score`` tool the self-hosted MCP server
+    exposes: static analysis -> a real energy measurement (hardware counter when
+    the host has one, otherwise an explicitly-labelled TDP model) -> SCI against
+    the live grid intensity of ``zone``. Every figure carries its provenance;
+    nothing here is fabricated.
+    """
+    from app.mcp_server import audit_and_score
+
+    snippet = (
+        "def build(n):\n"
+        "    s = 1\n"
+        "    for i in range(n):\n"
+        "        s = s + str(i)\n"
+        "    return s\n"
+    )
+    return audit_and_score(source_code=snippet, language="python", zone=zone,
+                           duration_seconds=1.0)
+
+
+def _answer(user_text: str) -> str:
+    """Map a natural-language question to a deterministic, spoken answer.
+
+    Every number in the reply is produced by the live engine (``audit_and_score``
+    / ``explain_score``); none is hard-coded. When the host exposes a hardware
+    energy counter the reply says so, otherwise it states plainly that the figure
+    is a TDP model rather than a measurement.
+    """
+    low = user_text.lower()
+    zone = st.session_state.region
 
     if "region" in low or "cleanest" in low or "where" in low:
         snapshots = _region_snapshots()
-        ranked = sorted(snapshots.items(), key=lambda kv: kv[1].get("carbon_intensity") or 9999)
-        best = ranked[0]
-        return ("The cleanest pre-seeded region is " + best[0] + " at " +
-                str(best[1]["carbon"]) + " gCO2e/kWh from the " + best[1]["source"] +
-                " (" + best[1]["tier"] + "). Ireland is the lightest grid available "
-                "in the seed set - run the same workload there first.")
+        ranked = sorted(
+            ((label, info) for label, info in snapshots.items()
+             if info.get("carbon") is not None),
+            key=lambda kv: kv[1]["carbon"],
+        )
+        if not ranked:
+            return ("I could not read a carbon intensity for any region right now, "
+                    "so I cannot rank them.")
+        label, best = ranked[0]
+        return ("The cleanest region I can currently read is " + label + " at "
+                + str(best["carbon"]) + " gCO2e/kWh from the " + str(best["source"])
+                + " (" + str(best["tier"]) + "). Run the same workload there first.")
 
-    # default one-line energy audit of a canned snippet
-    from app.parser import audit_source_code
-    from app.sci import compute_sci, sci_grade
-    audit = audit_source_code(snippet, "python", "demo.py")
-    score = float(audit.get("green_score", 64.0))
-    sci = compute_sci(energy_joules=1500.0, duration_seconds=30.0,
-                      carbon_intensity_gco2_per_kwh=400.0,
-                      functional_unit=10000.0, measurement_method="model")
-    grade = sci_grade(sci.sci_gco2_per_functional_unit, unit="run")
-    caps = probe_capabilities()
-    return ("I audited a 1000-iteration nested loop and a refactored O(n) sum. "
-            "Green score " + str(round(score)) + " (" + _grade(score) + "), energy "
-            + ("%.2e" % sci.sci_gco2_per_functional_unit) + " gCO2e/unit on the "
-            + st.session_state.region + " grid (" + grade["grade"] + "). Energy is a "
-            "TDP model, not a hardware reading (" + caps.get("best_available") + "). "
-            "Fix the nested loop and I will re-measure.")
+    if "explain" in low and "score" in low:
+        audit = _live_audit(zone)
+        if audit["status"] != "ok":
+            return "I could not explain that score right now."
+        d = audit["data"]
+        energy = d.get("energy", {})
+        res = _explain_score(
+            float(d["green_score"]),
+            zone=zone,
+            measurement_method=energy.get("measurement_method", "model"),
+            energy_joules=float(energy.get("energy_joules", 0.0)),
+            duration_seconds=float(energy.get("duration_seconds", 1.0)),
+            violation_count=int(d.get("violation_count", 0)),
+        )
+        if res["status"] == "ok":
+            ed = res["data"]
+            sc = ed.get("scientific_context", {})
+            grid = ed.get("grid_intensity", {})
+            sci_val = sc.get("sci_gco2_per_functional_unit")
+            if sci_val is not None:
+                sci_txt = (" Its SCI is " + ("%.2e" % sci_val) + " gCO2e per unit, grade "
+                           + str((sc.get("grade") or {}).get("grade")) + ".")
+            else:
+                sci_txt = (" No SCI is quoted because no energy measurement accompanied "
+                           "the score.")
+            hw = ("a hardware counter" if ed.get("measurement_is_hardware")
+                  else "a TDP model, not a hardware counter")
+            return ("Your green score is " + str(round(ed["green_score"])) + " ("
+                    + str(ed["grade"]) + "), from " + str(ed.get("violation_count"))
+                    + " energy finding(s). The energy came from " + hw
+                    + ", and the grid intensity for " + zone + " is "
+                    + str(grid.get("carbon_intensity")) + " gCO2e/kWh from the "
+                    + str(grid.get("tier")) + " tier." + sci_txt)
+        return "I could not explain that score right now."
 
-
-def _grade(score: float) -> str:
-    if score >= 90:
-        return "A"
-    if score >= 80:
-        return "B"
-    if score >= 70:
-        return "C"
-    if score >= 60:
-        return "D"
-    return "F"
+    # Default: a real one-line energy audit of a canned quadratic-concat snippet.
+    audit = _live_audit(zone)
+    if audit["status"] != "ok":
+        return "I could not complete an audit right now."
+    d = audit["data"]
+    energy = d.get("energy", {})
+    sci = d.get("sci") or {}
+    grade = d.get("sci_grade") or {}
+    hw = ("a hardware counter" if energy.get("measurement_is_hardware")
+          else "a TDP model, not a hardware reading")
+    sci_val = sci.get("sci_gco2_per_functional_unit")
+    if sci_val is not None:
+        sci_txt = (" Its SCI is " + ("%.2e" % sci_val) + " gCO2e per unit (grade "
+                   + str(grade.get("grade")) + ").")
+    else:
+        sci_txt = ""
+    return ("I audited a loop that rebuilds a string on every iteration. "
+            "Green score " + str(round(d["green_score"])) + " ("
+            + str(d.get("grade")) + ")." + sci_txt + " Energy is " + hw
+            + " (method: " + str(energy.get("measurement_method")) + "). "
+            "Collect the parts in a list and join once, and I will re-measure.")
 
 
 
@@ -224,13 +321,13 @@ def main() -> None:
     st.markdown("---")
     if sel == "voice":
         with tab_voice:
-            st.markdown("<div class='alexa-header'><b>GreenCode Auditor - Alexa"
-                        " simulated</b></div>", unsafe_allow_html=True)
+            st.markdown("<div class='alexa-header'><b>GreenCode Auditor - Voice "
+                        "Agent</b></div>", unsafe_allow_html=True)
             st.caption("Responses are text-audio mirrored; every answer exposes its provenance.")
             if st.session_state.dialogue:
                 last = st.session_state.dialogue[-1]
                 if last["role"] == "alexa":
-                    st.markdown("<div class='alexa-bubble'><b>Alexa:</b> " +
+                    st.markdown("<div class='alexa-bubble'><b>GreenCode:</b> " +
                                 last["text"] + "</div>", unsafe_allow_html=True)
             if st.button("REPLAY SPOKEN RESPONSES", key="replay_form"):
                 _voice_speak(" ".join(x["text"] for x in st.session_state.dialogue
@@ -240,77 +337,16 @@ def main() -> None:
                 st.session_state.dialogue.append({"role": "user", "text": user})
                 st.markdown("<div class='user-bubble'><b>You:</b> " + user +
                             "</div>", unsafe_allow_html=True)
-                with st.spinner("Alexa is thinking..."):
+                with st.spinner("GreenCode is thinking..."):
                     answer = _answer(user)
                     _say(answer)
-                    st.markdown("<div class='alexa-bubble'><b>Alexa:</b> " +
+                    st.markdown("<div class='alexa-bubble'><b>GreenCode:</b> " +
                                 answer + "</div>", unsafe_allow_html=True)
 
-
     elif sel == "region":
-        with tab_region_demo:
-            st.markdown("### Pre-seeded region snapshot - Ireland / Virginia / ap-southeast-1")
-            st.caption("Live grid data was not available in every storefront at ship "
-                       "time, so the demo seeds three representative zones with their "
-                       "real static matrix values + tier + liveliness.")
-            snapshots = _region_snapshots()
-            col_r1, col_r2, col_r3 = st.columns(3)
-            for (zone, info), col in zip(snapshots.items(), (col_r1, col_r2, col_r3)):
-                with col:
-                    val = info["carbon"] if info["carbon"] is not None else "no data"
-                    delta = ("live" if info["is_live"] else "static reference") + \
-                        " - " + info["tier"]
-                    st.metric(label=zone, value=str(val) + " gCO2e/kWh", delta=delta)
-            with st.expander("Full readings (source + tier + region)", expanded=False):
-                for zone, info in snapshots.items():
-                    st.json(info)
+        _render_region_tab(tab_region_demo)
     else:
-        with tab_explain:
-            st.markdown("### 'Explain this score' - traceability")
-            st.caption("Hardware vs model, data source + freshness, and the SCI that "
-                       "backs the number.")
-            with st.form("explain_form"):
-                score = st.slider("Green score (0-100)", 0.0, 100.0, 73.5, 0.5)
-                zone = st.selectbox("Zone to explain",
-                                    ["IE", "US-VA", "ap-southeast-1", "US-MIDW-MISO"])
-                method = st.selectbox("Energy source",
-                                      ["model", "rapl", "perf", "battery"], index=0)
-                submit = st.form_submit_button("Explain")
-            if submit:
-                res = _explain_score(float(score), zone=zone,
-                                     measurement_method=method, violation_count=2)
-                if res["status"] == "ok":
-                    d = res["data"]
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        st.metric("Grade", d["grade"])
-                        st.metric("Score", str(round(d["green_score"], 1)))
-                        st.metric("Hardware?", d["measurement_is_hardware"])
-                        st.metric("Method", d["measurement_method"])
-                    with c2:
-                        gi = d["grid_intensity"]
-                        gin = ("%.3f" % gi["carbon_intensity"]) if gi["carbon_intensity"] is not None else "-"
-                        st.metric("Grid intensity", gin + " gCO2e/kWh")
-                        st.metric("Grid source", gi["source"])
-                        st.metric("Grid tier", gi["tier"] + " (live=" +
-                                  str(gi["is_live"]) + ")")
-                    with st.expander("SCI breakdown", expanded=True):
-                        sc = d["scientific_context"]
-                        st.write("SCI = " + ("%.3e" % sc["sci_gco2_per_functional_unit"]) +
-                                 " gCO2e/unit")
-                        st.write("Grade = " + sc["grade"]["grade"] + " - " +
-                                 sc["grade"]["label"])
-                        eqs = []
-                        for k, v in sc["carbon_equivalents"].items():
-                            eqs.append(k.replace("_", "-") + "=" + ("%.4g" % v))
-                        st.write("Equivalents: " + ", ".join(eqs))
-                        st.write("Freshness: " + d["data_freshness"]["as_of"] + " (" +
-                                 d["data_freshness"]["tier"] + ")")
-                    st.markdown("### Caveats")
-                    for i, c in enumerate(d["caveats"], 1):
-                        st.write(str(i) + ". " + c)
-                else:
-                    st.error(res["data"].get("reason", "unexplained"))
+        _render_explain_tab(tab_explain)
 
     st.markdown("---")
     st.caption("GreenCode voice UI | engine " + SCI_VERSION + " | MCP server v" +

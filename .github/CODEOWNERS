@@ -1,0 +1,11 @@
+# Default owners for everything. GitHub requests a review from these users on
+# any pull request that touches matching paths.
+* @zeenat28-ui
+
+# Security-sensitive surfaces get an explicit owner so credential, auth, and
+# secret-handling changes are always reviewed.
+/.github/ @zeenat28-ui
+/app/database.py @zeenat28-ui
+/app/auth/ @zeenat28-ui
+/app/pipeline/ @zeenat28-ui
+/.env.example @zeenat28-ui

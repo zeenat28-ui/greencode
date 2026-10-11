@@ -1,6 +1,17 @@
 name: "GreenCode Auditor CI Quality Gate"
 
+# The gate is only meaningful if it runs on the pull request it is meant to
+# gate, and audits that PR's code. It previously ran on workflow_dispatch only,
+# so no PR was ever checked automatically. `pull_request` checks out the PR head
+# (the code under review) with a read-ish token; for same-repo PRs - the normal
+# case here - the write scopes below are granted, so SARIF upload and the sticky
+# PR comment work. (pull_request_target would grant secrets to untrusted fork
+# code, which this gate does not need.)
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # security-events is required to publish the SARIF report to the Security tab;

@@ -1,0 +1,31 @@
+# Gitleaks configuration for GreenCode Auditor.
+#
+# The built-in rules already catch real credentials (AWS keys, GitHub PATs,
+# private keys, high-entropy assignments). This file only adds a narrow
+# allowlist so the *committed template* (.env.example) - whose values are
+# deliberate placeholders, never real secrets - does not fire a false positive
+# on every scan. Real .env files are git-ignored and never scanned.
+#
+# Extend rather than replace the default ruleset; never disable a rule globally.
+title = "GreenCode gitleaks config"
+
+[extend]
+# useDefault defaults to true, so the shipped rules stay active.
+
+[allowlist]
+description = "Global allowlist for non-secret placeholders and test fixtures"
+paths = [
+    '''\.env\.example$''',
+    '''\.gitleaks\.toml$''',
+]
+
+# AWS publishes fixed, well-known *example* credentials in its own documentation
+# and SDK samples. They are not real, cannot authenticate, and are the idiomatic
+# way to write AWS client fixtures. They are allowlisted here by exact content so
+# the scan stays green WITHOUT disabling the AWS rule or allowlisting all of
+# tests/. A real AKIA.../ASIA... key will still be caught.
+regexes = [
+    '''AKIAIOSFODNN7EXAMPLE''',
+    '''ASIAIOSFODNN7EXAMPLE''',
+    '''wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY''',
+]

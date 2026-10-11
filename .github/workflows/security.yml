@@ -1,7 +1,15 @@
 name: Automated Security Audit & Vulnerability Scan
 
+# Runs on every pull request and push to main so a dependency or SAST regression
+# is caught at review time. workflow_dispatch is kept for on-demand scans.
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   python-security-audit:
@@ -34,14 +42,29 @@ jobs:
     name: Secret & Credential Leak Scanning
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout full history
         uses: actions/checkout@v4
         with:
+          # Full history: a secret removed in a later commit still lives in an
+          # earlier one, and that is exactly what a shallow clone would miss.
           fetch-depth: 0
 
-      - name: Detect Insecure Credentials
+      # A real scanner over the whole tree and history, not a grep against a
+      # file (.env) that is git-ignored and therefore never present in CI. The
+      # previous check was a guaranteed no-op.
+      - name: Gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SUMMARY: true
+
+      - name: Fail if a real .env is ever tracked
         run: |
-          echo "Scanning for exposed secrets and tokens..."
-          # Verify no unencrypted production secrets are present in tracked files
-          ! grep -rn "JWT_SECRET=[a-zA-Z0-9]" .env 2>/dev/null || true
+          # .env must be git-ignored. If it is ever force-added, the secrets it
+          # holds are in history - stop the pipeline rather than ship it.
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo "::error::.env is tracked by git. Remove it (git rm --cached .env) and rotate any secrets it contained."
+            exit 1
+          fi
+          echo "OK: .env is not tracked."
 

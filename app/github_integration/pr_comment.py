@@ -71,8 +71,16 @@ def post_github_pr_comment(
     """Post or update sticky PR comment via GitHub REST API."""
     token = github_token or os.environ.get("GITHUB_TOKEN")
     if not token:
-        logger.info("No GITHUB_TOKEN configured; skipping remote comment dispatch.")
-        return {"status": "LOCAL_MOCK", "body": comment_body}
+        # No credentials, so no comment is dispatched to GitHub. The body is
+        # returned for local inspection, but the status is explicit that nothing
+        # was posted remotely - it is never dressed up as a successful write.
+        logger.info("No GITHUB_TOKEN configured; comment not dispatched to GitHub.")
+        return {
+            "status": "NOT_POSTED_NO_TOKEN",
+            "posted": False,
+            "reason": "No GITHUB_TOKEN configured; comment was not dispatched to GitHub.",
+            "body": comment_body,
+        }
 
     headers = {
         "Authorization": f"Bearer {token}",

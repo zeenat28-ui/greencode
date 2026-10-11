@@ -528,8 +528,10 @@ def compare_regions(zones: List[str]) -> Dict[str, Any]:
         "Explain any GreenCode green score back to the user with full "
         "provenance: whether the energy was a hardware measurement or a model, "
         "what data source produced the grid intensity, how fresh the reading is, "
-        "and the equivalent real-world emissions. This is the 'explain this score' "
-        "traceability view - it never hides measurement_is_hardware."
+        "and — when the caller supplies the energy measurement that went with the "
+        "score — the equivalent real-world emissions. This is the 'explain this "
+        "score' traceability view: it never hides measurement_is_hardware and "
+        "never invents an SCI to fill a missing measurement."
     )
 )
 def explain_score(
@@ -538,10 +540,13 @@ def explain_score(
     measurement_method: str = "model",
     measurement_is_hardware: Optional[bool] = None,
     zone: str = "IE",
-    violation_count: int = 0,
+    violation_count: Optional[int] = None,
     severity_counts: Optional[Dict[str, int]] = None,
     language: str = "python",
     as_of: Optional[str] = None,
+    energy_joules: Optional[float] = None,
+    duration_seconds: Optional[float] = None,
+    functional_unit: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Return provenance for a green score the caller already has.
 
@@ -549,10 +554,15 @@ def explain_score(
     This tool returns the trace that led to it: hardware-vs-model, the grid-source
     tier, data freshness, the SCI breakdown and equivalents, plus the caveats that
     must be stated before quoting the number.
-    """
-    if severity_counts is None:
-        severity_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
 
+    The SCI breakdown is computed only when the caller passes the measurement
+    that accompanied the score (``energy_joules``, optionally ``duration_seconds``
+    and ``functional_unit``). Without it the tool reports
+    ``input_basis: "not_supplied"`` and withholds the number rather than
+    inventing reference inputs, so a fabricated SCI can never be quoted as
+    provenance. ``violation_count`` / ``severity_counts`` are echoed only when
+    supplied: ``null`` means unknown, not zero.
+    """
     if not (0.0 <= green_score <= 100.0):
         return _envelope("error", data={"reason": "green_score must be between 0 and 100"})
 
@@ -565,15 +575,59 @@ def explain_score(
     # zero-source zone; the tier field still labels the source as unavailable.
     grid = grid if grid is not None else 0.0
 
-    result = sci.compute_sci(
-        energy_joules=1500.0,
-        duration_seconds=1.0,
-        carbon_intensity_gco2_per_kwh=float(grid),
-        functional_unit=10000.0,
-        measurement_method=measurement_method,
-    )
-    grade = sci.sci_grade(result.sci_gco2_per_functional_unit, unit="run")
-    equivalents = sci.carbon_equivalents(result.operational_gco2)
+    caveats = [
+        "A green score is a measurement, not a guarantee of efficiency.",
+        "Grid intensity may be a static reference, not a live reading.",
+    ]
+
+    if energy_joules is not None and energy_joules >= 0.0:
+        # The measurement that went with the score was supplied, so the SCI
+        # below is traceable to exactly these inputs (echoed in `inputs`).
+        sci_duration = float(duration_seconds) if duration_seconds is not None else 0.0
+        sci_unit = float(functional_unit) if functional_unit is not None else 1.0
+        result = sci.compute_sci(
+            energy_joules=float(energy_joules),
+            duration_seconds=sci_duration,
+            carbon_intensity_gco2_per_kwh=float(grid),
+            functional_unit=sci_unit,
+            measurement_method=measurement_method,
+        )
+        scientific_context: Dict[str, Any] = {
+            "input_basis": "caller_supplied_measurement",
+            "inputs": {
+                "energy_joules": float(energy_joules),
+                "duration_seconds": sci_duration,
+                "functional_unit": sci_unit,
+            },
+            "sci_gco2_per_functional_unit": result.sci_gco2_per_functional_unit,
+            "grade": sci.sci_grade(result.sci_gco2_per_functional_unit, unit="run"),
+            "carbon_equivalents": sci.carbon_equivalents(result.operational_gco2),
+            "measurement_method": measurement_method,
+        }
+        caveats.append(
+            "Energy was supplied by the caller; unless measurement_method names a "
+            "hardware counter it is a modelled figure (use measure_energy)."
+        )
+    else:
+        # No measurement accompanied this score. Emitting an SCI here would mean
+        # inventing energy inputs, so the breakdown is explicitly withheld.
+        scientific_context = {
+            "input_basis": "not_supplied",
+            "sci_gco2_per_functional_unit": None,
+            "grade": None,
+            "carbon_equivalents": None,
+            "measurement_method": measurement_method,
+            "reason": (
+                "No energy measurement was passed with this score, so no SCI is "
+                "computed. Supply energy_joules (from measure_energy or "
+                "audit_and_score) to obtain the breakdown."
+            ),
+        }
+        if measurement_method == "model":
+            caveats.append(
+                "Model-based energy figures are TDP estimates; use measure_energy "
+                "for hardware readings."
+            )
 
     return _envelope(
         "ok",
@@ -593,23 +647,15 @@ def explain_score(
                 "as_of": as_of or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "tier": region.get("intensity_source_tier") or "static-reference",
             },
-            "scientific_context": {
-                "sci_gco2_per_functional_unit": result.sci_gco2_per_functional_unit,
-                "grade": grade,
-                "carbon_equivalents": equivalents,
-                "measurement_method": measurement_method,
-            },
+            "scientific_context": scientific_context,
             "findings_summary": {
                 "violation_count": violation_count,
                 "severity_counts": severity_counts,
                 "language": language,
+                "counts_known": violation_count is not None,
             },
             "trace_id": "explain-" + time.strftime("%H%M%SZ", time.gmtime()),
-            "caveats": [
-                "A green score is a measurement, not a guarantee of efficiency.",
-                "Model-based energy figures are TDP estimates; use measure_energy for hardware readings.",
-                "Grid intensity may be a static reference, not a live reading.",
-            ],
+            "caveats": caveats,
         },
     )
 

@@ -83,3 +83,40 @@ async def export_sonarqube_report(payload: SarifExportRequest):
     scan_res = _run_scan_for_export(payload)
     return generate_sonarqube_report(scan_res, base_dir=scan_res.get("repo_path"))
 
+
+@router.get("/plugins")
+async def list_registered_plugins():
+    """Return the active catalog of analyzer plugins, lifecycle hooks, and signed webhook sinks."""
+    from app.plugins import plugin_registry
+
+    return plugin_registry.list_catalog()
+
+
+@router.post("/plugins/webhooks")
+async def register_webhook_sink(payload: Dict[str, Any]):
+    """Register an outbound webhook sink with HMAC-SHA256 payload signing."""
+    from app.plugins import plugin_registry
+
+    sink_id = str(payload.get("sink_id") or payload.get("id") or "default-sink").strip()
+    target_url = str(payload.get("target_url") or "").strip()
+    if not target_url:
+        raise HTTPException(status_code=400, detail="target_url is required")
+    events = payload.get("events")
+    secret = str(payload.get("secret") or "greencode-webhook-secret")
+    return plugin_registry.register_webhook_sink(
+        sink_id=sink_id,
+        target_url=target_url,
+        events=events if isinstance(events, list) else None,
+        secret=secret,
+    )
+
+
+@router.post("/plugins/dispatch-test")
+async def dispatch_plugin_test_event(payload: Dict[str, Any]):
+    """Dispatch a test lifecycle event across registered hooks and generate signed webhook envelopes."""
+    from app.plugins import plugin_registry
+
+    event_type = str(payload.get("event_type") or "audit.completed")
+    event_data = payload.get("data") if isinstance(payload.get("data"), dict) else {"green_score": 100.0}
+    return plugin_registry.dispatch_event(event_type=event_type, payload=event_data)
+

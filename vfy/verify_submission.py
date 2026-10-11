@@ -1,4 +1,4 @@
-"""One-shot submission verifier: URL, repo, video, required files, secrets."""
+"""One-shot release verifier: endpoint URL, repository hygiene, required artifacts, secrets."""
 import json
 import os
 import subprocess
@@ -17,7 +17,7 @@ def check(label, ok, detail=""):
         failures.append(label)
 
 
-# 1. Required files for Devpost submission.
+# 1. Required files for enterprise deployment and Alexa+ add-on packaging.
 for path in ["LICENSE", "README.md", "requirements.txt", "alexa/addon.json",
              "app/mcp_server.py", "app/bedrock_client.py",
              "check_mcp_alexa.py", "check_mcp_live.py",
@@ -25,7 +25,7 @@ for path in ["LICENSE", "README.md", "requirements.txt", "alexa/addon.json",
              "tests/test_alexa_compliance.py", "greencode_demo.mp4"]:
     check(f"file {path}", os.path.exists(path))
 
-check("FRICTION_LOG.md (10% bonus)", os.path.exists("FRICTION_LOG.md"))
+check("FRICTION_LOG.md", os.path.exists("FRICTION_LOG.md"))
 
 # 2. Secrets must never be tracked.
 tracked = subprocess.run(["git", "ls-files"], capture_output=True, text=True).stdout.split()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the Alexa+ MCP server demo for the hackathon submission.
+"""Render the enterprise Alexa+ MCP server and SCI verification product demo.
 
     python scripts/record_submission_demo.py
     python scripts/record_submission_demo.py --out greencode_demo.mp4
@@ -11,19 +11,19 @@ the real server in ``app/mcp_server.py``: the client really performs the
 JSON-RPC handshake, really negotiates a protocol version, and really receives
 the tool results that are printed. The script runs that session first, keeps
 the responses, and only then renders frames. Nothing here is hand-typed, so the
-video cannot drift from what a judge would see by running it.
+video cannot drift from what an auditor or engineer sees by running it.
 
 WHY THE SESSION IS CAPTURED FIRST AND RENDERED AFTER
 ----------------------------------------------------
 Streaming the server's output straight into the encoder would make the video's
-length depend on how long the network happened to take, and the rules cap the
-submission at three minutes. Capturing first turns the run into a list of fixed
-scenes, so the duration is known in advance and stays comfortably under the cap.
+length depend on how long the network happened to take, and the target product
+walkthrough is capped at three minutes. Capturing first turns the run into a list
+of fixed scenes, so the duration is known in advance and stays deterministic.
 
-RULES COMPLIANCE
-----------------
+SPECIFICATION COMPLIANCE
+------------------------
 - Shorter than 3 minutes (asserted at the end; the script fails if it is not).
-- Shows the project functioning on the platform it was built for: a genuine
+- Shows the platform functioning on the runtime it was built for: a genuine
   MCP client speaking Streamable HTTP to a genuine self-hosted server.
 - No third-party trademarks, no music, no third-party footage - it is all
   terminal text drawn with Consolas.

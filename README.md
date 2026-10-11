@@ -7,14 +7,14 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-Open%20Collective-ea4aaa?logo=opencollective)](https://opencollective.com/greencode)
 
-## 🏆 Amazon Developer Hackathon 2026 ("Build, Ship, Shape")
+## ☁️ Enterprise Amazon & AWS Ecosystem Architecture
 
-Submitted to the **Alexa+** primary track, with the **AWS Builder** and **Open Source** mini challenges.
+Engineered for enterprise DevSecOps, Cloud FinOps, and GreenOps teams with native **Amazon Alexa+ (MCP)**, **Amazon Bedrock**, and **AWS Custom Silicon** integrations:
 
-| Track / Integration | Implementation | Source Files |
+| Capability / Integration | Enterprise Implementation | Source Files |
 |---|---|---|
-| **Alexa+ (Primary Track)** | Self-hosted **MCP Server** over Streamable HTTP (protocol `2025-11-25`+), RFC 9728 Protected Resource Metadata, RFC 8414 OAuth PKCE `S256`, and `< 500 ms` voice latency | [`app/mcp_server.py`](app/mcp_server.py) · [`alexa/addon.json`](alexa/addon.json) |
-| **AWS Builder** | **Amazon Bedrock** (`bedrock-runtime` Converse API) refactoring engine + **AWS Custom Silicon** (`Graviton4 c8g`, `Inferentia2 inf2`, `Trainium1 trn1`) energy/cost profiler + **AWS SDK (`boto3`) CLI** (SSM Parameter Store, CloudWatch Logs, EventBridge, S3, X-Ray) | [`app/bedrock_client.py`](app/bedrock_client.py) · [`app/ml_carbon.py`](app/ml_carbon.py) · [`app/aws_cli.py`](app/aws_cli.py) |
+| **Amazon Alexa+ & MCP Server** | Self-hosted **MCP Server** over Streamable HTTP (protocol `2025-11-25`+), RFC 9728 Protected Resource Metadata, RFC 8414 OAuth PKCE `S256`, and `< 500 ms` voice latency | [`app/mcp_server.py`](app/mcp_server.py) · [`alexa/addon.json`](alexa/addon.json) |
+| **Amazon Bedrock & AWS Silicon** | **Amazon Bedrock** (`bedrock-runtime` Converse API) refactoring engine + **AWS Custom Silicon** (`Graviton4 c8g`, `Inferentia2 inf2`, `Trainium1 trn1`) energy/cost profiler + **AWS SDK (`boto3`) CLI** (SSM Parameter Store, CloudWatch Logs, EventBridge, S3, X-Ray) | [`app/bedrock_client.py`](app/bedrock_client.py) · [`app/ml_carbon.py`](app/ml_carbon.py) · [`app/aws_cli.py`](app/aws_cli.py) |
 | **AWS Well-Architected Alignment** | Operationalizes the **AWS Well-Architected Sustainability Pillar** at the source-code and Pull Request layer (algorithmic efficiency, geographic workload placement, and hardware utilization) | [`app/sci.py`](app/sci.py) · [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py) |
 
 ### Ask it in plain language (via Alexa+ or Web Voice Cockpit)

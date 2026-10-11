@@ -86,8 +86,8 @@ Both report their provenance, so a cached figure is never mistaken for a
 live one.
 
 Spec version: the transport negotiates the client's protocol version from
-``mcp.types.LATEST_PROTOCOL_VERSION``, which is newer than the 2025-11-25
-minimum the hackathon requires.
+``mcp.types.LATEST_PROTOCOL_VERSION``, which exceeds the ``2025-11-25``
+minimum required by the Alexa+ MCP specification.
 """
 
 from __future__ import annotations
@@ -830,7 +830,7 @@ def server_health() -> str:
         "server": SERVER_NAME,
         "version": SERVER_VERSION,
         "mcp_protocol_version": LATEST_PROTOCOL_VERSION,
-        "hackathon_minimum_mcp_version": MIN_REQUIRED_MCP_VERSION,
+        "minimum_required_mcp_version": MIN_REQUIRED_MCP_VERSION,
         "energy_backend": energy_sensors.probe_capabilities(),
         "llm_backends": {"huggingface": {"configured": hf_client().configured}},
     }

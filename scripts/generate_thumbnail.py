@@ -1,7 +1,7 @@
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-def generate_devpost_thumbnail(output_path="assets/thumbnail.png"):
+def generate_enterprise_thumbnail(output_path="assets/thumbnail.png"):
     width, height = 1280, 720
     im = Image.new("RGB", (width, height), (11, 17, 30))  # Deep enterprise navy #0B111E
     draw = ImageDraw.Draw(im)
@@ -21,8 +21,8 @@ def generate_devpost_thumbnail(output_path="assets/thumbnail.png"):
     font_code = ImageFont.truetype("consola.ttf", 14) if os.path.exists("C:\\Windows\\Fonts\\consola.ttf") else ImageFont.truetype("arial.ttf", 14)
 
     # Top Tag
-    draw.rounded_rectangle([60, 50, 410, 84], radius=6, fill=(16, 36, 40), outline=(5, 150, 105), width=1)
-    draw.text((75, 58), "AMAZON DEVELOPER HACKATHON 2026", fill=(52, 211, 153), font=font_bold)
+    draw.rounded_rectangle([60, 50, 430, 84], radius=6, fill=(16, 36, 40), outline=(5, 150, 105), width=1)
+    draw.text((75, 58), "ENTERPRISE FINOPS & GREENOPS PLATFORM", fill=(52, 211, 153), font=font_bold)
 
     # Hero Title
     draw.text((60, 104), "GreenCode", fill=(255, 255, 255), font=font_hero)
@@ -111,5 +111,4 @@ def generate_devpost_thumbnail(output_path="assets/thumbnail.png"):
     print(f"Successfully generated thumbnail at {output_path}")
 
 if __name__ == "__main__":
-    generate_devpost_thumbnail()
-
+    generate_enterprise_thumbnail()

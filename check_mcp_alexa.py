@@ -146,7 +146,7 @@ async def run_session_checks(failures, mcp_url, token):
                 print(f"8  initialize          : OK  protocol={init.protocol_version} "
                       f"server={init.server_info.name}")
                 if init.protocol_version < "2025-11-25":
-                    failures.append(f"protocol {init.protocol_version} below hackathon minimum")
+                    failures.append(f"protocol {init.protocol_version} below Alexa+ MCP minimum")
 
                 tools = await session.list_tools()
                 print(f"9  tools/list          : OK  {len(tools.tools)} tools")

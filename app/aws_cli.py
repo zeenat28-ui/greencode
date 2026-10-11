@@ -77,9 +77,9 @@ def cmd_mcp_register(args) -> None:
     """Register the self-hosted MCP endpoint into AWS Systems Manager Parameter Store."""
     _say("Registering MCP endpoint into the AWS account (SSM Parameter Store + CloudWatch)...")
     if not _aws_configured():
-        _say("  [info] skipped - no AWS credentials. The submission ships the MCP "
-             "server self-hosted (Streamable HTTP), so no AWS registration is needed "
-             "for the hackathon.")
+        _say("  [info] skipped - no AWS credentials. The MCP server runs "
+             "self-hosted over Streamable HTTP, so SSM registration is optional "
+             "for standalone deployments.")
         return
     param_name = f"/greencode/{_REPOSITORY_SLUG}/mcp-endpoint"
     endpoint_uri = os.environ.get(

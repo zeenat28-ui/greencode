@@ -86,11 +86,9 @@ All tunnel checks should now hit Render instead of `trycloudflare`. When green:
    verifier requires a **single** tunnel/host domain across all URLs).
 2. Commit and push — same flow you already used for the previous tunnel swap.
 
-## 6. Record the final host in the submission
+## 6. Register the production endpoint in Alexa+ Developer Console
 
-Put `https://greencode-mcp.onrender.com` in the Devpost description and demo, and
-note that `GREENCODE_MCP_TOKEN` is in the Render dashboard for anyone who wants
-to run the checkers.
+Configure `https://greencode-mcp.onrender.com` as the production MCP server URI in your Alexa+ Add-on manifest, and manage `GREENCODE_MCP_TOKEN` via the Render environment dashboard.
 
 ---
 

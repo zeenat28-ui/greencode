@@ -1,8 +1,8 @@
-"""Fast baseline verification for the GreenCode hackathon submission.
+"""Fast baseline verification for the GreenCode enterprise release.
 
 Run:  python -m vfy.baseline_check      (from the repo root)
-Local-only imports and in-memory calls. Implements the plan's 'confirm baseline'
-item with a few seconds of runtime -- no network, no AWS, no server boot.
+Local-only imports and in-memory calls. Executes core subsystem health checks
+within a few seconds of runtime -- no network, no AWS, no server boot.
 """
 import os
 import sys
@@ -26,7 +26,7 @@ def main():
     print("== baseline_check ==")
     t0 = time.time()
 
-    # 1. GSF-SCI spec engine (the hackathon moat).
+    # 1. GSF-SCI (ISO/IEC 21031) specification engine.
     try:
         from app.sci import SCIResult, compute_sci, sci_grade
         r = compute_sci(

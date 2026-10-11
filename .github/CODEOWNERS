@@ -2,17 +2,10 @@
 # any pull request that touches matching paths.
 * @zeenat28-ui
 
-# Security-sensitive, cloud-IAM, compliance, and MCP surfaces get an explicit
-# owner so credential, auth, STS AssumeRole, and audit-chain changes are always reviewed.
+# Security-sensitive surfaces get an explicit owner so credential, auth, and
+# secret-handling changes are always reviewed.
 /.github/ @zeenat28-ui
 /app/database.py @zeenat28-ui
 /app/auth/ @zeenat28-ui
 /app/pipeline/ @zeenat28-ui
-/app/amazon_service.py @zeenat28-ui
-/app/routers/amazon.py @zeenat28-ui
-/app/enterprise_governance.py @zeenat28-ui
-/app/audit_logs.py @zeenat28-ui
-/app/compliance.py @zeenat28-ui
-/app/mcp_server.py @zeenat28-ui
-/alexa/ @zeenat28-ui
 /.env.example @zeenat28-ui

@@ -93,11 +93,11 @@ export default function AmazonTechStackModal({
         </div>
 
         <div className="p-6 space-y-6 text-slate-800 max-h-[82vh] overflow-y-auto">
-          {/* Executive Summary for Hackathon Judges */}
+          {/* Enterprise Architecture Executive Summary */}
           <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50/70 via-orange-50/50 to-white border border-amber-200/90 space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-amber-950 uppercase tracking-wider">
               <ShieldCheck size={16} className="text-[#FF9900]" />
-              Official Hackathon Eligibility Statement
+              Enterprise Amazon &amp; AWS Architecture Summary
             </div>
             <p className="text-xs text-slate-700 leading-relaxed">
               GreenCode is deeply built upon the <strong>Amazon ecosystem</strong>. It pairs <strong>Amazon Alexa+ (via the Model Context Protocol / MCP)</strong> with <strong>Amazon Bedrock (Claude 3.5 Sonnet)</strong> to deliver hands-free code auditing, automated AST refactoring, and AWS cloud carbon arbitrage.

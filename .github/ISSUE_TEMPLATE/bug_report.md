@@ -22,3 +22,4 @@ A concise description of the bug and which GreenCode subsystem it affects (`pars
 - **OS:** (e.g., Ubuntu 24.04, Windows 11, macOS)
 - **Python / Node version:**
 - **Hardware counter available (`/sys/class/powercap`):** Yes / No
+

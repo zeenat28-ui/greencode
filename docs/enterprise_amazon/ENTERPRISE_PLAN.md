@@ -3,7 +3,7 @@
 
 - **Document Status:** Approved Baseline & Enterprise Roadmap (v2.0)
 - **Last Updated:** October 2026
-- **Target Audience:** Engineering Leadership, Cloud FinOps/GreenOps Architects, Enterprise Procurement, AWS Partner & Hackathon Reviewers
+- **Target Audience:** Engineering Leadership, Cloud FinOps/GreenOps Architects, Enterprise Procurement, AWS Partner Network (APN) & Architecture Reviewers
 - **Codebase Baseline:** `443 passed, 57 subtests passed` (`0` placeholders across `app/` and `frontend/src/`)
 
 ---

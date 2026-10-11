@@ -14,3 +14,4 @@ Explain how the rule, sensor, or endpoint should work, including any reference c
 
 ## Verification Plan
 How should this feature be tested in `tests/` without relying on fabricated or dummy data?
+

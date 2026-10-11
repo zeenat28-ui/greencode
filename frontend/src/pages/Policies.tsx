@@ -39,7 +39,7 @@ export default function Policies() {
         headers,
         body: JSON.stringify({
           org_id: 1,
-          name: 'Enterprise Standard Policy',
+          name: 'Organization Standard Policy',
           max_regression_pct: maxRegression,
           max_sci_score: minGreenScore,
           auto_block_deploy: autoBlock,
@@ -59,7 +59,7 @@ export default function Policies() {
       {/* Header */}
       <div className="flex justify-between items-center bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Enterprise Energy Policy & Guardrail Engine</h1>
+          <h1 className="text-xl font-bold text-slate-900">Energy Policy & Guardrail Engine</h1>
           <p className="text-sm text-slate-500">Configure binding CI/CD gates and automated Kubernetes rollback triggers</p>
         </div>
         <button 

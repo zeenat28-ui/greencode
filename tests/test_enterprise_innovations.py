@@ -987,3 +987,90 @@ def test_greencode_self_audit_100_percent_green_score():
         )
         assert report["green_score"] == 100.0
 
+
+def test_control_plane_live_workloads_and_budgets_integration():
+    """Verify live workload discovery, baseline calibration, budget allocation, PR quota gate, and local workspace scan."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+
+    # 1. Live workloads discovery (/api/energy/workloads)
+    w_resp = client.get("/api/energy/workloads?limit=8")
+    assert w_resp.status_code == 200
+    w_data = w_resp.json()
+    assert w_data["telemetry_source"] in ("cncf_kepler_prometheus", "docker_engine", "host_psutil")
+    assert isinstance(w_data["workloads"], list)
+    assert w_data["total_workloads"] >= 1
+    first_w = w_data["workloads"][0]
+    assert first_w["current_power_w"] > 0
+
+    # 2. Set custom baseline power for the discovered workload
+    b_resp = client.post(
+        "/api/energy/workloads/baseline",
+        json={
+            "namespace": first_w["namespace"],
+            "deployment_name": first_w["name"],
+            "baseline_power_w": 0.5,
+        },
+    )
+    assert b_resp.status_code == 200
+    assert b_resp.json()["success"] is True
+
+    # 3. Allocate a team carbon budget (/api/energy/budgets/allocate)
+    alloc_resp = client.post(
+        "/api/energy/budgets/allocate",
+        json={
+            "org_id": 1,
+            "team_id": "platform-runtime",
+            "monthly_budget_kg": 250.0,
+        },
+    )
+    assert alloc_resp.status_code == 200
+    alloc_data = alloc_resp.json()
+    assert alloc_data["success"] is True
+    assert any(b["team_id"] == "platform-runtime" and b["monthly_budget_kg"] == 250.0 for b in alloc_data["budgets"])
+
+    # 4. Evaluate PR impact against the allocated team budget (/api/energy/budgets/evaluate-pr)
+    pr_pass = client.post(
+        "/api/energy/budgets/evaluate-pr",
+        json={
+            "org_id": 1,
+            "team_id": "platform-runtime",
+            "additional_projected_kg_co2e": 15.0,
+        },
+    )
+    assert pr_pass.status_code == 200
+    assert pr_pass.json()["verdict"] in ("PASSED", "WARNING")
+
+    pr_block = client.post(
+        "/api/energy/budgets/evaluate-pr",
+        json={
+            "org_id": 1,
+            "team_id": "platform-runtime",
+            "additional_projected_kg_co2e": 300.0,
+        },
+    )
+    assert pr_block.status_code == 200
+    assert pr_block.json()["verdict"] == "BLOCKED"
+    assert pr_block.json()["blocks_merge"] is True
+
+    # 5. Scan local workspace subdirectory (/api/scan/local-workspace) and verify persistence
+    scan_resp = client.post(
+        "/api/scan/local-workspace",
+        json={
+            "subpath": "scripts",
+            "repo_name": "greencode-org/greencode",
+            "team_id": "platform-runtime",
+        },
+    )
+    assert scan_resp.status_code == 200
+    scan_json = scan_resp.json()
+    assert scan_json["success"] is True
+    assert scan_json["green_score"] == 100.0
+    assert scan_json["repo_name"] == "greencode-org/greencode"
+
+    repos_after = client.get("/api/repositories?limit=5").json()
+    assert any(r["repo_name"] == "greencode-org/greencode" for r in repos_after["repositories"])
+
+

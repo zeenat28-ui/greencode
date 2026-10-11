@@ -34,6 +34,58 @@ class RollbackExecutionRequest(BaseModel):
     actor: str = "greencode-sentinel"
 
 
+class RegisterBaselineRequest(BaseModel):
+    namespace: str = Field("host-runtime", min_length=1)
+    deployment_name: str = Field(..., min_length=1)
+    baseline_power_w: float = Field(..., gt=0.0)
+
+
+class OpenAllocateBudgetRequest(BaseModel):
+    org_id: int = 1
+    team_id: str = Field(..., min_length=2)
+    monthly_budget_kg: float = Field(..., gt=0.0)
+    period: Optional[str] = None
+
+
+class OpenEvaluatePRBudgetRequest(BaseModel):
+    org_id: int = 1
+    team_id: str = Field(..., min_length=2)
+    additional_projected_kg_co2e: float = Field(..., ge=0.0)
+    period: Optional[str] = None
+
+
+@router.get("/workloads")
+async def get_live_workloads(
+    grid_intensity: float = Query(380.0, ge=0.0, le=2000.0),
+    limit: int = Query(10, ge=1, le=50),
+):
+    """Discover and profile live workloads across CNCF Kepler, Docker Engine, or Host OS processes."""
+    from app.kubernetes_profiler import kubernetes_monitor
+
+    return kubernetes_monitor.list_live_workloads(
+        grid_carbon_intensity=grid_intensity,
+        max_workloads=limit,
+    )
+
+
+@router.post("/workloads/baseline")
+async def set_workload_baseline(payload: RegisterBaselineRequest):
+    """Register or update the certified power baseline (Watts) for a workload or deployment."""
+    from app.kubernetes_profiler import kubernetes_monitor
+
+    kubernetes_monitor.record_baseline(
+        namespace=payload.namespace,
+        deployment_name=payload.deployment_name,
+        baseline_watts=payload.baseline_power_w,
+    )
+    return {
+        "success": True,
+        "namespace": payload.namespace,
+        "deployment_name": payload.deployment_name,
+        "baseline_power_w": payload.baseline_power_w,
+    }
+
+
 @router.post("/policy")
 async def set_energy_policy(payload: PolicyUpdateRequest):
     """Define or update operational energy & carbon policies for a project."""
@@ -86,4 +138,33 @@ async def get_energy_budgets(
         **team_status,
         "budgets": all_budgets,
     }
+
+
+@router.post("/budgets/allocate")
+async def allocate_energy_budget(payload: OpenAllocateBudgetRequest):
+    """Allocate or update monthly carbon budget for a team and return refreshed budget list."""
+    allocated = BudgetService.allocate_budget(
+        org_id=payload.org_id,
+        team_id=payload.team_id,
+        monthly_budget_kg=payload.monthly_budget_kg,
+        period=payload.period,
+    )
+    all_budgets = BudgetService.list_org_budgets(org_id=payload.org_id, period=payload.period)
+    return {
+        "success": True,
+        "allocated": allocated,
+        "budgets": all_budgets,
+    }
+
+
+@router.post("/budgets/evaluate-pr")
+async def evaluate_pr_budget_gate(payload: OpenEvaluatePRBudgetRequest):
+    """Evaluate whether an incoming pull request exceeds a team's monthly carbon quota."""
+    return BudgetService.evaluate_pr_impact(
+        org_id=payload.org_id,
+        team_id=payload.team_id,
+        additional_projected_kg_co2e=payload.additional_projected_kg_co2e,
+        period=payload.period,
+    )
+
 

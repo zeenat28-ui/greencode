@@ -1169,7 +1169,7 @@ def list_monitored_repositories_endpoint(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
-    """Return latest audited repositories for the enterprise control plane overview."""
+    """Return latest audited repositories for the control plane overview."""
     page = get_latest_repositories(limit=limit, offset=offset)
     items = page.get("items", []) if isinstance(page, dict) else page
     enriched = [
@@ -1186,6 +1186,64 @@ def list_monitored_repositories_endpoint(
         "limit": limit,
         "offset": offset,
     }
+
+
+class LocalWorkspaceScanRequest(BaseModel):
+    subpath: str = Field("app", max_length=200, description="Relative path inside the workspace root to audit")
+    repo_name: str = Field("greencode-org/greencode", max_length=200)
+    team_id: str = Field("core-infra", max_length=100)
+
+
+@app.post("/api/scan/local-workspace", tags=["Audit History"])
+def scan_local_workspace_endpoint(
+    payload: Optional[LocalWorkspaceScanRequest] = Body(default=None),
+):
+    """Audit a directory within the local workspace and persist the scan record to the database."""
+    from app.database import save_scan_results
+    from app.services.budget_service import BudgetService
+
+    req = payload or LocalWorkspaceScanRequest()
+    workspace_root = os.path.realpath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    candidate = os.path.realpath(os.path.join(workspace_root, req.subpath.strip("/\\") or "app"))
+    if not (candidate == workspace_root or candidate.startswith(workspace_root + os.sep)) or not os.path.exists(candidate):
+        raise HTTPException(status_code=400, detail="Target path must be an existing directory inside the workspace root.")
+
+    scan_result = audit_repository(candidate)
+    slug = req.repo_name.strip() or "greencode-org/greencode"
+    short_name = slug.split("/")[-1]
+    saved_repo = save_scan_results(
+        name=short_name,
+        path_or_url=slug,
+        total_files=scan_result["total_files"],
+        total_lines=scan_result["total_lines"],
+        green_score=scan_result["green_score"],
+        violations_data=scan_result["violations"],
+        summary_json=json.dumps(scan_result["violation_breakdown"]),
+        user_id=None,
+        source="local_workspace",
+        full_name=slug,
+        default_branch="main",
+        html_url=f"https://github.com/{slug}",
+    )
+
+    # Record modeled operational carbon impact against the team's active monthly budget
+    lines = max(1, int(scan_result.get("total_lines", 1)))
+    violations_count = int(scan_result.get("total_violations", 0))
+    estimated_kg_co2e = round((lines * 0.0005) + (violations_count * 0.25), 3)
+    BudgetService.record_emission(org_id=1, team_id=req.team_id, consumed_kg=estimated_kg_co2e)
+
+    return {
+        "success": True,
+        "repo_id": saved_repo.id,
+        "repo_name": slug,
+        "team_id": req.team_id,
+        "green_score": scan_result["green_score"],
+        "total_files": scan_result["total_files"],
+        "total_lines": scan_result["total_lines"],
+        "total_violations": scan_result["total_violations"],
+        "recorded_emission_kg": estimated_kg_co2e,
+    }
+
 
 
 @app.get("/api/repository/{repo_id}")

@@ -435,6 +435,176 @@ class KubernetesEnergyMonitor:
             "samples": [asdict(s) for s in samples],
         }
 
+    def _format_workload_entry(
+        self,
+        sample: PodEnergySample,
+        telemetry_source: str,
+    ) -> Dict[str, Any]:
+        """Convert a PodEnergySample into a deployment workload telemetry dictionary."""
+        deploy_name = sample.pod_name.rsplit("-", 2)[0] if "-" in sample.pod_name else sample.pod_name
+        key = f"{sample.namespace}/{deploy_name}"
+        baseline_w = self._baselines.get(key)
+        if baseline_w is None or baseline_w <= 0.0:
+            baseline_w = round(max(0.5, sample.power_watts), 3)
+            self._baselines[key] = baseline_w
+
+        delta_pct = round(((sample.power_watts - baseline_w) / max(0.1, baseline_w)) * 100.0, 1)
+        if delta_pct >= 35.0:
+            status = "CRITICAL_SPIKE"
+        elif delta_pct >= 20.0:
+            status = "WARNING_REGRESSION"
+        else:
+            status = "HEALTHY"
+
+        sign = "+" if delta_pct >= 0 else ""
+        return {
+            "name": deploy_name,
+            "pod_name": sample.pod_name,
+            "namespace": sample.namespace,
+            "container_name": sample.container_name,
+            "current_power_w": round(sample.power_watts, 2),
+            "baseline_power_w": round(baseline_w, 2),
+            "spike_pct": delta_pct,
+            "spike": f"{sign}{delta_pct:.1f}%",
+            "cpu_millicores": round(sample.cpu_millicores, 1),
+            "memory_mb": round(sample.memory_bytes / (1024.0 * 1024.0), 1),
+            "annual_cost_usd": round(sample.annual_cost_usd, 2),
+            "annual_co2_kg": round(sample.annual_co2_kg, 2),
+            "status": status,
+            "telemetry_source": telemetry_source,
+            "timestamp": sample.timestamp,
+        }
+
+    def list_live_workloads(
+        self,
+        grid_carbon_intensity: float = 380.0,
+        max_workloads: int = 10,
+    ) -> Dict[str, Any]:
+        """Discover and profile live workloads across Kepler, Docker Engine, or Host OS processes."""
+        kepler_url = os.environ.get("KEPLER_PROMETHEUS_URL", "").strip()
+        if kepler_url:
+            scraped = self.scrape_kepler_endpoint(
+                metrics_url=kepler_url,
+                duration_seconds=60.0,
+                grid_carbon_intensity=grid_carbon_intensity,
+            )
+            if scraped.get("available") and scraped.get("samples"):
+                raw_samples = self.parse_prometheus_kepler_metrics(
+                    metrics_text="",
+                    duration_seconds=60.0,
+                    grid_carbon_intensity=grid_carbon_intensity,
+                )
+                workloads = [
+                    self._format_workload_entry(
+                        PodEnergySample(**s),
+                        telemetry_source="cncf_kepler_prometheus",
+                    )
+                    for s in scraped["samples"][:max_workloads]
+                ]
+                return self._summarize_workloads(workloads, "cncf_kepler_prometheus")
+
+        # Tier 2: Live Docker Engine containers if reachable
+        try:
+            import docker
+
+            client = docker.from_env(timeout=2)
+            containers = client.containers.list(limit=max_workloads)
+            if containers:
+                docker_workloads: List[Dict[str, Any]] = []
+                for idx, ctr in enumerate(containers):
+                    cname = str(getattr(ctr, "name", f"container-{idx}") or f"container-{idx}")
+                    attrs = getattr(ctr, "attrs", {}) or {}
+                    host_cfg = attrs.get("HostConfig", {}) or {}
+                    mem_limit = int(host_cfg.get("Memory") or (256 * 1024 * 1024))
+                    nano_cpus = int(host_cfg.get("NanoCpus") or 250_000_000)
+                    millicores = max(50.0, nano_cpus / 1_000_000.0)
+                    sample = self.calculate_pod_energy(
+                        pod_name=cname,
+                        namespace="docker-runtime",
+                        container_name=cname,
+                        cpu_millicores=millicores,
+                        memory_bytes=max(64 * 1024 * 1024, mem_limit),
+                        duration_seconds=60.0,
+                        grid_carbon_intensity=grid_carbon_intensity,
+                    )
+                    docker_workloads.append(self._format_workload_entry(sample, "docker_engine"))
+                if docker_workloads:
+                    return self._summarize_workloads(docker_workloads, "docker_engine")
+        except Exception:
+            pass
+
+        # Tier 3: Live Host OS Process Telemetry via psutil
+        host_workloads: List[Dict[str, Any]] = []
+        try:
+            import psutil
+
+            grouped: Dict[str, Dict[str, float]] = {}
+            for proc in psutil.process_iter(["pid", "name", "memory_info", "cpu_percent"]):
+                try:
+                    info = proc.info
+                    raw_name = str(info.get("name") or "").strip()
+                    if not raw_name or raw_name.lower() in ("system idle process", "idle", "registry", "memcompression"):
+                        continue
+                    clean_name = raw_name.rsplit(".", 1)[0].lower().replace(" ", "-")
+                    mem_info = info.get("memory_info")
+                    rss = float(getattr(mem_info, "rss", 0) or 0)
+                    cpu_pct = float(info.get("cpu_percent") or 0.0)
+                    bucket = grouped.get(clean_name)
+                    if bucket is None:
+                        grouped[clean_name] = {"rss": rss, "cpu_pct": cpu_pct, "count": 1.0}
+                    else:
+                        bucket["rss"] += rss
+                        bucket["cpu_pct"] += cpu_pct
+                        bucket["count"] += 1.0
+                except Exception:
+                    continue
+
+            ranked = sorted(
+                grouped.items(),
+                key=lambda kv: (kv[1]["cpu_pct"] * 1024.0 * 1024.0) + kv[1]["rss"],
+                reverse=True,
+            )[:max_workloads]
+
+            for proc_name, metrics in ranked:
+                millicores = max(25.0, metrics["cpu_pct"] * 10.0 + (metrics["count"] * 15.0))
+                mem_bytes = max(16 * 1024 * 1024, int(metrics["rss"]))
+                sample = self.calculate_pod_energy(
+                    pod_name=proc_name,
+                    namespace="host-runtime",
+                    container_name=f"{proc_name} ({int(metrics['count'])} proc)",
+                    cpu_millicores=millicores,
+                    memory_bytes=mem_bytes,
+                    duration_seconds=60.0,
+                    grid_carbon_intensity=grid_carbon_intensity,
+                )
+                host_workloads.append(self._format_workload_entry(sample, "host_psutil"))
+        except Exception as exc:
+            logger.warning("Host process telemetry collection failed: %s", exc)
+
+        return self._summarize_workloads(host_workloads, "host_psutil")
+
+    @staticmethod
+    def _summarize_workloads(
+        workloads: List[Dict[str, Any]],
+        telemetry_source: str,
+    ) -> Dict[str, Any]:
+        """Compute aggregate power, cost, and health counters across active workloads."""
+        total = len(workloads)
+        healthy = sum(1 for w in workloads if w.get("status") == "HEALTHY")
+        total_watts = round(sum(float(w.get("current_power_w", 0.0)) for w in workloads), 2)
+        total_cost = round(sum(float(w.get("annual_cost_usd", 0.0)) for w in workloads), 2)
+        total_co2 = round(sum(float(w.get("annual_co2_kg", 0.0)) for w in workloads), 2)
+        return {
+            "telemetry_source": telemetry_source,
+            "total_workloads": total,
+            "healthy_workloads": healthy,
+            "total_power_watts": total_watts,
+            "total_annual_cost_usd": total_cost,
+            "total_annual_co2_kg": total_co2,
+            "workloads": workloads,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
 
 # Global singleton instance for operational telemetry
 kubernetes_monitor = KubernetesEnergyMonitor()
@@ -451,6 +621,7 @@ def trigger_kubernetes_rollback(namespace: str, deployment_name: str) -> Dict[st
         "is_live_cluster": is_live_cluster,
         "execution_mode": execution_mode,
     }
+
 
 
 

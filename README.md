@@ -100,6 +100,29 @@ python -m app.aws_cli xray trace          # Emit subsegment telemetry to AWS X-R
 
 ---
 
+## Why GreenCode Exists and Component Use Cases
+
+### What Problems GreenCode Solves
+
+1. **Unchecked Compute and Cloud Cost Regressions:** Standard code linters (`flake8`, `ruff`, `eslint`) inspect syntax and formatting, not power draw or algorithmic complexity. A single Pull Request introducing a 3-level nested loop ($\mathcal{O}(N^3)$), an uncached HTTP call inside a loop, an $N+1$ database query, or an unquantized `FP32` inference pass without `torch.no_grad()` can multiply CPU/GPU wattage and monthly AWS EC2/RDS bills before anyone notices in production.
+2. **Unsafe AI Code Rewrites:** Generic LLM assistants often suggest code changes that fail to compile or subtly alter output on edge cases. GreenCode restricts LLM usage to targeted function snippets and enforces a 4-stage verification gate (`compile()`, AST token similarity, and 12-input execution equivalence testing) with a deterministic AST fallback so application logic is never broken.
+3. **Unverifiable Carbon Estimates:** Many sustainability calculators multiply cloud spend by static factors without distinguishing real hardware counter readings from theoretical estimates. GreenCode attaches explicit provenance (`measurement_method`, `measurement_is_hardware`, and `intensity_source_tier`) to every metric and verifies optimization claims against physical hardware sensors in a hash-chained ledger.
+
+### Component Use Cases and Practical Benefits
+
+| Technology / Component | What It Is Used For | Practical Benefit |
+|---|---|---|
+| **Amazon Alexa+ & MCP Server** ([`app/mcp_server.py`](app/mcp_server.py), [`alexa/addon.json`](alexa/addon.json)) | Exposes 9 deterministic tools (`audit_and_score`, `audit_code`, `audit_repository`, `calculate_sci`, `measure_energy`, `get_grid_intensity`, `compare_regions`, `explain_score`, `refactor_code`) over Streamable HTTP (`2025-11-25`+) with RFC 9728 Protected Resource Metadata and OAuth 2.1 PKCE (`S256`). | Lets developers, SREs, and AI agents (Alexa+, Claude Desktop, Cursor, Kiro) run sub-500ms voice or chat queries during code review and job scheduling — for example, checking which AWS region currently has the cleanest grid before launching a batch workload, or asking whether a score was measured by hardware counters. |
+| **Amazon Bedrock Converse API** ([`app/bedrock_client.py`](app/bedrock_client.py), [`app/llm_refactor.py`](app/llm_refactor.py)) | Calls `bedrock-runtime` (`converse` API with `Claude 3.5 Haiku` / `Claude 3.5 Sonnet`) only on AST-flagged code snippets (`~300–500` tokens) and validates every candidate rewrite through a 4-stage execution equivalence gate. | Rewrites complex algorithmic bottlenecks into lower-energy equivalents at `< $0.005` per Pull Request while guaranteeing that the refactored function produces identical outputs across 12 test probe inputs. |
+| **AWS Custom Silicon Profiler** ([`app/ml_carbon.py`](app/ml_carbon.py), [`app/calibrated_energy.py`](app/calibrated_energy.py), [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py)) | Models compute wattage, PUE overhead, Scope 2 $\text{kg CO}_2\text{e}$, and hourly EC2 pricing across x86/GPU instances versus **AWS Graviton4 (`c8g`, `r8g`)**, **AWS Inferentia2 (`inf2` via AWS Neuron SDK)**, and **AWS Trainium1 (`trn1`)**. | Gives engineering teams concrete pre-migration numbers showing how much power (Watt-hours), carbon ($\text{kg CO}_2\text{e}$), and monthly EC2 spend they will save by moving workloads to ARM64 or AWS Neuron accelerators. |
+| **AWS Operations CLI** ([`app/aws_cli.py`](app/aws_cli.py)) | Integrates with **AWS SSM Parameter Store**, **Amazon CloudWatch Logs**, **Amazon EventBridge**, **Amazon S3**, and **AWS X-Ray** using `boto3`. | Automates operational tasks: registering MCP endpoints in SSM, tailing audit logs from CloudWatch, scheduling recurring repository audits in EventBridge, archiving signed audit reports in S3, and emitting latency traces to X-Ray. |
+| **Multi-Language AST & Tree-sitter Engine** ([`app/parser.py`](app/parser.py)) | Scans 13+ languages (Python `ast`, JavaScript, TypeScript, Go, Rust, Java, C, C++, C#, Ruby, PHP, Bash, SQL) plus lexical fallback to detect 15 Green Software Foundation (GSF) anti-patterns. | Runs locally on CPU in milliseconds with `$0.00` LLM token cost, catching inefficient loops, unbuffered I/O, redundant allocations, and ML anti-patterns on every commit or IDE save. |
+| **Hardware Energy Sensors & Function Tracer** ([`app/energy_sensors.py`](app/energy_sensors.py), [`app/energy_tracer.py`](app/energy_tracer.py)) | Reads physical power counters on Linux (`Intel/AMD RAPL`, `Scaphandre`, `perf stat`, battery discharge) with 32-bit counter wrap-around handling and attributes Joules per function via `sys.settrace`. | Identifies the exact function consuming CPU/DRAM Joules during execution and prevents theoretical TDP estimates from ever being misreported as physical hardware measurements. |
+| **Pre-Deployment CI/CD Gate & Kubernetes Sentinel** ([`action.yml`](action.yml), [`app/energy_predictor.py`](app/energy_predictor.py), [`app/kubernetes_profiler.py`](app/kubernetes_profiler.py)) | Enforces Green Score thresholds in GitHub Actions Pull Requests, predicts energy impact before deployment, and monitors live Kubernetes pod power via Kepler/Scaphandre metrics. | Blocks energy-regressing Pull Requests before merge and automatically triggers `kubectl rollout undo` if a deployed microservice spikes `> 35%` above its baseline wattage. |
+| **Reality Verification Pipeline & SCI Ledger** ([`app/pipeline/`](app/pipeline/), [`app/sci.py`](app/sci.py)) | Compares predicted savings (`CLAIM`) against HMAC-SHA256 signed hardware counter readings (`EVIDENCE`), records verdicts in a hash-chained ledger, and computes ISO/IEC 21031 (GSF SCI v1.0) scores. | Produces tamper-evident verification records (`VERIFIED` vs. `CONTRADICTED`) and exportable Scope 2/3 carbon disclosure reports for engineering audits and regulatory compliance. |
+
+---
+
 ## Cloud Cost, Carbon Reduction, and Inference Economics
 
 GreenCode connects code-level energy analysis to cloud compute cost and carbon accounting:
@@ -246,7 +269,7 @@ the `security` block names the exact configuration fault.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/          # 438 tests
+python -m pytest tests/          # 485 tests
 ENV=development python -m app.main --path . --threshold 75
 ```
 

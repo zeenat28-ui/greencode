@@ -165,11 +165,13 @@ class ProfileRequest(BaseModel):
 
 
 class RefactorRequest(BaseModel):
-    snippet: str = Field(..., max_length=40000, description="Inefficient code snippet to refactor")
-    violation_type: str = Field(..., max_length=100, description="Detected violation type identifier")
+    snippet: Optional[str] = Field(None, max_length=40000, description="Inefficient code snippet to refactor")
+    source_code: Optional[str] = Field(None, max_length=40000, description="Alias for snippet used by IDE and modal clients")
+    violation_type: str = Field("inefficient_loop", max_length=100, description="Detected violation type identifier")
     language: str = Field("python", max_length=40, description="Programming language identifier")
     violation_id: Optional[int] = Field(None, description="Optional violation DB record ID")
     file_context: Optional[str] = Field("", max_length=8000, description="Optional surrounding file context")
+    file_path: Optional[str] = Field(None, max_length=500, description="Optional file path for unified diff header")
 
 
 class GitHubPRRequest(BaseModel):
@@ -707,10 +709,13 @@ _ENTERPRISE_DASHBOARD_HTML = os.path.join(os.path.dirname(__file__), "static", "
 @app.get("/settings/org", response_class=FileResponse, include_in_schema=False)
 @app.get("/settings/security", response_class=FileResponse, include_in_schema=False)
 def serve_enterprise_dashboard():
-    """Serves the enterprise SaaS gatekeeper and carbon management dashboard."""
+    """Serves the compiled React SPA when built, falling back to static dashboard HTML."""
+    spa_index = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.isfile(spa_index):
+        return FileResponse(spa_index)
     if os.path.isfile(_ENTERPRISE_DASHBOARD_HTML):
         return FileResponse(_ENTERPRISE_DASHBOARD_HTML)
-    return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+    return FileResponse(spa_index)
 
 
 @app.get("/api/health", tags=["Health"])
@@ -1051,16 +1056,8 @@ def get_task_status_endpoint(
 
 
 @app.get("/api/profile/benchmarks", tags=["Runtime Profiler"])
-def list_profile_benchmarks_endpoint(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-):
-    """List the bundled benchmark scripts the runtime profiler is allowed to execute.
-
-    In GitHub-only mode there is no local folder to point the profiler at, so the
-    profiler runs against these fixed, audited reference scripts instead. Keeping
-    this a closed list is also what prevents `/api/profile` from being an
-    arbitrary-file-execution primitive.
-    """
+def list_profile_benchmarks_endpoint():
+    """List the bundled benchmark scripts the runtime profiler is allowed to execute."""
     return {"benchmarks": list_benchmark_scripts()}
 
 
@@ -1106,18 +1103,21 @@ def profile_code_endpoint(
 def refactor_code_endpoint(
     request: Request,
     req: RefactorRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Refactor inefficient code using the GreenCode AI Synthesizer directives."""
+    code_input = (req.snippet or req.source_code or "").strip()
+    if not code_input:
+        raise HTTPException(status_code=400, detail="Either 'snippet' or 'source_code' must be provided.")
+
     refactor_result = refactor_repository_code(
-        bad_snippet=req.snippet,
+        bad_snippet=code_input,
         violation_type=req.violation_type,
         language_id=req.language,
-        file_context=req.file_context or "",
+        file_context=req.file_context or req.file_path or "",
     )
 
     save_refactoring_record(
-        original_code=req.snippet,
+        original_code=code_input,
         refactored_code=refactor_result["refactored_code"],
         energy_reduction_pct=refactor_result["energy_reduction_pct"],
         carbon_saved_gco2_10k_runs=refactor_result["carbon_saved_gco2_10k_runs"],

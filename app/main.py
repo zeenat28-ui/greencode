@@ -296,7 +296,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="GreenCode Auditor API",
     description="Green Software Carbon Intensity Audit, Dynamic Profiling, and Automated Refactoring Platform",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -2447,6 +2447,16 @@ def run_cli():
         help="Audit only modified lines in a git diff range (e.g. 'origin/main...HEAD') or a unified .diff file path",
     )
     parser.add_argument(
+        "--iac",
+        default=None,
+        help="Audit a Terraform (.tf), Kubernetes (.yaml), or Dockerfile manifest path for FinOps & GreenOps savings",
+    )
+    parser.add_argument(
+        "--focus-csv",
+        default=None,
+        help="Reconcile a FinOps Foundation FOCUS 1.4 CSV billing file with energy (kWh) and carbon (kg CO2e)",
+    )
+    parser.add_argument(
         "--serve",
         action="store_true",
         help="Start the FastAPI backend server daemon",
@@ -2473,6 +2483,30 @@ def run_cli():
     if args.serve:
         print(f"Starting GreenCode Auditor FastAPI server on port {args.port}...")
         uvicorn.run("app.main:app", host="0.0.0.0", port=args.port, reload=True)
+        return
+
+    if args.iac:
+        from app.iac_linter import audit_iac_content
+        iac_target = os.path.abspath(args.iac)
+        if not os.path.isfile(iac_target):
+            print(f"[ERROR] IaC file does not exist: {iac_target}")
+            sys.exit(1)
+        with open(iac_target, "r", encoding="utf-8", errors="replace") as f:
+            iac_res = audit_iac_content(f.read(), file_path=args.iac)
+        print(json.dumps(iac_res, indent=2))
+        if args.ci and float(iac_res.get("green_score", 100.0)) < float(args.threshold):
+            sys.exit(1)
+        return
+
+    if args.focus_csv:
+        from app.finops_focus import reconcile_focus_billing
+        focus_target = os.path.abspath(args.focus_csv)
+        if not os.path.isfile(focus_target):
+            print(f"[ERROR] FOCUS CSV file does not exist: {focus_target}")
+            sys.exit(1)
+        with open(focus_target, "r", encoding="utf-8", errors="replace") as f:
+            focus_res = reconcile_focus_billing(csv_text=f.read())
+        print(json.dumps(focus_res, indent=2))
         return
 
     # CLI Audit Mode

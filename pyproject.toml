@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "greencode-auditor"
-version = "1.0.0"
-description = "Static code energy analyzer, hardware power profiler, and ISO/IEC 21031 (GSF SCI v1.0) carbon gatekeeper with Amazon Alexa+ MCP and Amazon Bedrock refactoring"
+version = "2.0.0"
+description = "Static code energy analyzer, IaC FinOps linter, FOCUS 1.4 billing reconciler, and ISO/IEC 21031 (GSF SCI) carbon gatekeeper"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -15,8 +15,10 @@ authors = [
 keywords = [
     "green-software",
     "carbon-accounting",
+    "finops",
+    "focus-1.4",
     "sci-specification",
-    "tree-sitter",
+    "iac-linter",
     "code-profiler",
     "ci-cd",
     "sustainability",
@@ -34,8 +36,10 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Quality Assurance",
     "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
 ]
 
 [project.urls]
@@ -47,21 +51,12 @@ Funding = "https://opencollective.com/greencode"
 dependencies = [
     "fastapi>=0.110.0",
     "uvicorn>=0.28.0",
-    "streamlit>=1.32.0",
-    "streamlit-code-diff>=0.1.2",
-    "pandas>=2.2.0",
-    "plotly>=5.20.0",
     "sqlalchemy>=2.0.28",
     "alembic>=1.13.0",
-    "docker>=7.0.0",
     "requests>=2.31.0",
     "psutil>=5.9.8",
     "pydantic>=2.6.4",
     "python-dotenv>=1.0.0",
-    "huggingface-hub>=0.20.0",
-    "tree-sitter<0.22",
-    "tree-sitter-languages>=1.10.2",
-    "asyncpg>=0.29.0",
     "aiosqlite>=0.20.0",
     "bcrypt>=4.1.2",
     "python-multipart>=0.0.9",
@@ -70,14 +65,25 @@ dependencies = [
     "cachetools>=5.3",
     "httpx>=0.27",
     "slowapi>=0.1.9",
-    "mcp>=2.3.0",
-    "boto3>=1.34.0",
 ]
 
 [project.optional-dependencies]
+aws = [
+    "boto3>=1.34.0",
+]
+mcp = [
+    "mcp>=1.0.0",
+    "huggingface-hub>=0.20.0",
+]
+treesitter = [
+    "tree-sitter<0.22",
+    "tree-sitter-languages>=1.10.2",
+]
 distributed = [
     "celery>=5.3.0",
     "redis>=5.0.0",
+    "asyncpg>=0.29.0",
+    "docker>=7.0.0",
 ]
 test = [
     "pytest>=8.0.0",
@@ -93,3 +99,5 @@ greencode-aws = "app.aws_cli:main"
 where = ["."]
 include = ["app*"]
 
+[tool.setuptools.package-data]
+app = ["py.typed"]

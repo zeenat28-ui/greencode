@@ -348,7 +348,7 @@ class TestProviderSelection(unittest.TestCase):
         return _select_client()[1]
 
     def test_auto_prefers_bedrock_when_aws_is_configured(self):
-        os.environ["AWS_PROFILE"] = "greencode-enterprise"
+        os.environ["AWS_PROFILE"] = "greencode"
         self.assertEqual(self._provider(), "aws_bedrock")
 
     def test_auto_falls_back_to_huggingface_without_aws(self):
@@ -356,7 +356,7 @@ class TestProviderSelection(unittest.TestCase):
 
     def test_explicit_choice_is_honoured(self):
         os.environ["GREENCODE_LLM_PROVIDER"] = "huggingface"
-        os.environ["AWS_PROFILE"] = "greencode-enterprise"
+        os.environ["AWS_PROFILE"] = "greencode"
         self.assertEqual(self._provider(), "huggingface")
 
     def test_explicit_bedrock_is_not_swapped_silently(self):

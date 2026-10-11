@@ -188,19 +188,19 @@ def build_workflow(
             "a1000000-0000-4000-8000-000000000006",
             "Send a message (alert)",
             [880, 60],
-            _slack_text("CONTRADICTED", "\U0001F6A8"),
+            _slack_text("CONTRADICTED", "[ALERT]"),
         ),
         _slack_message(
             "a1000000-0000-4000-8000-000000000007",
             "Send a message1 (confirmed)",
             [880, 300],
-            _slack_text("VERIFIED", "✅"),
+            _slack_text("VERIFIED", "[OK]"),
         ),
         _slack_message(
             "a1000000-0000-4000-8000-000000000008",
             "Send a message2 (pending)",
             [880, 500],
-            _slack_text("needs more evidence", "\U0001F7E1"),
+            _slack_text("needs more evidence", "[PENDING]"),
         ),
     ]
 

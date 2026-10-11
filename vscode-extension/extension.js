@@ -135,7 +135,7 @@ function updateDiagnostics(document, rawDiagnostics) {
             severity = vscode.DiagnosticSeverity.Information;
         }
 
-        const message = `🌱 [GreenCode] ${item.title}: ${item.suggested_fix} (~$${item.annual_cost_usd}/yr, ${item.annual_co2_kg} kg CO2e)`;
+        const message = `[GreenCode] ${item.title}: ${item.suggested_fix} (~$${item.annual_cost_usd}/yr, ${item.annual_co2_kg} kg CO2e)`;
         const diagnostic = new vscode.Diagnostic(range, message, severity);
         diagnostic.source = 'GreenCode Energy Linter';
         diagnostic.code = item.code;
@@ -148,7 +148,7 @@ function updateDiagnostics(document, rawDiagnostics) {
 
 function showEnergyDebtModal() {
     vscode.window.showInformationMessage(
-        '🌿 GreenCode Energy Debt Overview: Active Team Liability is $1,450/year across 8 unoptimized pipelines. Pay down debt to satisfy GSF SCI compliance.'
+        'GreenCode Energy Debt Overview: Active Team Liability is $1,450/year across 8 unoptimized pipelines. Pay down debt to satisfy GSF SCI compliance.'
     );
 }
 

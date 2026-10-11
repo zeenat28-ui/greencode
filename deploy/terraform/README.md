@@ -1,6 +1,6 @@
-# GreenCode Enterprise Terraform Infrastructure as Code
+# GreenCode Terraform Infrastructure Templates
 
-This directory provides audited, multi-cloud Infrastructure as Code (IaC) templates for deploying GreenCode in enterprise environments with high availability, database replication, and low-carbon compute architecture (ARM64 / Graviton).
+This directory provides multi-cloud Terraform templates for deploying GreenCode with PostgreSQL replication, Redis caching, and ARM64 / Graviton compute instances.
 
 ## Supported Clouds
 - **AWS**: Multi-AZ RDS PostgreSQL (Graviton3), Redis ElastiCache replication group, Application Load Balancer.
@@ -13,4 +13,3 @@ terraform init
 terraform plan -var="environment=production"
 terraform apply -var="environment=production"
 ```
-

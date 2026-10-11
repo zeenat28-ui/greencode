@@ -37,7 +37,7 @@ class NotificationSender:
             "attachments": [
                 {
                     "color": color,
-                    "title": f"🌿 GreenCode: {title}",
+                    "title": f"GreenCode: {title}",
                     "text": text,
                     "footer": f"Severity: {severity}",
                 }

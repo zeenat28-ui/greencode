@@ -26,17 +26,17 @@ def format_pr_sticky_comment(diff_result: Dict[str, Any], repo_slug: str, pr_num
     base_score = diff_result.get("base_green_score", 100.0)
     head_score = diff_result.get("head_green_score", 100.0)
 
-    badge = "🟢 **PASSED - GREEN VERIFIED**"
+    badge = "**PASSED - GREEN VERIFIED**"
     if is_blocked:
-        badge = "🔴 **FAILED - MERGE BLOCKED BY GREEN POLICY**"
+        badge = "**FAILED - MERGE BLOCKED BY GREEN POLICY**"
     elif decision == "WARN" or decision == "WARNING":
-        badge = "🟡 **WARNING - EFFICIENCY REGRESSION DETECTED**"
+        badge = "**WARNING - EFFICIENCY REGRESSION DETECTED**"
 
     cost_sign = "+" if annual_cost_usd >= 0 else "-"
     energy_sign = "+" if energy_delta_pct >= 0 else ""
 
     markdown = f"""{GATE_MARKER}
-## 🌱 GreenCode Energy & Carbon Gatekeeper
+## GreenCode Energy & Carbon Gatekeeper
 
 ### {badge}
 

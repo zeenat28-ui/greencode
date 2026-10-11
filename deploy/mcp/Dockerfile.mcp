@@ -7,7 +7,7 @@
 # does not fit comfortably in a 512 MB free instance and wastes build minutes on
 # runtimes the MCP surface never touches.
 #
-# The Alexa+ submission's primary surface is app/mcp_server.py. Its import
+# The MCP service entrypoint is app/mcp_server.py. Its import
 # closure is small and pure-Python apart from tree-sitter's C bindings, so this
 # image carries only that. It copies the engine package (app/) and the Alexa+
 # assets (alexa/ - the privacy/terms pages and icons that addon.json points back

@@ -38,7 +38,7 @@ venv/
 env/
 ENV/
 
-# Unrelated 3rd-party audit sandbox (not part of the submission)
+# Third-party audit scratch directory
 security-hunt/
 
 

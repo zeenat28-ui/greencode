@@ -97,7 +97,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
     setUser(demoUser);
     // Mark the session as demo so a 401 from a token-gated endpoint does not
-    // sign the judge out while they are walking through the app.
+    // sign the user out while navigating the application.
     setDemoMode(true);
     const existing = localStorage.getItem('greencode_scan_data');
     if (!existing) {

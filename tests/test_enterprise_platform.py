@@ -170,7 +170,7 @@ def test_energy_diff_service_and_pr_gate():
     )
     assert eval_bad["is_blocked"] is True
     assert eval_bad["verdict"] == "BLOCKED"
-    assert "🔴 FAILED - MERGE BLOCKED" in eval_bad["pr_markdown_comment"]
+    assert "FAILED - MERGE BLOCKED" in eval_bad["pr_markdown_comment"]
     assert eval_bad["annual_cost_delta_usd"] > 0
 
     # Head with 5% optimization
@@ -185,7 +185,7 @@ def test_energy_diff_service_and_pr_gate():
     )
     assert eval_good["is_blocked"] is False
     assert eval_good["verdict"] == "APPROVED"
-    assert "🟢 PASSED - GREEN VERIFIED" in eval_good["pr_markdown_comment"]
+    assert "PASSED - GREEN VERIFIED" in eval_good["pr_markdown_comment"]
 
 
 def test_cryptographic_audit_trail_and_esg_reports():
@@ -221,7 +221,7 @@ def test_cryptographic_audit_trail_and_esg_reports():
 
     esg_html = ESGReportGenerator.generate_html(org_id=org_id)
     assert "<!DOCTYPE html>" in esg_html
-    assert "Enterprise Carbon & Energy Disclosure Report" in esg_html
+    assert "Carbon & Energy Disclosure Report" in esg_html
 
 
 def test_enterprise_rest_endpoints(client):

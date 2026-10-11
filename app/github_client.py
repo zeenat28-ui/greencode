@@ -540,7 +540,7 @@ def create_refactoring_pull_request(
         }
 
     # 6. Open the Pull Request
-    pr_title = f"🌱 GreenCode: Remediate {violation_title} (-{energy_reduction_pct}% TDP)"
+    pr_title = f"GreenCode: Remediate {violation_title} (-{energy_reduction_pct}% TDP)"
     
     # Calculate cloud compute cost impact based on AWS c6g.xlarge ($0.136/hr * 730 hrs/mo = $99.28/mo)
     red_frac = min(0.99, max(0.01, float(energy_reduction_pct) / 100.0))
@@ -551,22 +551,22 @@ def create_refactoring_pull_request(
     after_co2_10k = round(max(0.0, baseline_co2_10k - float(carbon_saved_10k)), 2)
 
     pr_body = (
-        f"## 🌱 GreenCode Auditor — Verified Eco-Refactoring\n\n"
-        f"### 📊 Before vs. After Energy & Cloud Cost Impact\n\n"
-        f"| Metric | Before Optimization | After Eco-Refactor | Net Savings |\n"
+        f"## GreenCode Auditor — Verified Refactoring\n\n"
+        f"### Before vs. After Energy & Cloud Cost Impact\n\n"
+        f"| Metric | Before Optimization | After Refactor | Net Savings |\n"
         f"| :--- | :--- | :--- | :--- |\n"
         f"| **Energy Consumption** | `Baseline (100%)` | `Reduced (-{energy_reduction_pct}%)` | **`-{energy_reduction_pct}% CPU Watts`** |\n"
         f"| **Est. Monthly Cloud Cost (c6g.xlarge)** | `${monthly_baseline_cost:.2f}` | `${monthly_optimized_cost:.2f}` | **`-${monthly_baseline_cost - monthly_optimized_cost:.2f} / month`** |\n"
         f"| **Annual Cloud Infrastructure Savings** | - | - | **`+${annual_savings:.2f} USD / year`** |\n"
-        f"| **Carbon Footprint (per 10k runs)** | `{baseline_co2_10k} gCO₂eq` | `{after_co2_10k} gCO₂eq` | **`-{carbon_saved_10k} gCO₂eq abated`** |\n\n"
-        f"### 🛡️ Automated Safety & Zero-False-Positive Gate\n\n"
+        f"| **Carbon Footprint (per 10k runs)** | `{baseline_co2_10k} gCO2eq` | `{after_co2_10k} gCO2eq` | **`-{carbon_saved_10k} gCO2eq abated`** |\n\n"
+        f"### Automated Safety & Verification Gate\n\n"
         f"| Verification Layer | Status | Result / Evidence |\n"
         f"| :--- | :--- | :--- |\n"
-        f"| **AST Grammar Validation** | ✅ **PASSED** | Compiled via `ast.parse()` with zero syntax errors. |\n"
-        f"| **Base-Indentation Alignment** | ✅ **PASSED** | Exact target lexical scope indentation preserved. |\n"
-        f"| **Non-Destructive Patching** | ✅ **PASSED** | Surrounding functions, imports, and comments intact. |\n"
-        f"| **Deterministic Rollback Backup** | ✅ **VERIFIED** | Sibling `.bak` backup generated prior to disk commit. |\n\n"
-        f"### 🤖 Architectural Metadata\n"
+        f"| **AST Grammar Validation** | **PASSED** | Compiled via `ast.parse()` with zero syntax errors. |\n"
+        f"| **Base-Indentation Alignment** | **PASSED** | Exact target lexical scope indentation preserved. |\n"
+        f"| **Non-Destructive Patching** | **PASSED** | Surrounding functions, imports, and comments intact. |\n"
+        f"| **Deterministic Rollback Backup** | **VERIFIED** | Sibling `.bak` backup generated prior to disk commit. |\n\n"
+        f"### Architectural Metadata\n"
         f"- **Violation Resolved**: `{violation_title}`\n"
         f"- **Analysis Engine**: `Deterministic GreenCode rule engine (GSF patterns)`\n"
         f"- **Standard**: Green Software Foundation SCI v1.0 (`ISO/IEC 21031:2024`)\n\n"
@@ -746,10 +746,10 @@ def post_pr_carbon_comment(
     sticky_marker = "<!-- greencode-pr-audit-sticky -->"
     comment_body = (
         f"{sticky_marker}\n"
-        f"## 🌱 GreenCode Auditor — Pull Request Carbon Quality Gate\n\n"
+        f"## GreenCode Auditor — Pull Request Carbon Quality Gate\n\n"
         f"[![GreenCode Score]({score_badge})](https://github.com/zeenat28-ui/greencode) "
         f"[![Gate Status]({status_badge})](https://github.com/zeenat28-ui/greencode)\n\n"
-        f"### 📊 Audit Summary\n"
+        f"### Audit Summary\n"
         f"| Metric | Value | Threshold / Target |\n"
         f"|---|---|---|\n"
         f"| **Overall Green Score** | **`{score:.1f} / 100.0`** | `>= {gate_threshold:.1f} / 100.0` |\n"
@@ -758,7 +758,7 @@ def post_pr_carbon_comment(
         f"| **Files Scanned** | `{total_files}` | All codebases |\n"
         f"| **Lines of Code Audited** | `{total_lines}` | Multi-language CST |\n"
         f"| **Total Violations Flagged** | `{len(violations)}` | `0 Critical Issues` |\n\n"
-        f"### 🔍 Detected Energy Inefficiencies\n"
+        f"### Detected Energy Inefficiencies\n"
         f"| # | Location | Violation Pattern | Deduction | Recommended Remediation |\n"
         f"|---|---|---|---|---|\n"
         f"{v_table}\n\n"
@@ -768,7 +768,7 @@ def post_pr_carbon_comment(
         comment_body += f"\n*... and {len(violations) - 8} additional minor issues documented in full audit report.*\n"
 
     comment_body += (
-        f"\n<details>\n<summary><b>🌿 Green Software Foundation (GSF) Standards Reference</b></summary>\n\n"
+        f"\n<details>\n<summary><b>Green Software Foundation (GSF) Standards Reference</b></summary>\n\n"
         f"- **Specification**: Software Carbon Intensity (SCI) v1.0 standard\n"
         f"- **Algorithmic Efficiency**: Flatten cubic $O(N^3)$ loops to reduce CPU thermal dissipation (TDP)\n"
         f"- **Network Carbon**: Batch requests and utilize HTTP session connection pools to prevent NIC wakeup surges\n"

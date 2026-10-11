@@ -1,4 +1,4 @@
-# 🔒 GreenCode Security Policy & Controls
+# GreenCode Security Policy & Controls
 
 ## Security Governance & Vulnerability Reporting
 GreenCode Auditor executes static parsing, optional Docker-sandboxed dynamic analysis, and HMAC-authenticated evidence verification.
@@ -8,7 +8,7 @@ If you discover a security vulnerability in this repository, please open a priva
 
 ---
 
-## 🛡️ Implemented Security Controls in Code
+## Implemented Security Controls in Code
 
 ### 1. Docker-Sandboxed Dynamic Analysis (`app/dynamic_analysis.py`)
 - Dynamic code profiling (`POST /api/dynamic/analyze`) executes inside isolated Docker containers.
@@ -30,9 +30,8 @@ If you discover a security vulnerability in this repository, please open a priva
 
 ---
 
-## 🔍 Security & Compliance Verification Tests
+## Security & Compliance Verification Tests
 All security controls above are verified by the automated `pytest` suite included in this repository:
 ```bash
 python -m pytest tests/test_dynamic_analysis.py tests/test_pipeline.py tests/test_production_readiness.py tests/test_alexa_compliance.py -q
 ```
-

@@ -1,4 +1,4 @@
-# GreenCode Enterprise API Reference
+# GreenCode API Reference
 
 ## Authentication & Multi-Tenancy
 
@@ -91,7 +91,7 @@
   "energy_delta_joules": 0.015,
   "annual_cost_delta_usd": 5400.0,
   "annual_carbon_delta_kg": 1260.0,
-  "pr_markdown_comment": "### 🔴 FAILED - MERGE BLOCKED..."
+  "pr_markdown_comment": "### FAILED - MERGE BLOCKED..."
 }
 ```
 

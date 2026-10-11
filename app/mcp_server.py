@@ -1,4 +1,4 @@
-"""GreenCode MCP Server - the Alexa+ track surface.
+"""GreenCode MCP Server.
 
 WHAT THIS IS
 ------------
@@ -11,8 +11,7 @@ WHY A SELF-HOSTED MCP SERVER RATHER THAN A REST WRAPPER
 ------------------------------------------------------
 GreenCode already had 37 REST endpoints. Wrapping those a second time in
 JSON-RPC and calling it an MCP server would satisfy the letter of the
-specification while adding nothing, and "basic MCP wrapper around an existing
-API" is explicitly the *uncreative* end of the Alexa+ judging criteria. So this
+specification while adding nothing. So this
 server is not a pass-through. It adds three things a REST wrapper cannot:
 
 1. **Provenance is mandatory, not optional.** Every tool returns

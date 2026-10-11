@@ -75,13 +75,13 @@ class EnergyDiffService:
         is_blocked = energy_delta_pct > max_regression_pct or head_green < 80.0
         if is_blocked:
             verdict = "BLOCKED"
-            summary_badge = "🔴 FAILED - MERGE BLOCKED"
+            summary_badge = "FAILED - MERGE BLOCKED"
         elif energy_delta_pct > 5.0:
             verdict = "WARNING"
-            summary_badge = "🟡 WARNING - EFFICIENCY REGRESSION"
+            summary_badge = "WARNING - EFFICIENCY REGRESSION"
         else:
             verdict = "APPROVED"
-            summary_badge = "🟢 PASSED - GREEN VERIFIED"
+            summary_badge = "PASSED - GREEN VERIFIED"
 
         # Format PR Comment Markdown
         pr_markdown = cls._format_pr_markdown(
@@ -134,7 +134,7 @@ class EnergyDiffService:
 
 | Metric | Base Branch | Pull Request | Delta (Δ) | Impact |
 | :--- | :--- | :--- | :--- | :--- |
-| **Green Code Score** | `{base_green:.1f}` | `{head_green:.1f}` | `{green_score_delta:+.1f} pts` | {"⚠️ Reduced" if green_score_delta < 0 else "✅ Maintained"} |
+| **Green Code Score** | `{base_green:.1f}` | `{head_green:.1f}` | `{green_score_delta:+.1f} pts` | {"Reduced" if green_score_delta < 0 else "Maintained"} |
 | **Execution Energy** | Reference | Measured | `{energy_sign}{energy_delta_pct:.2f}%` | `{energy_sign}{energy_delta_joules:+.4f} J / run` |
 | **Projected Cloud Cost** | Baseline | Projected | **`{cost_sign}${abs(annual_cost_delta_usd):,.2f} / yr`** | `{instance_type}` @ 10M runs/mo |
 | **Carbon Footprint** | Baseline | Projected | **`{carbon_sign}{abs(annual_carbon_delta_kg):,.2f} kg CO2e / yr`** | GHG Scope 2 emissions |
@@ -142,10 +142,10 @@ class EnergyDiffService:
 """
         if is_blocked:
             markdown += f"""\n> [!CAUTION]
-> **Merge Blocked by Enterprise Policy**: Energy consumption increased by **`{energy_delta_pct:.1f}%`**, exceeding the maximum allowable regression threshold of **`{max_regression_pct:.1f}%`**.
+> **Merge Blocked by Policy**: Energy consumption increased by **`{energy_delta_pct:.1f}%`**, exceeding the maximum allowable regression threshold of **`{max_regression_pct:.1f}%`**.
 > Optimize hot loops, avoid blocking I/O, or run `greencode optimize` to restore compliance.
 """
         else:
-            markdown += "\n> [!NOTE]\n> **Gate Passed**: PR meets enterprise green efficiency and cloud carbon standards.\n"
+            markdown += "\n> [!NOTE]\n> **Gate Passed**: PR meets efficiency and cloud carbon thresholds.\n"
 
         return markdown

@@ -103,7 +103,7 @@ jobs:
             <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="inline-flex items-center shadow-sm rounded overflow-hidden">
                 <span className="bg-slate-800 text-white text-xs font-semibold px-2.5 py-1 flex items-center gap-1 font-mono">
-                  <span>🍃</span> GreenCode SCI
+                  GreenCode SCI
                 </span>
                 <span className="bg-olive-800 text-white text-xs font-bold px-2.5 py-1 font-mono">
                   {score}/100 ({grade})

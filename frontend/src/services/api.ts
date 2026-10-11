@@ -42,16 +42,13 @@ export const setRefreshToken = (token: string | null): void => {
 /**
  * Demo mode marker.
  *
- * "Explore Enterprise Demo" gives a judge a populated walkthrough without a
- * GitHub token. It issues no real token, so every authenticated endpoint
- * answers 401 - and the interceptor below treats 401 as "your session is over"
- * and signs the user out. The result was that clicking any nav item during the
- * demo bounced straight back to /login, so the demo could not actually be
- * walked through.
+ * The interactive preview session provides a populated walkthrough without a
+ * GitHub token. It issues no real token, so authenticated endpoints
+ * answer 401 - and the interceptor below treats 401 as an expired session
+ * unless demo mode is active.
  *
- * loginAsDemo sets this flag, and the 401 handler consults it: a demo session
- * keeps its state and lets the error surface to the caller (each page already
- * renders its own empty state), instead of being torn down mid-tour.
+ * loginAsDemo sets this flag, and the 401 handler consults it so a demo session
+ * keeps its state and lets each page render its local state.
  */
 const DEMO_MODE_KEY = 'greencode_demo_mode';
 
@@ -139,8 +136,7 @@ api.interceptors.response.use(
         }
       }
       // A demo session holds no token by design, so a 401 is expected rather
-      // than a sign of an expired one. Signing out here would eject the judge
-      // mid-walkthrough, so let the request fail and render its empty state.
+      // than a sign of an expired session.
       if (isDemoMode()) {
         return Promise.reject(error);
       }

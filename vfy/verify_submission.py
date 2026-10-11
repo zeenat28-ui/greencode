@@ -17,7 +17,7 @@ def check(label, ok, detail=""):
         failures.append(label)
 
 
-# 1. Required files for enterprise deployment and Alexa+ add-on packaging.
+# 1. Required files for deployment and Alexa+ add-on packaging.
 for path in ["LICENSE", "README.md", "requirements.txt", "alexa/addon.json",
              "app/mcp_server.py", "app/bedrock_client.py",
              "check_mcp_alexa.py", "check_mcp_live.py",
@@ -81,7 +81,7 @@ if base:
     st, _ = fetch(base + "/privacy")
     check("privacy page 200", st == 200, f"status={st}")
 
-# 5. GitHub repo visibility + license (public is safest for judging).
+# 5. GitHub repository visibility and license check.
 try:
     with urllib.request.urlopen("https://api.github.com/repos/zeenat28-ui/greencode", timeout=15) as r:
         repo = json.load(r)

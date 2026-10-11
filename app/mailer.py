@@ -112,7 +112,7 @@ def send_verification_email(to_email: str, username: str, verification_token: st
     </head>
     <body>
         <div class="card">
-            <div class="logo">🌿 GreenCode Auditor</div>
+            <div class="logo">GreenCode Auditor</div>
             <h2>Welcome to GreenCode, @{username}!</h2>
             <p>Thank you for registering. Please confirm your email address to activate your full developer profile and unlock high-throughput CI/CD scanning.</p>
             <div style="text-align: center;">
@@ -160,7 +160,7 @@ def send_password_reset_email(to_email: str, username: str, reset_token: str) ->
     </head>
     <body>
         <div class="card">
-            <div class="logo">🌿 GreenCode Auditor</div>
+            <div class="logo">GreenCode Auditor</div>
             <h2>Password Reset Request</h2>
             <p>Hi @{username}, we received a request to reset the password for your GreenCode Auditor account.</p>
             <div style="text-align: center;">

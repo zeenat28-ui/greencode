@@ -96,8 +96,8 @@ export default function Budgets() {
           <div className="text-2xl font-bold text-amber-600 mt-1">{(totalConsumedKg * 1.15).toFixed(1)} kg CO2e</div>
           <span className="text-xs text-amber-600 font-medium mt-2 block">
             {totalConsumedKg * 1.15 > totalQuotaKg
-              ? `⚠️ +${(totalConsumedKg * 1.15 - totalQuotaKg).toFixed(1)} kg overrun projected`
-              : `✅ ${(totalQuotaKg - totalConsumedKg * 1.15).toFixed(1)} kg under quota projected`}
+              ? `+${(totalConsumedKg * 1.15 - totalQuotaKg).toFixed(1)} kg overrun projected`
+              : `${(totalQuotaKg - totalConsumedKg * 1.15).toFixed(1)} kg under quota projected`}
           </span>
         </div>
       </div>
@@ -152,7 +152,7 @@ export default function Budgets() {
 
       {/* Pre-Deploy PR Budget Gate Check */}
       <div className="bg-slate-900 border border-slate-800 text-white rounded-xl p-6 shadow-sm">
-        <h3 className="text-base font-semibold text-emerald-400">⚡ Pre-Deploy PR Carbon Impact Simulator</h3>
+        <h3 className="text-base font-semibold text-emerald-400">Pre-Deploy PR Carbon Impact Simulator</h3>
         <p className="text-xs text-slate-400 mt-1">Simulate if an incoming pull request's projected emissions will breach your team budget</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 items-end">
           <div>
@@ -174,7 +174,7 @@ export default function Budgets() {
           <div className="p-3 rounded-lg bg-slate-800 border border-slate-700">
             <span className="text-xs text-slate-400 block font-medium">Merge Gate Verdict</span>
             <span className={`text-sm font-bold ${prEmissionsInput > 15 ? 'text-red-400' : 'text-emerald-400'}`}>
-              {prEmissionsInput > 15 ? '🔴 BLOCKED - Exceeds monthly team quota' : '🟢 APPROVED - Quota headroom available'}
+              {prEmissionsInput > 15 ? 'BLOCKED - Exceeds monthly team quota' : 'APPROVED - Quota headroom available'}
             </span>
           </div>
         </div>

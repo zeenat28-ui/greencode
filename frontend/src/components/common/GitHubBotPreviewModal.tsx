@@ -192,7 +192,7 @@ export default function GitHubBotPreviewModal({
 
                   <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
                     <div className="text-[11px] text-slate-500">
-                      ⚡ Hardware RAPL verified: <strong>58% Joules reduction</strong> with 0 logic regression.
+                      Hardware RAPL verified: <strong>58% Joules reduction</strong> with 0 logic regression.
                     </div>
                     <button
                       onClick={handleApplyBotPatch}

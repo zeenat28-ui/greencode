@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the enterprise Alexa+ MCP server and SCI verification product demo.
+"""Render the Alexa+ MCP server and SCI verification walkthrough video.
 
     python scripts/record_submission_demo.py
     python scripts/record_submission_demo.py --out greencode_demo.mp4
@@ -746,7 +746,7 @@ def render_scene(title: str, caption: str, rows: List[Tuple[str, str]],
             d.text((MARGIN_X + offset, y), piece, font=font, fill=colour)
             y += LINE_HEIGHT
 
-    # Takeaway strip - the one line a judge should leave the scene remembering.
+    # Summary strip at the bottom of the frame.
     if takeaway:
         top = HEIGHT - FOOTER_H - TAKEAWAY_H
         d.rectangle([0, top, WIDTH, HEIGHT - FOOTER_H], fill=(16, 22, 30))
@@ -855,8 +855,7 @@ CLOSING = (
     ],
 )
 
-# The one line each scene should leave behind. Judges score on ideas that
-# survive a 3-minute skim, so every scene carries its own argument.
+# Per-scene summary line displayed in the bottom provenance banner.
 TAKEAWAYS = {
     "title": "Software Carbon Intensity per the Green Software Foundation "
              "specification, with measurement provenance attached to every result.",
@@ -883,7 +882,7 @@ def main() -> int:
     )
     parser.add_argument("--out", default=os.path.join(ROOT, "greencode_demo.mp4"))
     parser.add_argument("--max-seconds", type=float, default=180.0,
-                        help="Submission limit; the render fails if exceeded.")
+                        help="Maximum video duration in seconds; the render fails if exceeded.")
     args = parser.parse_args()
 
     print("Recording a live MCP session...")
@@ -901,7 +900,7 @@ def main() -> int:
 
     if total > args.max_seconds:
         print(f"FAIL: {total:.1f}s exceeds the "
-              f"{args.max_seconds:.0f}s submission limit.")
+              f"{args.max_seconds:.0f}s duration limit.")
         return 1
 
     writer = VideoWriter(args.out)
@@ -926,9 +925,9 @@ def main() -> int:
           f"{WIDTH}x{HEIGHT}@{FPS})")
 
     if total > args.max_seconds:
-        print("FAIL: over the submission limit.")
+        print("FAIL: over the duration limit.")
         return 1
-    print(f"Duration is within the {args.max_seconds:.0f}s submission limit.")
+    print(f"Duration is within the {args.max_seconds:.0f}s limit.")
     return 0
 
 

@@ -1,9 +1,9 @@
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-def generate_enterprise_thumbnail(output_path="assets/thumbnail.png"):
+def generate_thumbnail(output_path="assets/thumbnail.png"):
     width, height = 1280, 720
-    im = Image.new("RGB", (width, height), (11, 17, 30))  # Deep enterprise navy #0B111E
+    im = Image.new("RGB", (width, height), (11, 17, 30))  # Dark navy #0B111E
     draw = ImageDraw.Draw(im)
 
     # Grid background lines
@@ -22,14 +22,14 @@ def generate_enterprise_thumbnail(output_path="assets/thumbnail.png"):
 
     # Top Tag
     draw.rounded_rectangle([60, 50, 430, 84], radius=6, fill=(16, 36, 40), outline=(5, 150, 105), width=1)
-    draw.text((75, 58), "ENTERPRISE FINOPS & GREENOPS PLATFORM", fill=(52, 211, 153), font=font_bold)
+    draw.text((75, 58), "SOFTWARE CARBON & ENERGY ANALYZER", fill=(52, 211, 153), font=font_bold)
 
     # Hero Title
     draw.text((60, 104), "GreenCode", fill=(255, 255, 255), font=font_hero)
     draw.ellipse([345, 126, 360, 141], fill=(52, 211, 153))
 
-    # Enterprise Tagline
-    draw.text((60, 178), "Enterprise Green Software & Operational Carbon Auditor", fill=(203, 213, 225), font=font_sub)
+    # Subtitle
+    draw.text((60, 178), "Static AST Analysis, Hardware Energy Telemetry & SCI Quality Gate", fill=(203, 213, 225), font=font_sub)
     draw.text((60, 215), "Automated AST Remediation & SCI Quality Gates via Amazon Bedrock & Alexa+ Voice MCP", fill=(148, 163, 184), font=font_meta)
 
     # 3 Pill Badges
@@ -111,4 +111,4 @@ def generate_enterprise_thumbnail(output_path="assets/thumbnail.png"):
     print(f"Successfully generated thumbnail at {output_path}")
 
 if __name__ == "__main__":
-    generate_enterprise_thumbnail()
+    generate_thumbnail()

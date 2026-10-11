@@ -183,7 +183,7 @@ class ESGReportGenerator:
 <body>
 <div class="container">
   <div class="header">
-    <h1>🌱 Enterprise Carbon & Energy Disclosure Report</h1>
+    <h1>Carbon & Energy Disclosure Report</h1>
     <div class="meta">
       <strong>Organization:</strong> {data['organization_name']} |
       <strong>Period:</strong> {data['reporting_period']} |
@@ -206,7 +206,7 @@ class ESGReportGenerator:
     </div>
   </div>
 
-  <h2>📊 Scope 2 & 3 Emissions Inventory</h2>
+  <h2>Scope 2 & 3 Emissions Inventory</h2>
   <table>
     <tr><th>Emission Category</th><th>Metric</th><th>Accounting Standard</th></tr>
     <tr><td>Cloud Compute Electricity (Scope 2)</td><td>{summary['total_energy_consumption_kwh']} kWh ({summary['scope_2_cloud_operational_tco2e']} tCO2e)</td><td>GHG Protocol Market-Based</td></tr>
@@ -215,13 +215,13 @@ class ESGReportGenerator:
     <tr><td>Estimated Cloud Cost Reductions</td><td><strong>${summary['financial_cloud_savings_usd']} USD</strong></td><td>AWS/GCP Realized Savings</td></tr>
   </table>
 
-  <h2>👥 Team Allocation & Quota Enforcement</h2>
+  <h2>Team Allocation & Quota Enforcement</h2>
   <table>
     <thead><tr><th>Team</th><th>Monthly Budget</th><th>Consumed</th><th>Status</th></tr></thead>
     <tbody>{teams_rows}</tbody>
   </table>
 
-  <h2>📜 Standards & Verification Framework</h2>
+  <h2>Standards & Verification Framework</h2>
   <ul style="font-size: 13px; color: #cbd5e1; line-height: 1.6;">
     {standards_list}
   </ul>

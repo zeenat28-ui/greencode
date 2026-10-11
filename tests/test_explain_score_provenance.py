@@ -1,6 +1,6 @@
 """Tests for the 'explain this score' provenance contract.
 
-The GreenCode promise, restated in ``REAL_WORLD_LOGIC_AUDIT.md``, is that no
+The GreenCode provenance contract requires that no
 figure is ever invented to fill a gap. ``explain_score`` is the traceability
 tool an Alexa+ / MCP agent quotes back to a user, so it must never fabricate an
 SCI to accompany a score it was handed.

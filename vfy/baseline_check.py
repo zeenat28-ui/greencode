@@ -1,4 +1,4 @@
-"""Fast baseline verification for the GreenCode enterprise release.
+"""Fast baseline verification for GreenCode.
 
 Run:  python -m vfy.baseline_check      (from the repo root)
 Local-only imports and in-memory calls. Executes core subsystem health checks

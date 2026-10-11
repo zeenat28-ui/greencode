@@ -1,23 +1,23 @@
-# 🌱 GreenCode Auditor
+# GreenCode Auditor
 
 [![CI Gatekeeper](https://img.shields.io/badge/CI%2FCD-Active%20Quality%20Gate-success)](action.yml)
 [![Green Computing](https://img.shields.io/badge/Standard-Green%20Software%20Foundation-brightgreen)](https://greensoftware.foundation)
 [![SCI Standard](https://img.shields.io/badge/Specification-SCI%20v1.0-blue)](https://greensoftware.foundation)
-[![Tests](https://img.shields.io/badge/tests-438%20passing-success)](tests/)
+[![Tests](https://img.shields.io/badge/tests-485%20passing-success)](tests/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-Open%20Collective-ea4aaa?logo=opencollective)](https://opencollective.com/greencode)
 
-## ☁️ Enterprise Amazon & AWS Ecosystem Architecture
+## Amazon Alexa+, Bedrock, and AWS Integration
 
-Engineered for enterprise DevSecOps, Cloud FinOps, and GreenOps teams with native **Amazon Alexa+ (MCP)**, **Amazon Bedrock**, and **AWS Custom Silicon** integrations:
+Static code analyzer, hardware energy profiler, and Software Carbon Intensity (ISO/IEC 21031 / GSF SCI v1.0) quality gate with native **Amazon Alexa+ (MCP)**, **Amazon Bedrock**, and **AWS Custom Silicon** support:
 
-| Capability / Integration | Enterprise Implementation | Source Files |
+| Component | Implementation | Source Files |
 |---|---|---|
 | **Amazon Alexa+ & MCP Server** | Self-hosted **MCP Server** over Streamable HTTP (protocol `2025-11-25`+), RFC 9728 Protected Resource Metadata, RFC 8414 OAuth PKCE `S256`, and `< 500 ms` voice latency | [`app/mcp_server.py`](app/mcp_server.py) · [`alexa/addon.json`](alexa/addon.json) |
 | **Amazon Bedrock & AWS Silicon** | **Amazon Bedrock** (`bedrock-runtime` Converse API) refactoring engine + **AWS Custom Silicon** (`Graviton4 c8g`, `Inferentia2 inf2`, `Trainium1 trn1`) energy/cost profiler + **AWS SDK (`boto3`) CLI** (SSM Parameter Store, CloudWatch Logs, EventBridge, S3, X-Ray) | [`app/bedrock_client.py`](app/bedrock_client.py) · [`app/ml_carbon.py`](app/ml_carbon.py) · [`app/aws_cli.py`](app/aws_cli.py) |
-| **AWS Well-Architected Alignment** | Operationalizes the **AWS Well-Architected Sustainability Pillar** at the source-code and Pull Request layer (algorithmic efficiency, geographic workload placement, and hardware utilization) | [`app/sci.py`](app/sci.py) · [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py) |
+| **AWS Well-Architected Alignment** | Evaluates **AWS Well-Architected Sustainability Pillar** rules at the source-code and Pull Request layer (algorithmic efficiency, geographic workload placement, and hardware utilization) | [`app/sci.py`](app/sci.py) · [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py) |
 
-### Ask it in plain language (via Alexa+ or Web Voice Cockpit)
+### Voice and MCP Queries
 
 > *"Alexa, ask GreenCode: which AWS region is cleanest for my batch job tonight?"*
 > *"How much carbon does this function emit, and what should I fix first?"*
@@ -100,9 +100,9 @@ python -m app.aws_cli xray trace          # Emit subsegment telemetry to AWS X-R
 
 ---
 
-## 💼 Verified Business Value, AWS Ecosystem Synergy & Unit Economics
+## Cloud Cost, Carbon Reduction, and Inference Economics
 
-GreenCode is engineered to turn software sustainability into measurable **Cloud FinOps ROI**, complementing the **AWS Well-Architected Sustainability Pillar**:
+GreenCode connects code-level energy analysis to cloud compute cost and carbon accounting:
 
 1. **Pre-Deployment Code & Pull Request Gatekeeping:**
    - Catches algorithmic energy bottlenecks ($\mathcal{O}(N^3)$ nested loops, N+1 queries, unbuffered I/O, missing `torch.no_grad()`, synchronous GPU-to-CPU transfers, unquantized `FP32` inference) inside GitHub Pull Requests before inefficient code reaches production.
@@ -110,12 +110,12 @@ GreenCode is engineered to turn software sustainability into measurable **Cloud 
    - [`app/ml_carbon.py`](app/ml_carbon.py), [`app/calibrated_energy.py`](app/calibrated_energy.py), and [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py) model workload energy and cost across **AWS Graviton4 (`c8g.2xlarge`, `r8g.2xlarge`)**, **AWS Inferentia2 (`inf2.xlarge` via AWS Neuron SDK — up to 50% better performance per watt)**, and **AWS Trainium1 (`trn1.2xlarge`)**, quantifying both Scope 2 $\text{kg CO}_2\text{e}$ reductions and EC2 dollar savings.
 3. **Regional Carbon & Spot Arbitrage Across 11 AWS Regions:**
    - Compares carbon intensity and compute rates across `eu-north-1` (Stockholm), `ca-central-1` (Montreal), `eu-west-1` (Ireland), `us-west-2` (Oregon), `eu-west-2` (London), `us-east-1` (N. Virginia), `eu-central-1` (Frankfurt), `us-east-2` (Ohio), `ap-northeast-1` (Tokyo), `ap-southeast-1` (Singapore), and `ap-south-1` (Mumbai).
-4. **High-Margin, Low-Token SaaS Architecture:**
+4. **Two-Stage Analysis & Verification Pipeline:**
    - **Stage 1 (Zero-Token Local AST Analysis):** Static code audits, SCI calculations, hardware energy counter reads, and regional grid comparisons run deterministically on CPU with **$0.00 LLM token cost**.
-   - **Stage 2 (Targeted Amazon Bedrock Refactoring):** Only flagged function snippets (~300–500 tokens) are sent to **Amazon Bedrock (`Claude 3.5 Haiku` / `Claude 3.5 Sonnet`)** via the Converse API, keeping LLM inference costs under **$0.005 per Pull Request** (**< $2–$6 per 1,000 AI refactorings**).
+   - **Stage 2 (Targeted Amazon Bedrock Refactoring):** Only flagged function snippets (~300–500 tokens) are sent to **Amazon Bedrock (`Claude 3.5 Haiku` / `Claude 3.5 Sonnet`)** via the Converse API, keeping LLM inference costs under **$0.005 per Pull Request** (**< $2–$6 per 1,000 refactorings**).
    - **Stage 3 (Behaviour-Preserving Verification Gate):** Every LLM-proposed rewrite must pass `compile()`, AST similarity checks, and 12-input execution equivalence testing ([`app/llm_refactor.py`](app/llm_refactor.py)) before acceptance.
 
-> ### ⚠️ Measurement honesty - read this first
+> ### Measurement provenance
 >
 > **Energy is reported in Joules, not Watt-hours.**
 >
@@ -145,7 +145,7 @@ GreenCode is engineered to turn software sustainability into measurable **Cloud 
 
 ---
 
-## 🏛️ System Architecture
+## Repository Structure
 
 ```
 greencode/
@@ -159,7 +159,7 @@ greencode/
 │   ├── dynamic_analysis.py # Sandboxed repo execution under measurement (Docker)
 │   ├── huggingface_client.py # HuggingFace Inference API client (classified errors)
 │   ├── llm_refactor.py     # LLM refactoring + behaviour-preserving verification gate
-│   ├── bedrock_client.py   # Amazon Bedrock (AWS Builder) - Converse API, Claude
+│   ├── bedrock_client.py   # Amazon Bedrock Converse API client
 │   ├── mcp_server.py       # Alexa+ self-hosted MCP server (Streamable HTTP)
 │   ├── audit_intel.py      # Deterministic root-cause grouping & remediation planning
 │   ├── optimizer.py        # Electricity Maps client + rule-based refactor engine
@@ -180,7 +180,7 @@ greencode/
 │   ├── measure_and_file_evidence.py # Measure real energy -> file evidence -> get a verdict
 │   └── demo_pipeline.py    # Live end-to-end demo of the whole pipeline
 ├── tests/
-│   ├── test_greencode.py   # Comprehensive unit test suite (AST, DB, Grid, Profiler, Refactoring)
+│   ├── test_greencode.py   # Unit test suite (AST, DB, Grid, Profiler, Refactoring)
 │   ├── test_energy.py      # Counter wrap-around, domain precedence, SCI arithmetic
 │   ├── test_energy_tracer.py # Function-level energy attribution
 │   ├── test_llm_refactor.py# Verification gate: what is allowed through, and what is not
@@ -189,15 +189,15 @@ greencode/
 │   ├── test_pipeline.py    # Verification verdicts, ledger integrity, intake security
 │   └── test_production_readiness.py # Fail-closed config guards, compose hygiene, CI wiring
 ├── alembic/                # Schema migrations (alembic upgrade head)
-├── frontend/               # React + Vite product UI, built by frontend/Dockerfile
-├── action.yml              # Native GitHub Action manifest for CI/CD blocker
-├── ui.py                   # Streamlit green dashboard with side-by-side diffs & SCI charts
-└── requirements.txt        # Pinned production dependency specifications
+├── frontend/               # React + Vite web UI, built by frontend/Dockerfile
+├── action.yml              # GitHub Action manifest for CI/CD blocker
+├── ui.py                   # Streamlit dashboard with side-by-side diffs & SCI charts
+└── requirements.txt        # Pinned dependency specifications
 ```
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Configure secrets (required)
 
@@ -252,7 +252,7 @@ ENV=development python -m app.main --path . --threshold 75
 
 ---
 
-## 🔋 Energy Measurement Tiers
+## Energy Measurement Tiers
 
 `select_meter()` picks the highest-fidelity tier the host actually supports.
 It never fabricates a reading, and returns `None` rather than a fake meter when
@@ -336,31 +336,31 @@ merely hidden from the container. Results are reported as `model` with
 outcome, not a bug.
 
 ---
-## ⚡ Green Software Foundation (GSF) Patterns Enforced
+## Green Software Foundation (GSF) Patterns Enforced
 
 1. **Deep Nested Iteration (`NESTED_LOOPS_DEPTH_3+`)**:
    - **Severity**: `HIGH` | **Deduction**: `-15 pts`
    - **Physics & Impact**: Loops with depth $\ge 3$ scale computational complexity to $\mathcal{O}(N^3)$, causing runaway CPU instruction cycles and elevated thermal design power (TDP) dissipation.
-   - **Eco-Remediation**: Flatten iterations using `itertools.product`, generator pipelines, or hash set/dict lookups.
+   - **Remediation**: Flatten iterations using `itertools.product`, generator pipelines, or hash set/dict lookups.
 
 2. **Unmanaged Database Cursors (`RAW_DB_CURSOR_NO_CONTEXT`)**:
    - **Severity**: `HIGH` | **Deduction**: `-10 pts`
    - **Physics & Impact**: Creating DB cursors without a `with` context manager risks persistent unclosed sockets, forcing database servers to sustain unnecessary idle power states.
-   - **Eco-Remediation**: Enclose cursor operations within `with connection.cursor() as cursor:`.
+   - **Remediation**: Enclose cursor operations within `with connection.cursor() as cursor:`.
 
 3. **Un-cached Network Requests Inside Loops (`UNCACHED_NETWORK_IN_LOOP`)**:
    - **Severity**: `CRITICAL` | **Deduction**: `-20 pts`
    - **Physics & Impact**: Synchronous HTTP calls inside iterations trigger repeated Radio / NIC transceiver wake-up energy and redundant TLS connection handshakes.
-   - **Eco-Remediation**: Batch requests into single bulk endpoints, hoist connections with `requests.Session()`, or apply `@lru_cache` memoization.
+   - **Remediation**: Batch requests into single bulk endpoints, hoist connections with `requests.Session()`, or apply `@lru_cache` memoization.
 
 4. **Quadratic String Concatenation (`QUADRATIC_STRING_CONCAT_IN_LOOP`)**:
    - **Severity**: `MEDIUM` | **Deduction**: `-8 pts`
    - **Physics & Impact**: Using `+` or `+=` string concatenation inside loops causes quadratic $\mathcal{O}(N^2)$ memory allocations and aggressive garbage collection thrashing.
-   - **Eco-Remediation**: Accumulate string elements into a list and invoke `''.join(chunks)`.
+   - **Remediation**: Accumulate string elements into a list and invoke `''.join(chunks)`.
 
 ---
 
-## 🌐 Multi-Language Static Analysis Engine (AST / Tree-sitter + Lexical Fallback)
+## Multi-Language Static Analysis Engine (AST / Tree-sitter + Lexical Fallback)
 
 GreenCode Auditor analyzes source files using a tiered parsing architecture ([`app/parser.py`](app/parser.py)):
 
@@ -394,16 +394,16 @@ GreenCode Auditor analyzes source files using a tiered parsing architecture ([`a
    Uses Python's built-in `ast` module for full structural analysis of Python code, and `tree-sitter-language-pack` grammars for major languages (JavaScript, TypeScript, C, C++, C#, Java, Go, Rust, Ruby, PHP, Scala, Bash, SQL).
 2. **Tier 2: Heuristic Lexical Scope & Block Analyzer (Fallback)**:
    For file extensions without an active Tree-sitter grammar (e.g., `.sol`, `.kt`, `.swift`, `.zig`, `.dart`), the parser falls back to a lexical bracket, indentation, and keyword-block (`begin/end`, `do/done`, `loop/end`) scanner to estimate loop nesting depth and flag uncached network/DB calls inside loops.
-3. **Graceful Polyglot Scanning**:
+3. **Polyglot Scanning**:
    Unrecognized text extensions in multi-language repositories are scanned with Tier 2 lexical heuristics rather than crashing the repository audit.
 4. **Embedded Code Block Extraction**:
    Extracts and scans embedded code blocks (such as `<script>` tags in HTML and fenced code blocks in Markdown).
 
 ---
 
-## 📐 Software Carbon Intensity (SCI) Mathematical Model
+## Software Carbon Intensity (SCI) Mathematical Model
 
-Operational carbon footprints are calculated in accordance with the official Green Software Foundation SCI Standard:
+Operational carbon footprints are calculated in accordance with the Green Software Foundation SCI Standard (ISO/IEC 21031:2024):
 
 $$SCI = \frac{(E \times I) + M}{R}$$
 
@@ -418,41 +418,7 @@ $$SCI = \frac{(E \times I) + M}{R}$$
 
 ---
 
-## 🚀 Quick Start Guide
-
-### 1. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Launch the Web UI or Streamlit Dashboard
-```bash
-# Start the FastAPI + React SPA Server (serves built frontend at http://localhost:8000)
-python -m app.main --serve --port 8000
-
-# Optional: Launch the Streamlit Voice & Analytics Dashboard
-streamlit run app/voice_ui.py
-```
-
-### 3. Execute the CI/CD Quality Gate Blocker
-Run in your local terminal or CI pipeline:
-```bash
-# Auditing heavy pipeline (exits with code 1 - build blocked)
-python -m app.main --path samples/heavy_pipeline.py --threshold 75 --ci
-
-# Auditing eco pipeline (exits with code 0 - build passed)
-python -m app.main --path samples/eco_pipeline.py --threshold 75 --ci
-```
-
-### 4. Run the Automated Test Suites
-```bash
-python -m pytest tests/test_alexa_compliance.py tests/test_amazon_integrations.py tests/test_billing.py -q
-python check_mcp_live.py
-```
-
----
-
-## 🤖 Refactoring: Deterministic Rules + Amazon Bedrock Verification Gate
+## Refactoring: Deterministic Rules + Amazon Bedrock Verification Gate
 
 GreenCode uses a verified refactoring pipeline ([`app/llm_refactor.py`](app/llm_refactor.py) & [`app/bedrock_client.py`](app/bedrock_client.py)):
 
@@ -474,31 +440,11 @@ If no LLM credentials are configured or if the LLM candidate fails any of the 4 
 
 ---
 
-## ⚡ Dynamic analysis: what the code actually costs
+## Dynamic Analysis
 
 Static analysis says a pattern *can* be expensive. Dynamic analysis measures
 what the program *did* cost. Both are shipped, and they are reported as
 distinct things.
-
-### Energy measurement (`app/energy_sensors.py`)
-
-A tiered set of backends, each reporting which one produced the number:
-
-| Backend | Source | Fidelity |
-| :--- | :--- | :--- |
-| `rapl` | `/sys/class/powercap/intel-rapl:*/energy_uj` (Linux, Intel/AMD) | Millijoule-accurate hardware counter |
-| `perf` | `perf stat -e power/energy-pkg/` | Same PMU counters via perf |
-| `battery` | `/sys/class/power_supply` / Win32_Battery | Whole-system discharge rate |
-| `model` | TDP + load curve | **Estimate, not measurement** |
-
-RAPL details that are easy to get wrong and are handled explicitly:
-counter **wrap-around** (a naive `end - start` goes sharply negative once a
-workload crosses the wrap point) and **domain precedence** (`core` is a subset of
-`package`; adding both double-counts).
-
-The result is never presented as measured when it isn't — `measurement_method`
-and `measurement_is_hardware` are in every payload, and modelled figures carry
-an explicit warning.
 
 ### Function-level attribution (`app/energy_tracer.py`)
 
@@ -518,41 +464,28 @@ timeout. **Host-level execution of untrusted code is deliberately not offered as
 a fallback** — a denylist of dangerous calls is bypassed trivially. Without
 Docker the endpoint returns `sandbox_unavailable` and no numbers.
 
-### SCI (`app/sci.py`)
+---
 
-Implements the Green Software Foundation formula exactly:
+## Badges, Equivalencies, and Disclosure Reports
 
-```
-SCI = (E × I + M) / R
-```
+1. **SVG GitHub README Badges**:
+   - Generates SVG badges in Shields.io format at `/api/badge/score/{score}` and `/api/badge/repo/{repo_id}`.
+   - Markdown and HTML snippets are provided in the dashboard to display repository Green Scores on GitHub.
 
-`E` energy (kWh), `I` carbon intensity (gCO2e/kWh), `M` embodied emissions,
-`R` the **functional unit**. `R` is mandatory: a figure without it is a total,
-not an intensity, and comparing a once-per-deploy build to a once-per-second
-service is meaningless. The API warns when `R` is left at 1.
+2. **EPA Equivalency Calculator**:
+   - Translates Joules (and derived Watt-hours, $J / 3600$) into everyday equivalencies using United States Environmental Protection Agency (EPA) factors:
+     - **Urban Trees Preserved**: $21.77\text{ kg CO}_2\text{/tree/year}$
+     - **Smartphones Charged**: $8.22\text{ Wh/charge}$
+     - **Cloud Compute Savings**: AWS EC2 (`Graviton4`, `Inferentia2`, `Trainium1`) compute and cooling billing reduction.
+   - Includes a simulation slider scaling from 1,000 to 1,000,000 monthly runs.
+
+3. **ESG & SCI Carbon Disclosure Export**:
+   - Generates HTML, CSV, and JSON Carbon Audit Disclosure Reports aligned with **Green Software Foundation (GSF) SCI v1.0**, **GHG Protocol Scope 2/3**, and **EU CSRD (ESRS E1) / US SEC** reporting structures.
+   - Includes SHA-256 verification checksums, grade stamps, metric breakdowns, and print CSS for PDF export.
 
 ---
 
-## 🌟 Flagship Carbon Intelligence Features
-
-1. **🏷️ Dynamic SVG GitHub README Badges**:
-   - Generates pixel-perfect, vector SVG badges in Shields.io format at `/api/badge/score/{score}` and `/api/badge/repo/{repo_id}`.
-   - Ready-to-embed Markdown and HTML snippets provided directly in the dashboard for repositories to display their Green Score globally on GitHub.
-
-2. **🌍 Tangible Real-World Environmental Impact Calculator**:
-   - Translates Joules (and the derived Watt-hours, J/3600) into tangible everyday equivalencies using United States Environmental Protection Agency (EPA) standards:
-     - 🌳 **Urban Trees Preserved**: $21.77\text{ kg CO}_2\text{/tree/year}$
-     - 📱 **Smartphones Charged**: $8.22\text{ Wh/charge}$
-     - 💵 **Cloud Hosting Costs Saved**: AWS EC2 (`Graviton4`, `Inferentia2`, `Trainium1`) compute & cooling billing reduction.
-   - Includes interactive simulation slider scaling from 1,000 to 1,000,000 monthly transactions.
-
-3. **📜 Audit-Ready ESG & SCI Carbon Disclosure Export**:
-   - Generates an exportable HTML & JSON Carbon Audit Disclosure Report aligned with **Green Software Foundation (GSF) SCI v1.0**, **GHG Protocol Scope 2/3**, and **EU CSRD (ESRS E1) / US SEC** reporting structures.
-   - Features SHA-256 cryptographic verification checksum, grade stamp, detailed metric breakdown, and built-in print CSS for 1-click PDF export (`Ctrl+P`).
-
----
-
-## 🛠️ GitHub Actions Integration
+## GitHub Actions Integration
 
 Add GreenCode Auditor to `.github/workflows/greencode.yml`:
 
@@ -575,7 +508,7 @@ jobs:
 ```
 ---
 
-## 🔬 Reality Verification Pipeline — *"did it actually work?"*
+## Reality Verification Pipeline
 
 Static analysis tells you a pattern is expensive. It does not tell you whether
 your fix delivered. This pipeline closes that loop: it files your **claim**
@@ -784,15 +717,15 @@ to paper over.
 
 ---
 
-## 🛡️ License, Anti-Plagiarism Protection (`NOTICE`), & Contributions
+## License, Attribution (`NOTICE`), and Contributions
 
 - **Original Author & Copyright Holder:** Copyright (c) 2026 **Zeenat ([@zeenat28-ui](https://github.com/zeenat28-ui))**.
 - **License:** Distributed under the [Apache License 2.0](LICENSE) with mandatory attribution enforced via [`NOTICE`](NOTICE) (Section 4(c) & 4(d)).
-- **Anti-Plagiarism & Attribution Lock:** Any fork, redistribution, or derivative work must preserve both [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) attributing `@zeenat28-ui`. Removing copyright notices or claiming original authorship voids the license immediately.
-- **Contributing:** Community Pull Requests are welcome! Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). All PRs require automated CI/Security passage and Code Owner (`@zeenat28-ui`) approval.
+- **Attribution Requirement:** Any fork, redistribution, or derivative work must preserve both [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) attributing `@zeenat28-ui`. Removing copyright notices or claiming original authorship terminates license rights under Apache License 2.0.
+- **Contributing:** See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). All Pull Requests require automated CI passage and Code Owner (`@zeenat28-ui`) approval.
 
-## 💖 Funding & Sponsorship
+## Funding and Sponsorship
 
-GreenCode Auditor is open to community sponsorships, sustainability grants, and enterprise backing:
 - **Open Collective:** [`opencollective.com/greencode`](https://opencollective.com/greencode)
-- **GitHub Sponsor Button:** Click the **Sponsor** button at the top of [`github.com/zeenat28-ui/greencode`](https://github.com/zeenat28-ui/greencode) (powered by [`.github/FUNDING.yml`](.github/FUNDING.yml)) or visit [`github.com/sponsors/zeenat28-ui`](https://github.com/sponsors/zeenat28-ui).
+- **GitHub Sponsors:** [`github.com/sponsors/zeenat28-ui`](https://github.com/sponsors/zeenat28-ui) (configured in [`.github/FUNDING.yml`](.github/FUNDING.yml)).
+

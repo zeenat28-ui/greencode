@@ -1,94 +1,63 @@
-# Deploy the GreenCode MCP server to Render (free, no card)
+# Deploying the GreenCode MCP Server to Render
 
-This gets the Alexa+ track a **stable public HTTPS URL** that stays live through
-the judging window (9–20 Nov). A `trycloudflare` quick tunnel dies the moment
-your laptop sleeps; a Render web service does not — provided you keep it awake
-(step 4).
-
-No credit card is required for the free instance type.
+This guide deploys the GreenCode MCP server (`app/mcp_server.py`) to a persistent HTTPS endpoint on Render using `render.yaml` and `deploy/mcp/Dockerfile.mcp`.
 
 ---
 
-## 0. Why a separate slim image
+## 0. Why a Separate MCP Image
 
-The root `Dockerfile` builds the whole product (FastAPI + Streamlit) and installs
-Node, a JRE, Go, gcc and every dependency. It does not fit comfortably on a
-512 MB free instance.
-
-`deploy/mcp/Dockerfile.mcp` builds **only** the Alexa+ MCP surface:
+The root `Dockerfile` builds the full application stack (FastAPI + Streamlit + multi-language toolchains). `deploy/mcp/Dockerfile.mcp` builds only the MCP server and static analysis engine (~338 MB image), allowing it to run comfortably on a 512 MB instance:
 
 ```
 python:3.12-slim  ->  pip install deploy/mcp/requirements-mcp.txt  ->  copy app/ + alexa/
 ```
 
-It is verified: the image builds to **~338 MB** and the container passes every
-Alexa+ checklist item locally:
-
 | Check | Result |
 |---|---|
-| `/mcp` with no token | `401` with **no** `WWW-Authenticate` header |
+| `/mcp` with no token | `401` with no `WWW-Authenticate` header |
 | `/.well-known/oauth-protected-resource` (RFC 9728) | `200`, `resource` ends `/mcp` |
 | `/privacy`, `/terms` | `200` |
-| `tools/list` over Streamable HTTP | returns all **9** tools |
+| `tools/list` over Streamable HTTP | returns all 9 tools |
 | MCP protocol version | `2026-07-28` (min required `2025-11-25`) |
 
-## 1. Push this repo
+## 1. Push the Repository
 
 ```bash
 git add deploy/ render.yaml
-git commit -m "feat(deploy): slim MCP image + Render blueprint for stable Alexa+ URL"
+git commit -m "feat(deploy): slim MCP image and Render blueprint"
 git push origin main
 ```
 
-Render deploys from GitHub, so the deploy files must be on `origin` first.
+## 2. Create the Blueprint Service
 
-## 2. Create the service (Blueprint)
+1. Open Render Dashboard -> **New** -> **Blueprint**.
+2. Connect the `zeenat28-ui/greencode` repository. Render reads `render.yaml` and provisions `greencode-mcp`.
+3. Click **Create Blueprint Service**.
 
-1. Render Dashboard → **New** → **Blueprint**.
-2. Connect the `zeenat28-ui/greencode` repo. Render reads `render.yaml` and
-   proposes one service, `greencode-mcp`. **No credit card is required.**
-3. **Create Blueprint Service**. The first build runs the slim Dockerfile.
+## 3. Environment Configuration
 
-## 3. Read back the values the checkers need
+After the first deployment completes:
 
-After the first deploy (Dashboard → `greencode-mcp`):
+- Copy the generated **`GREENCODE_MCP_TOKEN`** from the environment dashboard.
+- Confirm the service URL (e.g., `https://greencode-mcp.onrender.com`).
+- Ensure **`GREENCODE_MCP_ALLOWED_HOSTS`** matches the public hostname (without `https://`) so the MCP DNS-rebinding guard allows incoming requests.
 
-- **`GREENCODE_MCP_TOKEN`** was auto-generated. Copy it.
-- **Service URL** will be `https://greencode-mcp.onrender.com`.
+## 4. Preventing Cold Starts on Free Instances
 
-> If you later change the service name, update `GREENCODE_MCP_ALLOWED_HOSTS` in
-> the dashboard to the new host. If it does not match the public host, the MCP
-> SDK's DNS-rebinding guard answers the public URL with **421**.
+Render free instances spin down after ~15 minutes of inactivity. Configure an external HTTP `GET` monitor against `https://greencode-mcp.onrender.com/privacy` on a 10-minute interval to keep the worker warm and maintain `< 500 ms` MCP response times.
 
-## 4. Keep it awake (the one free-tier catch)
+## 5. Verify Live and Update `alexa/addon.json`
 
-Render free **web services spin down after ~15 minutes** of no traffic and take
-~1 minute to wake. During judging that cold start is a bad first impression, so
-point a free external pinger at the public `/privacy` page every 10 minutes:
-
-1. Go to **cron-job.org** (free, no card) → create a monitor.
-2. URL: `https://greencode-mcp.onrender.com/privacy`, method `GET`.
-3. Schedule: every **10 minutes**, 24×7.
-
-That keeps a single free instance warm. Keep it running until judging closes.
-
-## 5. Verify live, then update addon.json
-
-```bash
-# from a fresh clone, with the token from step 3
+```powershell
 $env:GREENCODE_MCP_TOKEN = "<token>"
 python vfy/verify_submission.py
 ```
 
-All tunnel checks should now hit Render instead of `trycloudflare`. When green:
+Once verified, update all domain references in `alexa/addon.json` to `https://greencode-mcp.onrender.com` and commit.
 
-1. Point `alexa/addon.json` URLs at `https://greencode-mcp.onrender.com` (the
-   verifier requires a **single** tunnel/host domain across all URLs).
-2. Commit and push — same flow you already used for the previous tunnel swap.
+## 6. Register Endpoint in Alexa+ Developer Console
 
-## 6. Register the production endpoint in Alexa+ Developer Console
-
-Configure `https://greencode-mcp.onrender.com` as the production MCP server URI in your Alexa+ Add-on manifest, and manage `GREENCODE_MCP_TOKEN` via the Render environment dashboard.
+Configure `https://greencode-mcp.onrender.com/mcp` as the MCP server URI in your Alexa+ Add-on manifest, and manage `GREENCODE_MCP_TOKEN` via the Render environment dashboard.
 
 ---
 
@@ -96,7 +65,7 @@ Configure `https://greencode-mcp.onrender.com` as the production MCP server URI 
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Public `/mcp` returns **421** | `GREENCODE_MCP_ALLOWED_HOSTS` ≠ public host | Set it to the service host in the dashboard |
-| First request slow (~1 min) | Free instance was asleep | Set up the cron-job.org pinger (step 4) |
-| Build fails on `tree-sitter` | no prebuilt wheel for this platform/arch | the slim image ships **no** compiler by design: `pip --prefer-binary` picks the cp312 manylinux wheel (it exists for x86_64). On an unusual arch, add a compiler stage instead of assuming `build-essential` is present |
-| `401` but judges expect tools | token missing | send `Authorization: Bearer $GREENCODE_MCP_TOKEN` |
+| Public `/mcp` returns `421` | `GREENCODE_MCP_ALLOWED_HOSTS` does not match public host | Set it to the service hostname in the Render dashboard |
+| First request takes ~60s | Free instance was idle | Configure a 10-minute health check against `/privacy` |
+| Build fails on `tree-sitter` | Missing prebuilt wheel for target architecture | Use `x86_64` Linux (`manylinux` wheels included for cp312) or add a compiler build stage |
+| `/mcp` returns `401` | Bearer token missing | Send `Authorization: Bearer $GREENCODE_MCP_TOKEN` |

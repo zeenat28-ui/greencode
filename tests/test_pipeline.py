@@ -1,4 +1,4 @@
-﻿"""Test suite for the GreenCode Reality Verification Pipeline.
+"""Test suite for the GreenCode Reality Verification Pipeline.
 
 Covers the four things the pipeline promises, and the one thing it must refuse
 to do:
@@ -104,7 +104,7 @@ class TestVerifierLogic(unittest.TestCase):
         Regression guard. `scaphandre` was missing from the verifier's hardware
         set, so a genuine RAPL reading relayed over the Prometheus sidecar - the
         exact deployment the README recommends for Docker-on-Linux - was silently
-        downgraded to UNVERIFIED. The tool could not confirm its own flagship
+        downgraded to UNVERIFIED. The tool could not confirm its own primary
         measurement path.
         """
         for method in sorted(HARDWARE_METHODS):

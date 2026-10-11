@@ -1,7 +1,7 @@
 """Voice web cockpit driving the GreenCode engine end-to-end.
 
 Streamlit page. The agent answers carbon-audit questions and surfaces the
-"explain this score" provenance view the Alexa+ MCP track is judged on.
+"explain this score" provenance breakdown.
 Run:  streamlit run app/voice_ui.py
 
 Every answer uses the same engine the self-hosted MCP server exposes over
@@ -41,7 +41,7 @@ STYLE = """
   .kpi .v { font-size:1.25rem; font-weight:700; color:#232f3e; }
 </style>
 """
-st.set_page_config(page_title="GreenCode — Voice", page_icon="✅", layout="wide")
+st.set_page_config(page_title="GreenCode — Voice", layout="wide")
 st.markdown(STYLE, unsafe_allow_html=True)
 
 if "dialogue" not in st.session_state:

@@ -46,11 +46,11 @@ const AMAZON_TECH_STACK: TechItem[] = [
     status: 'Schema 1.0 Compliant',
   },
   {
-    name: 'AWS EC2 FinOps Rightsizing Engine',
-    category: 'Compute & Cloud Financial Optimization',
+    name: 'AWS EC2 Cost & Carbon Rightsizing',
+    category: 'Compute & Cloud Cost Optimization',
     role: 'Calculates infrastructure savings across AWS Graviton (m6g), Compute-Optimized (c6i), and GPU AI (g5) workloads.',
     codeLocation: 'frontend/src/components/common/FinOpsCalculatorModal.tsx',
-    status: 'Enterprise ROI Active',
+    status: 'Cost Calculator Active',
   },
 ];
 
@@ -74,13 +74,13 @@ export default function AmazonTechStackModal({
             </div>
             <div>
               <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-                Amazon &amp; AWS Ecosystem Architecture
+                Amazon &amp; AWS Integration Architecture
                 <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-mono">
-                  100% Amazon Qualified
+                  Verified
                 </span>
               </h3>
               <p className="text-[11px] text-slate-400">
-                Full documentation of Amazon products, services, and APIs powering GreenCode
+                Documentation of Amazon products, services, and APIs integrated with GreenCode
               </p>
             </div>
           </div>
@@ -93,14 +93,14 @@ export default function AmazonTechStackModal({
         </div>
 
         <div className="p-6 space-y-6 text-slate-800 max-h-[82vh] overflow-y-auto">
-          {/* Enterprise Architecture Executive Summary */}
+          {/* Architecture Summary */}
           <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50/70 via-orange-50/50 to-white border border-amber-200/90 space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-amber-950 uppercase tracking-wider">
               <ShieldCheck size={16} className="text-[#FF9900]" />
-              Enterprise Amazon &amp; AWS Architecture Summary
+              Amazon &amp; AWS Architecture Summary
             </div>
             <p className="text-xs text-slate-700 leading-relaxed">
-              GreenCode is deeply built upon the <strong>Amazon ecosystem</strong>. It pairs <strong>Amazon Alexa+ (via the Model Context Protocol / MCP)</strong> with <strong>Amazon Bedrock (Claude 3.5 Sonnet)</strong> to deliver hands-free code auditing, automated AST refactoring, and AWS cloud carbon arbitrage.
+              GreenCode integrates <strong>Amazon Alexa+ (via the Model Context Protocol / MCP)</strong> with <strong>Amazon Bedrock (Claude 3.5 Sonnet)</strong> and <strong>AWS regional telemetry</strong> for voice-driven code auditing, verified AST refactoring, and cloud carbon comparison.
             </p>
           </div>
 

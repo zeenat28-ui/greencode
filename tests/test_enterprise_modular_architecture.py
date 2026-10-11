@@ -184,7 +184,7 @@ def test_pr_gate_modular_routes(client):
     assert res_pr.status_code == 200
     data = res_pr.json()
     assert data["verdict"] == "APPROVED"
-    assert "🟢 PASSED - GREEN VERIFIED" in data["pr_markdown_comment"]
+    assert "PASSED - GREEN VERIFIED" in data["pr_markdown_comment"]
 
 
 def test_admin_modular_routes(client):

@@ -1,12 +1,154 @@
-
 # GreenCode Auditor
 
+[![Version](https://img.shields.io/badge/release-v2.0.0-0ea5e9)](pyproject.toml)
 [![CI Gatekeeper](https://img.shields.io/badge/CI%2FCD-Active%20Quality%20Gate-success)](action.yml)
-[![Green Computing](https://img.shields.io/badge/Standard-Green%20Software%20Foundation-brightgreen)](https://greensoftware.foundation)
-[![SCI Standard](https://img.shields.io/badge/Specification-SCI%20v1.0-blue)](https://greensoftware.foundation)
-[![Tests](https://img.shields.io/badge/tests-485%20passing-success)](tests/)
+[![SCI Standard](https://img.shields.io/badge/ISO%2FIEC%2021031-GSF%20SCI%20v1.0-brightgreen)](https://greensoftware.foundation)
+[![FinOps Standard](https://img.shields.io/badge/FinOps-FOCUS%201.4-2563eb)](app/finops_focus.py)
+[![SARIF](https://img.shields.io/badge/OASIS-SARIF%20v2.1.0-7c3aed)](app/sarif.py)
+[![Typed](https://img.shields.io/badge/PEP%20561-py.typed-3776ab)](app/py.typed)
+[![Tests](https://img.shields.io/badge/tests-515%2B%20passing-success)](tests/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-Open%20Collective-ea4aaa?logo=opencollective)](https://opencollective.com/greencode)
+
+**GreenCode Auditor** is a static source-code and Infrastructure-as-Code (IaC) energy analyzer, physical hardware power profiler (`Intel/AMD RAPL`, `Scaphandre`, `perf`, `Kepler`), FinOps `FOCUS 1.4` cloud billing reconciler, and ISO/IEC 21031 (Green Software Foundation SCI v1.0) CI/CD quality gate with native **Amazon Alexa+ (MCP)**, **Amazon Bedrock**, and **AWS Custom Silicon (`Graviton4`, `Inferentia2`, `Trainium1`)** integration.
+
+---
+
+## Table of Contents
+
+1. [Developer Quickstart & Ecosystem Integration (SDK, CLI, Pre-Commit, CI/CD, Plugins)](#developer-quickstart--ecosystem-integration)
+2. [Amazon Alexa+, Amazon Bedrock, and AWS Custom Silicon Integration](#amazon-alexa-bedrock-and-aws-integration)
+3. [Enterprise GreenOps & FinOps Standards Suite](#enterprise-greenops--finops-standards-suite)
+4. [Why GreenCode Exists & Component Architecture](#why-greencode-exists-and-component-use-cases)
+5. [Cloud Cost, Carbon Reduction, and Inference Economics](#cloud-cost-carbon-reduction-and-inference-economics)
+6. [Repository Structure](#repository-structure)
+7. [Self-Hosted Platform Deployment (Docker Compose & Local Dev)](#self-hosted-platform-deployment)
+8. [Energy Measurement Tiers & Grid Provenance](#energy-measurement-tiers)
+9. [Multi-Language Static Analysis Engine & GSF Rules](#multi-language-static-analysis-engine-ast--tree-sitter--lexical-fallback)
+10. [Software Carbon Intensity (SCI) Mathematical Model](#software-carbon-intensity-sci-mathematical-model)
+11. [Refactoring Engine & 4-Stage Verification Gate](#refactoring-deterministic-rules--amazon-bedrock-verification-gate)
+12. [Dynamic Analysis & Reality Verification Pipeline](#reality-verification-pipeline)
+13. [License, Attribution (`NOTICE`), and Commercial Tiers](#license-attribution-notice-and-contributions)
+
+---
+
+## Developer Quickstart & Ecosystem Integration
+
+GreenCode is architected to be embedded directly into existing Python applications, local git workflows, CI/CD pipelines, and enterprise observability stacks.
+
+### 1. Install (`pip` / Modular Extras)
+
+```bash
+# Core static analyzer, SDK, CLI, SARIF/SonarQube exporter, IaC linter, and FOCUS 1.4 reconciler
+pip install -e .
+
+# With optional enterprise extras (AWS Bedrock/boto3, Alexa+ MCP server, 13-language Tree-sitter, Celery/Redis)
+pip install -e ".[aws,mcp,treesitter,distributed]"
+```
+
+### 2. Python SDK (`GreenCodeSDK`) & `@track_energy` Profiler ([`app/sdk.py`](app/sdk.py))
+
+Import `GreenCodeSDK` or the `@track_energy` decorator/context-manager in any Python project (ships with PEP 561 [`app/py.typed`](app/py.typed) support for `mypy`, `pyright`, and IDE autocomplete):
+
+```python
+from app import GreenCodeSDK, track_energy
+
+sdk = GreenCodeSDK()
+
+# 1. Audit source code or Infrastructure-as-Code programmatically
+audit = sdk.audit_code("def compute(items):\n    return [x * 2 for x in items]\n", filename="service.py")
+iac = sdk.audit_iac('resource "aws_instance" "web" {\n  instance_type = "m5.2xlarge"\n}', filename="main.tf")
+
+# 2. Measure function execution energy (Joules), carbon (gCO2e), and SCI score
+with track_energy("batch_etl_job", region="eu-north-1") as meter:
+    total = sum(i * i for i in range(250_000))
+
+print(meter.result.to_dict())
+# {'label': 'batch_etl_job', 'energy_joules': ..., 'sci_g_co2e': ..., 'measurement_method': ...}
+```
+
+### 3. Pre-Commit Framework ([`.pre-commit-hooks.yaml`](.pre-commit-hooks.yaml))
+
+Block high-carbon code and unoptimized Terraform/Kubernetes/Dockerfile manifests before `git commit` by adding GreenCode to `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/zeenat28-ui/greencode
+    rev: v2.0.0
+    hooks:
+      - id: greencode-audit
+        args: ["--threshold", "80"]
+      - id: greencode-iac
+```
+
+### 4. Command-Line Interface (`greencode` / `python -m app.main`)
+
+```bash
+# Audit an entire repository and enforce a minimum Green Score gate
+greencode --path . --threshold 80.0
+
+# Audit only lines changed in a Pull Request (git diff delta gate)
+greencode --path . --diff origin/main...HEAD --threshold 80.0
+
+# Lint Infrastructure-as-Code (.tf, Kubernetes .yaml, Dockerfile) for FinOps & carbon waste
+greencode --iac main.tf
+
+# Reconcile a FinOps Foundation FOCUS 1.4 cloud billing CSV with Scope 2/3 carbon & SCI
+greencode --focus-csv billing_focus_1_4.csv
+```
+
+### 5. GitHub Actions (`action.yml`) & GitLab CI (`deploy/gitlab-ci-greencode.yml`)
+
+**GitHub Actions (with OASIS SARIF v2.1.0 Code Scanning upload):**
+
+```yaml
+name: GreenCode Carbon & FinOps Gate
+on: [push, pull_request]
+
+jobs:
+  greencode-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run GreenCode Quality Gate
+        uses: zeenat28-ui/greencode@main
+        with:
+          repo-path: "."
+          green-score-threshold: "80.0"
+          target-zone: "US-CAL-CISO"
+```
+
+**GitLab CI/CD ([`deploy/gitlab-ci-greencode.yml`](deploy/gitlab-ci-greencode.yml)):**
+Posts sticky Merge Request reviews with native GitLab `suggestion:-0+0` one-click commit blocks via `POST /api/pr-gate/gitlab/webhook`.
+
+### 6. Extensible Plugin Registry & Signed Webhooks ([`app/plugins.py`](app/plugins.py))
+
+Register custom static analyzers, subscribe to lifecycle events (`audit.completed`, `policy.violated`, `budget.exceeded`, `remediation.created`), or configure HMAC-SHA256 signed outbound webhooks (`X-GreenCode-Signature-256`):
+
+```python
+from app.plugins import plugin_registry
+
+def flag_print_debug(source_code: str, language: str, file_path: str) -> list[dict]:
+    if language == "python" and "print(" in source_code:
+        return [{"line_number": 1, "violation_type": "PLUGIN_STDOUT_DEBUG", "severity": "LOW", "deduction": 2.0}]
+    return []
+
+plugin_registry.register_analyzer("no-stdout-print", flag_print_debug, languages=["python"])
+plugin_registry.register_webhook(
+    name="ops-siem",
+    target_url="https://hooks.example.com/greencode",
+    events=["audit.completed", "policy.violated"],
+    secret="hmac-shared-secret",
+)
+```
+
+Third-party Python packages can also auto-register plugins via standard `pyproject.toml` entry points under `[project.entry-points."greencode.plugins"]`.
+
+---
 
 ## Amazon Alexa+, Bedrock, and AWS Integration
 
@@ -16,7 +158,7 @@ Static code analyzer, hardware energy profiler, and Software Carbon Intensity (I
 |---|---|---|
 | **Amazon Alexa+ & MCP Server** | Self-hosted **MCP Server** over Streamable HTTP (protocol `2025-11-25`+), RFC 9728 Protected Resource Metadata, RFC 8414 OAuth PKCE `S256`, and `< 500 ms` voice latency | [`app/mcp_server.py`](app/mcp_server.py) · [`alexa/addon.json`](alexa/addon.json) |
 | **Amazon Bedrock & AWS Silicon** | **Amazon Bedrock** (`bedrock-runtime` Converse API) refactoring engine + **AWS Custom Silicon** (`Graviton4 c8g`, `Inferentia2 inf2`, `Trainium1 trn1`) energy/cost profiler + **AWS SDK (`boto3`) CLI** (SSM Parameter Store, CloudWatch Logs, EventBridge, S3, X-Ray) | [`app/bedrock_client.py`](app/bedrock_client.py) · [`app/ml_carbon.py`](app/ml_carbon.py) · [`app/aws_cli.py`](app/aws_cli.py) |
-| **AWS Well-Architected Alignment** | Evaluates **AWS Well-Architected Sustainability Pillar** rules at the source-code and Pull Request layer (algorithmic efficiency, geographic workload placement, and hardware utilization) | [`app/sci.py`](app/sci.py) · [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py) |
+| **AWS Well-Architected Alignment** | Evaluates **AWS Well-Architected Sustainability Pillar** rules at the source-code, IaC, and Pull Request layer (algorithmic efficiency, geographic workload placement, and hardware utilization) | [`app/sci.py`](app/sci.py) · [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py) · [`app/iac_linter.py`](app/iac_linter.py) |
 
 ### Voice and MCP Queries
 
@@ -40,8 +182,14 @@ python -m app.mcp_server
 Point any MCP client at it — see [`mcp.example.json`](mcp.example.json):
 
 ```json
-{ "mcpServers": { "greencode": {
-    "type": "streamable-http", "url": "http://127.0.0.1:8765/mcp" } } }
+{
+  "mcpServers": {
+    "greencode": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8765/mcp"
+    }
+  }
+}
 ```
 
 Verify it end to end (boots the server and calls all tools & resources over a live socket):
@@ -101,6 +249,21 @@ python -m app.aws_cli xray trace          # Emit subsegment telemetry to AWS X-R
 
 ---
 
+## Enterprise GreenOps & FinOps Standards Suite
+
+GreenCode implements open industry standards across static security/quality reporting, cloud billing reconciliation, Infrastructure-as-Code linting, and carbon manifest generation:
+
+| Standard / Capability | Module & Endpoints | What It Delivers |
+|---|---|---|
+| **OASIS SARIF v2.1.0 with Auto-Fix (`fixes[]`) & SonarQube Generic Issue Import** | [`app/sarif.py`](app/sarif.py) · `POST /api/audit/sarif` · `POST /api/audit/sonarqube` | Exports static audit results with machine-applicable `fixes[].artifactChanges[].replacements[]` patches for GitHub Code Scanning Security Tab and SonarQube `sonar.externalIssuesReportPaths`. |
+| **Declarative YAML Custom Energy Rule Engine** | [`.greencode-rules.yaml`](.greencode-rules.yaml) · [`app/custom_rules.py`](app/custom_rules.py) · `GET /api/policies/custom-rules` · `POST /api/policies/custom-rules/evaluate` | Enables engineering organizations to define custom regex/AST energy and FinOps rules in `.greencode-rules.yaml` with zero-backtracking evaluation and severity/SCI deductions. |
+| **Infrastructure-as-Code (`IaC`) FinOps & Carbon Linter** | [`app/iac_linter.py`](app/iac_linter.py) · `POST /api/kubernetes/iac-audit` | Statically audits **Terraform (`.tf`)**, **Kubernetes (`.yaml`)**, and **`Dockerfile`** manifests for x86-to-ARM64 (`Graviton4 c8g/r8g`) migration opportunities, legacy `gp2` to `gp3` EBS volumes, missing K8s CPU/memory requests, and bloated container base images. |
+| **FinOps Foundation `FOCUS 1.4` Billing & Carbon Reconciler** | [`app/finops_focus.py`](app/finops_focus.py) · `POST /api/billing/focus-reconcile` · `GET /api/billing/focus-sample` | Ingests multi-cloud billing exports (AWS Cost & Usage Report, Azure Cost Management, GCP Billing) in **FinOps FOCUS 1.4** format (`BilledCost`, `EffectiveCost`, `RegionId`, `ServiceName`, `ConsumedQuantity`) and reconciles dollar spend with regional Scope 2/3 $\text{kg CO}_2\text{e}$, SCI scores, and Graviton/Spot savings recommendations. |
+| **GitLab Merge Request Carbon Gate Bot** | [`app/gitlab_client.py`](app/gitlab_client.py) · [`deploy/gitlab-ci-greencode.yml`](deploy/gitlab-ci-greencode.yml) · `POST /api/pr-gate/gitlab/webhook` | Evaluates GitLab Merge Requests and posts sticky review comments with native GitLab `suggestion:-0+0` inline one-click patch blocks. |
+| **Green Software Foundation Impact Framework (`.imp.yaml`) Exporter** | [`app/sci.py`](app/sci.py) · `POST /api/reports/gsf-impact-manifest` | Exports verifiable `.imp.yaml` manifests compatible with the Green Software Foundation Impact Framework (`if-run`), including hardware TDP, PUE (`1.15`), grid carbon intensity, embodied carbon, and SCI pipeline tree outputs. |
+
+---
+
 ## Why GreenCode Exists and Component Use Cases
 
 ### What Problems GreenCode Solves
@@ -117,9 +280,9 @@ python -m app.aws_cli xray trace          # Emit subsegment telemetry to AWS X-R
 | **Amazon Bedrock Converse API** ([`app/bedrock_client.py`](app/bedrock_client.py), [`app/llm_refactor.py`](app/llm_refactor.py)) | Calls `bedrock-runtime` (`converse` API with `Claude 3.5 Haiku` / `Claude 3.5 Sonnet`) only on AST-flagged code snippets (`~300–500` tokens) and validates every candidate rewrite through a 4-stage execution equivalence gate. | Rewrites complex algorithmic bottlenecks into lower-energy equivalents at `< $0.005` per Pull Request while guaranteeing that the refactored function produces identical outputs across 12 test probe inputs. |
 | **AWS Custom Silicon Profiler** ([`app/ml_carbon.py`](app/ml_carbon.py), [`app/calibrated_energy.py`](app/calibrated_energy.py), [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py)) | Models compute wattage, PUE overhead, Scope 2 $\text{kg CO}_2\text{e}$, and hourly EC2 pricing across x86/GPU instances versus **AWS Graviton4 (`c8g`, `r8g`)**, **AWS Inferentia2 (`inf2` via AWS Neuron SDK)**, and **AWS Trainium1 (`trn1`)**. | Gives engineering teams concrete pre-migration numbers showing how much power (Watt-hours), carbon ($\text{kg CO}_2\text{e}$), and monthly EC2 spend they will save by moving workloads to ARM64 or AWS Neuron accelerators. |
 | **AWS Operations CLI** ([`app/aws_cli.py`](app/aws_cli.py)) | Integrates with **AWS SSM Parameter Store**, **Amazon CloudWatch Logs**, **Amazon EventBridge**, **Amazon S3**, and **AWS X-Ray** using `boto3`. | Automates operational tasks: registering MCP endpoints in SSM, tailing audit logs from CloudWatch, scheduling recurring repository audits in EventBridge, archiving signed audit reports in S3, and emitting latency traces to X-Ray. |
-| **Multi-Language AST & Tree-sitter Engine** ([`app/parser.py`](app/parser.py)) | Scans 13+ languages (Python `ast`, JavaScript, TypeScript, Go, Rust, Java, C, C++, C#, Ruby, PHP, Bash, SQL) plus lexical fallback to detect 15 Green Software Foundation (GSF) anti-patterns. | Runs locally on CPU in milliseconds with `$0.00` LLM token cost, catching inefficient loops, unbuffered I/O, redundant allocations, and ML anti-patterns on every commit or IDE save. |
+| **Multi-Language AST & Tree-sitter Engine** ([`app/parser.py`](app/parser.py)) | Scans 13+ languages (Python `ast`, JavaScript, TypeScript, Go, Rust, Java, C, C++, C#, Ruby, PHP, Bash, SQL) plus lexical fallback to detect 15 Green Software Foundation (GSF) anti-patterns and custom `.greencode-rules.yaml` rules. | Runs locally on CPU in milliseconds with `$0.00` LLM token cost, catching inefficient loops, unbuffered I/O, redundant allocations, and ML anti-patterns on every commit or IDE save. |
 | **Hardware Energy Sensors & Function Tracer** ([`app/energy_sensors.py`](app/energy_sensors.py), [`app/energy_tracer.py`](app/energy_tracer.py)) | Reads physical power counters on Linux (`Intel/AMD RAPL`, `Scaphandre`, `perf stat`, battery discharge) with 32-bit counter wrap-around handling and attributes Joules per function via `sys.settrace`. | Identifies the exact function consuming CPU/DRAM Joules during execution and prevents theoretical TDP estimates from ever being misreported as physical hardware measurements. |
-| **Pre-Deployment CI/CD Gate & Kubernetes Sentinel** ([`action.yml`](action.yml), [`app/energy_predictor.py`](app/energy_predictor.py), [`app/kubernetes_profiler.py`](app/kubernetes_profiler.py)) | Enforces Green Score thresholds in GitHub Actions Pull Requests, predicts energy impact before deployment, and monitors live Kubernetes pod power via Kepler/Scaphandre metrics. | Blocks energy-regressing Pull Requests before merge and automatically triggers `kubectl rollout undo` if a deployed microservice spikes `> 35%` above its baseline wattage. |
+| **Pre-Deployment CI/CD Gate & Kubernetes Sentinel** ([`action.yml`](action.yml), [`app/energy_predictor.py`](app/energy_predictor.py), [`app/kubernetes_profiler.py`](app/kubernetes_profiler.py)) | Enforces Green Score thresholds in GitHub Actions and GitLab CI Merge Requests, predicts energy impact before deployment, and monitors live Kubernetes pod power via Kepler/Scaphandre metrics. | Blocks energy-regressing Pull Requests before merge and automatically triggers `kubectl rollout undo` if a deployed microservice spikes `> 35%` above its baseline wattage. |
 | **Reality Verification Pipeline & SCI Ledger** ([`app/pipeline/`](app/pipeline/), [`app/sci.py`](app/sci.py)) | Compares predicted savings (`CLAIM`) against HMAC-SHA256 signed hardware counter readings (`EVIDENCE`), records verdicts in a hash-chained ledger, and computes ISO/IEC 21031 (GSF SCI v1.0) scores. | Produces tamper-evident verification records (`VERIFIED` vs. `CONTRADICTED`) and exportable Scope 2/3 carbon disclosure reports for engineering audits and regulatory compliance. |
 
 ---
@@ -128,14 +291,14 @@ python -m app.aws_cli xray trace          # Emit subsegment telemetry to AWS X-R
 
 GreenCode connects code-level energy analysis to cloud compute cost and carbon accounting:
 
-1. **Pre-Deployment Code & Pull Request Gatekeeping:**
-   - Catches algorithmic energy bottlenecks ($\mathcal{O}(N^3)$ nested loops, N+1 queries, unbuffered I/O, missing `torch.no_grad()`, synchronous GPU-to-CPU transfers, unquantized `FP32` inference) inside GitHub Pull Requests before inefficient code reaches production.
+1. **Pre-Deployment Code, IaC & Pull Request Gatekeeping:**
+   - Catches algorithmic energy bottlenecks ($\mathcal{O}(N^3)$ nested loops, N+1 queries, unbuffered I/O, missing `torch.no_grad()`, synchronous GPU-to-CPU transfers, unquantized `FP32` inference) and unoptimized Terraform/Kubernetes resources before inefficient code reaches production.
 2. **AWS Custom Silicon Migration Advisor (`Graviton4`, `Inferentia2`, `Trainium1`):**
    - [`app/ml_carbon.py`](app/ml_carbon.py), [`app/calibrated_energy.py`](app/calibrated_energy.py), and [`app/cloud_cost_mapper.py`](app/cloud_cost_mapper.py) model workload energy and cost across **AWS Graviton4 (`c8g.2xlarge`, `r8g.2xlarge`)**, **AWS Inferentia2 (`inf2.xlarge` via AWS Neuron SDK — up to 50% better performance per watt)**, and **AWS Trainium1 (`trn1.2xlarge`)**, quantifying both Scope 2 $\text{kg CO}_2\text{e}$ reductions and EC2 dollar savings.
 3. **Regional Carbon & Spot Arbitrage Across 11 AWS Regions:**
    - Compares carbon intensity and compute rates across `eu-north-1` (Stockholm), `ca-central-1` (Montreal), `eu-west-1` (Ireland), `us-west-2` (Oregon), `eu-west-2` (London), `us-east-1` (N. Virginia), `eu-central-1` (Frankfurt), `us-east-2` (Ohio), `ap-northeast-1` (Tokyo), `ap-southeast-1` (Singapore), and `ap-south-1` (Mumbai).
 4. **Two-Stage Analysis & Verification Pipeline:**
-   - **Stage 1 (Zero-Token Local AST Analysis):** Static code audits, SCI calculations, hardware energy counter reads, and regional grid comparisons run deterministically on CPU with **$0.00 LLM token cost**.
+   - **Stage 1 (Zero-Token Local AST Analysis):** Static code audits, IaC linting, SCI calculations, hardware energy counter reads, and regional grid comparisons run deterministically on CPU with **$0.00 LLM token cost**.
    - **Stage 2 (Targeted Amazon Bedrock Refactoring):** Only flagged function snippets (~300–500 tokens) are sent to **Amazon Bedrock (`Claude 3.5 Haiku` / `Claude 3.5 Sonnet`)** via the Converse API, keeping LLM inference costs under **$0.005 per Pull Request** (**< $2–$6 per 1,000 refactorings**).
    - **Stage 3 (Behaviour-Preserving Verification Gate):** Every LLM-proposed rewrite must pass `compile()`, AST similarity checks, and 12-input execution equivalence testing ([`app/llm_refactor.py`](app/llm_refactor.py)) before acceptance.
 
@@ -166,7 +329,6 @@ GreenCode connects code-level energy analysis to cloud compute cost and carbon a
 > GSF SCI formula and reports provenance for every figure; certification is an
 > independent audit that has not been performed.
 
-
 ---
 
 ## Repository Structure
@@ -174,54 +336,63 @@ GreenCode connects code-level energy analysis to cloud compute cost and carbon a
 ```
 greencode/
 ├── app/
-│   ├── __init__.py         # Package initialization
-│   ├── main.py             # FastAPI backend server & CI/CD terminal CLI
-│   ├── parser.py           # AST Static Analysis Engine (GSF Patterns)
-│   ├── energy_sensors.py   # Hardware energy counters (RAPL / perf / battery) + TDP model
-│   ├── energy_tracer.py    # Per-function energy attribution via sys.settrace
-│   ├── sci.py              # Green Software Foundation SCI = (E x I + M) / R
-│   ├── dynamic_analysis.py # Sandboxed repo execution under measurement (Docker)
+│   ├── __init__.py           # Public package exports (GreenCodeSDK, track_energy, v2.0.0)
+│   ├── py.typed              # PEP 561 marker for static type checkers (mypy, pyright)
+│   ├── sdk.py                # Official Python SDK (GreenCodeSDK) & @track_energy profiler
+│   ├── plugins.py            # Extensible PluginRegistry & HMAC-SHA256 webhook dispatcher
+│   ├── main.py               # FastAPI backend server & unified CLI (--path, --diff, --iac, --focus-csv)
+│   ├── parser.py             # Multi-language AST/Tree-sitter static analysis engine
+│   ├── custom_rules.py       # Declarative YAML/JSON custom rule engine (.greencode-rules.yaml)
+│   ├── iac_linter.py         # Terraform (.tf), Kubernetes (.yaml), and Dockerfile FinOps/carbon linter
+│   ├── finops_focus.py       # FinOps Foundation FOCUS 1.4 cloud billing & carbon reconciler
+│   ├── sarif.py              # OASIS SARIF v2.1.0 (with fixes[]) & SonarQube Generic Issue exporter
+│   ├── gitlab_client.py      # GitLab API v4 Merge Request Carbon Gate & suggestion:-0+0 bot
+│   ├── energy_sensors.py     # Hardware energy counters (RAPL / Scaphandre / perf / battery) + TDP model
+│   ├── energy_tracer.py      # Per-function energy attribution via sys.settrace
+│   ├── sci.py                # ISO/IEC 21031 (GSF SCI v1.0) & GSF Impact Framework (.imp.yaml) exporter
+│   ├── dynamic_analysis.py   # Sandboxed repository execution under measurement (Docker)
+│   ├── bedrock_client.py     # Amazon Bedrock Converse API client
 │   ├── huggingface_client.py # HuggingFace Inference API client (classified errors)
-│   ├── llm_refactor.py     # LLM refactoring + behaviour-preserving verification gate
-│   ├── bedrock_client.py   # Amazon Bedrock Converse API client
-│   ├── mcp_server.py       # Alexa+ self-hosted MCP server (Streamable HTTP)
-│   ├── audit_intel.py      # Deterministic root-cause grouping & remediation planning
-│   ├── optimizer.py        # Electricity Maps client + rule-based refactor engine
-│   ├── database.py         # SQLite + SQLAlchemy historic ledger & metrics persistence
-│   └── pipeline/           # Reality Verification Pipeline (claim vs. real hardware)
-│       ├── config.py       # Environment-driven policy, channels, prod safety checks
-│       ├── signing.py      # HMAC authentication + replay rejection for evidence
-│       ├── verifier.py     # Claim/evidence comparison -> VERIFIED..CONTRADICTED
-│       ├── ledger.py       # Hash-chained, tamper-evident decision records
-│       ├── notifier.py     # Slack / Teams / email delivery of verdicts
-│       ├── engine.py       # Orchestrator: idempotent intake, verify, record
-│       ├── n8n.py          # Generator for the importable n8n workflow
+│   ├── llm_refactor.py       # LLM refactoring + 4-stage behaviour-preserving verification gate
+│   ├── mcp_server.py         # Alexa+ self-hosted MCP server (Streamable HTTP, RFC 9728 / PKCE S256)
+│   ├── aws_cli.py            # AWS operations CLI (SSM, CloudWatch, EventBridge, S3, X-Ray)
+│   ├── ml_carbon.py          # AI/ML carbon & AWS Graviton4 / Inferentia2 / Trainium1 advisor
+│   ├── audit_intel.py        # Deterministic root-cause grouping & remediation planning
+│   ├── optimizer.py          # Grid carbon intensity client + rule-based refactor engine
+│   ├── database.py           # SQLAlchemy historic ledger & metrics persistence
+│   ├── audit/                # Modular FastAPI routers for code audit, SARIF, SonarQube, and plugins
+│   ├── kubernetes/           # Modular FastAPI routers for K8s pod sentinel and IaC linting
+│   ├── routers/              # Modular FastAPI routers (policies, budgets, billing, reports, pr_gate)
+│   └── pipeline/             # Reality Verification Pipeline (claim vs. real hardware)
+│       ├── config.py         # Environment-driven policy, channels, prod safety checks
+│       ├── signing.py        # HMAC authentication + replay rejection for evidence
+│       ├── verifier.py       # Claim/evidence comparison -> VERIFIED..CONTRADICTED
+│       ├── ledger.py         # Hash-chained, tamper-evident decision records
+│       ├── notifier.py       # Slack / Teams / email delivery of verdicts
+│       ├── engine.py         # Orchestrator: idempotent intake, verify, record
+│       ├── n8n.py            # Generator for the importable n8n workflow
 │       └── n8n_workflow.json
+├── frontend/                 # React 18 + TypeScript + Vite web console
+├── deploy/
+│   ├── helm/greencode/       # Kubernetes Helm chart
+│   └── gitlab-ci-greencode.yml # GitLab CI/CD Merge Request Carbon Gate template
 ├── samples/
-│   ├── heavy_pipeline.py   # Benchmark script exhibiting all 4 GSF anti-patterns (Score: 47/100)
-│   └── eco_pipeline.py     # Refactored script free of the four GSF anti-patterns
+│   ├── heavy_pipeline.py     # Benchmark script exhibiting 4 GSF anti-patterns
+│   └── eco_pipeline.py       # Refactored script free of GSF anti-patterns
 ├── scripts/
 │   ├── measure_and_file_evidence.py # Measure real energy -> file evidence -> get a verdict
-│   └── demo_pipeline.py    # Live end-to-end demo of the whole pipeline
-├── tests/
-│   ├── test_greencode.py   # Unit test suite (AST, DB, Grid, Profiler, Refactoring)
-│   ├── test_energy.py      # Counter wrap-around, domain precedence, SCI arithmetic
-│   ├── test_energy_tracer.py # Function-level energy attribution
-│   ├── test_llm_refactor.py# Verification gate: what is allowed through, and what is not
-│   ├── test_dynamic_analysis.py # Sandbox posture, archive safety, entry-point discovery
-│   ├── test_api.py         # FastAPI REST endpoint integration tests
-│   ├── test_pipeline.py    # Verification verdicts, ledger integrity, intake security
-│   └── test_production_readiness.py # Fail-closed config guards, compose hygiene, CI wiring
-├── alembic/                # Schema migrations (alembic upgrade head)
-├── frontend/               # React + Vite web UI, built by frontend/Dockerfile
-├── action.yml              # GitHub Action manifest for CI/CD blocker
-├── ui.py                   # Streamlit dashboard with side-by-side diffs & SCI charts
-└── requirements.txt        # Pinned dependency specifications
+│   └── demo_pipeline.py      # Live end-to-end demo of the verification pipeline
+├── tests/                    # 515+ automated unit, integration, compliance, and SDK tests
+├── .greencode-rules.yaml     # Declarative organization custom energy & FinOps rules
+├── .pre-commit-hooks.yaml    # Official pre-commit hook definitions (greencode-audit, greencode-iac)
+├── action.yml                # GitHub Action manifest for CI/CD Pull Request gating
+├── pyproject.toml            # PEP 621 package metadata, CLI entrypoints, and modular extras
+└── requirements.txt          # Pinned dependency specifications
 ```
 
 ---
 
-## Quick Start
+## Self-Hosted Platform Deployment
 
 ### 1. Configure secrets (required)
 
@@ -270,7 +441,7 @@ the `security` block names the exact configuration fault.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/          # 485 tests
+python -m pytest tests/          # 515+ tests
 ENV=development python -m app.main --path . --threshold 75
 ```
 
@@ -360,6 +531,7 @@ merely hidden from the container. Results are reported as `model` with
 outcome, not a bug.
 
 ---
+
 ## Green Software Foundation (GSF) Patterns Enforced
 
 1. **Deep Nested Iteration (`NESTED_LOOPS_DEPTH_3+`)**:
@@ -418,8 +590,8 @@ GreenCode Auditor analyzes source files using a tiered parsing architecture ([`a
    Uses Python's built-in `ast` module for full structural analysis of Python code, and `tree-sitter-language-pack` grammars for major languages (JavaScript, TypeScript, C, C++, C#, Java, Go, Rust, Ruby, PHP, Scala, Bash, SQL).
 2. **Tier 2: Heuristic Lexical Scope & Block Analyzer (Fallback)**:
    For file extensions without an active Tree-sitter grammar (e.g., `.sol`, `.kt`, `.swift`, `.zig`, `.dart`), the parser falls back to a lexical bracket, indentation, and keyword-block (`begin/end`, `do/done`, `loop/end`) scanner to estimate loop nesting depth and flag uncached network/DB calls inside loops.
-3. **Polyglot Scanning**:
-   Unrecognized text extensions in multi-language repositories are scanned with Tier 2 lexical heuristics rather than crashing the repository audit.
+3. **Declarative Custom Rule Evaluation (`.greencode-rules.yaml`)**:
+   Evaluates organization-defined rules from [`.greencode-rules.yaml`](.greencode-rules.yaml) alongside built-in AST rules.
 4. **Embedded Code Block Extraction**:
    Extracts and scans embedded code blocks (such as `<script>` tags in HTML and fenced code blocks in Markdown).
 
@@ -503,33 +675,10 @@ Docker the endpoint returns `sandbox_unavailable` and no numbers.
      - **Cloud Compute Savings**: AWS EC2 (`Graviton4`, `Inferentia2`, `Trainium1`) compute and cooling billing reduction.
    - Includes a simulation slider scaling from 1,000 to 1,000,000 monthly runs.
 
-3. **ESG & SCI Carbon Disclosure Export**:
-   - Generates HTML, CSV, and JSON Carbon Audit Disclosure Reports aligned with **Green Software Foundation (GSF) SCI v1.0**, **GHG Protocol Scope 2/3**, and **EU CSRD (ESRS E1) / US SEC** reporting structures.
+3. **ESG, SCI & GSF Impact Framework Disclosure Export**:
+   - Generates HTML, CSV, JSON, and `.imp.yaml` Carbon Audit Disclosure Reports aligned with **Green Software Foundation (GSF) SCI v1.0**, **GSF Impact Framework**, **GHG Protocol Scope 2/3**, and **EU CSRD (ESRS E1) / US SEC** reporting structures.
    - Includes SHA-256 verification checksums, grade stamps, metric breakdowns, and print CSS for PDF export.
 
----
-
-## GitHub Actions Integration
-
-Add GreenCode Auditor to `.github/workflows/greencode.yml`:
-
-```yaml
-name: Green Computing Quality Gate
-
-on: [push, pull_request]
-
-jobs:
-  carbon-audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Audit Green Score
-        uses: ./
-        with:
-          repo-path: "."
-          green-score-threshold: "75.0"
-          target-zone: "US-CAL-CISO"
-```
 ---
 
 ## Reality Verification Pipeline
@@ -596,14 +745,12 @@ python scripts/measure_and_file_evidence.py \
 # File a claim
 curl -X POST http://localhost:8000/api/pipeline/claim \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"claim_id":"refactor-1042","repo":"zeenat28-ui/greencode",
-       "predicted_reduction_pct":50.0,"baseline_energy_joules":1000.0}'
+  -d '{"claim_id":"refactor-1042","repo":"zeenat28-ui/greencode","predicted_reduction_pct":50.0,"baseline_energy_joules":1000.0}'
 
 # File real evidence (unsigned is fine in development; see Security below)
 curl -X POST http://localhost:8000/api/pipeline/evidence \
   -H "Content-Type: application/json" \
-  -d '{"claim_id":"refactor-1042","energy_joules":500.0,"functional_unit":1.0,
-       "measurement_method":"rapl","source":"ci-runner"}'
+  -d '{"claim_id":"refactor-1042","energy_joules":500.0,"functional_unit":1.0,"measurement_method":"rapl","source":"ci-runner"}'
 # -> {"verdict": "PARTIALLY_VERIFIED", ...}   (VERIFIED once 3 samples are in)
 ```
 
@@ -750,16 +897,17 @@ to paper over.
 
 ## Commercial Plans, License Activation, and Sponsorship
 
-GreenCode follows an open-core model: the static analyzer, CLI, and MCP server are Apache-2.0 licensed, while teams and organizations can unlock higher quotas, automated PR patching, and signed regulatory evidence bundles via a `GC-LIC-...` license key.
+GreenCode follows an open-core model: the static analyzer, Python SDK, CLI, pre-commit hooks, and MCP server are Apache-2.0 licensed, while teams and organizations can unlock higher quotas, automated PR/MR patching, and signed regulatory evidence bundles via a `GC-LIC-...` license key.
 
 | Feature / Quota | Community (`$0 / mo`) | Pro Team (`$49 / mo`) | Organization (`$499 / mo`) |
 |---|---|---|---|
 | **Monthly Repository Audits** | 50 / month | 1,000 / month | Unlimited |
 | **AI Code Refactorings (Bedrock / HF)** | 10 / month | 250 / month | 5,000 / month |
 | **Monitored Repositories** | Up to 3 | Up to 25 | Unlimited |
-| **13-Language AST + `--diff` PR Gate** | Included | Included | Included |
-| **GitHub PR `suggestion` & `.diff` Bot** | Manual CLI | Automated Webhook & PR Bot | Automated + Custom SLA Rules |
+| **13-Language AST, IaC Linter & `--diff` Gate** | Included | Included | Included |
+| **GitHub PR & GitLab MR `suggestion` Bot** | Manual CLI | Automated Webhook & PR/MR Bot | Automated + Custom `.greencode-rules.yaml` |
 | **Kubernetes Kepler / Pod Wattage Sentinel** | Basic | Full + Auto-Rollback | Multi-Cluster + Prometheus |
+| **FinOps FOCUS 1.4 & GSF `.imp.yaml` Export** | Included | Included | Included + Automated Reconciliation |
 | **CSRD / SEC Signed Evidence Bundle (`.zip`)** | — | — | Included (`HMAC-SHA256` + Merkle Root) |
 | **SAML 2.0 SSO, SCIM 2.0 & S3 WORM Ledger** | — | — | Included |
 
@@ -772,5 +920,3 @@ GreenCode follows an open-core model: the static analyzer, CLI, and MCP server a
    - **Web UI:** Open **Settings &rarr; Plan Quota &amp; License Activation**, paste your `GC-LIC-...` key, and click **Activate License**.
    - **REST API:** `POST /api/billing/license/activate` with `{"license_key": "GC-LIC-..."}`.
    - **GitHub Action (`action.yml`):** Pass `license_key: ${{ secrets.GREENCODE_LICENSE_KEY }}` and `diff_range: origin/main...HEAD`.
-
-

@@ -278,3 +278,24 @@ async def handle_opencollective_webhook(
         "license_key": license_key,
     }
 
+
+@router.get("/focus/sample-report", status_code=status.HTTP_200_OK)
+async def get_focus_sample_reconciliation():
+    """Return a live FinOps Foundation FOCUS 1.4 cloud billing and Scope 2/3 carbon reconciliation report."""
+    from app.finops_focus import reconcile_focus_billing
+
+    return reconcile_focus_billing()
+
+
+@router.post("/focus/reconcile", status_code=status.HTTP_200_OK)
+async def reconcile_focus_cloud_billing(payload: Dict[str, Any]):
+    """Ingest FinOps Foundation FOCUS 1.4 JSON rows or CSV text and reconcile spend with kWh and kg CO2e."""
+    from app.finops_focus import reconcile_focus_billing
+
+    rows = payload.get("rows")
+    csv_text = payload.get("csv_text")
+    return reconcile_focus_billing(
+        rows=rows if isinstance(rows, list) else None,
+        csv_text=str(csv_text) if csv_text else None,
+    )
+

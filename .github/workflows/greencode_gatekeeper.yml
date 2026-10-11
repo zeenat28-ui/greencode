@@ -52,7 +52,17 @@ jobs:
 
       - name: Quality Gate Status Output
         run: |
-          echo "Green Score: ${{ steps.auditor.outputs.green-score }} / 100"
-          echo "Total Violations Detected: ${{ steps.auditor.outputs.total-violations }}"
+          echo "Green Score: ${{ steps.auditor.outputs.green_score }} / 100"
+          echo "Total Violations Detected: ${{ steps.auditor.outputs.total_violations }}"
           echo "Gate Passed: ${{ steps.auditor.outputs.passed }}"
+
+      - name: Upload SARIF and SonarQube Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: greencode-sast-reports
+          path: |
+            greencode.sarif
+            greencode-sonar.json
+          if-no-files-found: ignore
 

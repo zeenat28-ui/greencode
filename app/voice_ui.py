@@ -14,6 +14,10 @@ one (otherwise an explicitly-labelled TDP model).
 
 from __future__ import annotations
 
+import html
+import json
+from typing import Optional
+
 import streamlit as st
 
 from app.mcp_server import SERVER_VERSION
@@ -29,8 +33,8 @@ STYLE = """
   .user-bubble { background:#232f3e; color:#fff; border-radius:18px 18px 2px 18px;
                  padding:10px 16px; max-width:80%; text-align:right; font-size:0.95rem; }
   .alexa-bubble { background:#fff4e5; color:#232f3e; border-radius:18px 18px 18px 2px;
-                 padding:10px 16px; max-width:80%; font-size:0.95rem;
-                 border-top:3px solid #ff9900; }
+                  padding:10px 16px; max-width:80%; font-size:0.95rem;
+                  border-top:3px solid #ff9900; }
   .explain-box { background:#f0f7f0; border:1px solid #b6d8b6; border-radius:10px;
                  padding:12px 16px; font-size:0.85rem; white-space:pre-line; }
   .kpi { flex:1; background:#eaf3e6; border-radius:8px; padding:8px; text-align:center; }
@@ -54,11 +58,29 @@ def _say(text: str) -> None:
 
 
 def _voice_speak(text: str) -> None:
-    """Client-side speech synthesis (the only cross-browser way to speak)."""
+    """Client-side speech synthesis (safe JSON string serialization + try/catch)."""
+    payload = json.dumps(str(text or "")).replace("</", "<\\/")
     st.components.v1.html(
-        "<script>window.speechSynthesis.speak(new SpeechSynthesisUtterance('"+text+"')).catch(()=>{});</script>",
+        f"<script>try {{ if (window.speechSynthesis) {{ window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance({payload})); }} }} catch (e) {{}}</script>",
         height=0,
     )
+
+
+def _normalize_zone(zone: str) -> str:
+    """Map AWS region IDs or common shorthands to canonical grid zone identifiers."""
+    shorthands = {
+        "US-VA": "US-MIDA-PJM",
+        "US-CA": "US-CAL-CISO",
+        "US-TX": "US-TEX-ERCO",
+        "US-NY": "US-NY-NYIS",
+    }
+    if zone in shorthands:
+        return shorthands[zone]
+    try:
+        from app.amazon_service import AWS_REGION_TO_GRID_ZONE
+        return AWS_REGION_TO_GRID_ZONE.get(zone, zone)
+    except Exception:
+        return "SG" if zone == "ap-southeast-1" else zone
 
 
 def _region_snapshots() -> dict:
@@ -67,26 +89,27 @@ def _region_snapshots() -> dict:
     Each value comes from ``get_zone_carbon_intensity`` (EIA-930 / Electricity
     Maps -> annual dataset -> bundled static reference), so every number carries
     the source tier that actually produced it - live when a live provider
-    answered, a cited static reference otherwise. The AWS region
-    ``ap-southeast-1`` is mapped to its grid zone (Singapore) via the same table
-    the AWS carbon endpoints use.
+    answered, a cited static reference otherwise. The AWS regions
+    ``us-east-1`` (Virginia) and ``ap-southeast-1`` (Singapore) are mapped to
+    their grid zones via the same table the AWS carbon endpoints use.
     """
-    try:
-        from app.amazon_service import AWS_REGION_TO_GRID_ZONE
-        sg_zone = AWS_REGION_TO_GRID_ZONE.get("ap-southeast-1", "SG")
-    except Exception:  # optional dependency missing -> documented static zone
-        sg_zone = "SG"
+    va_zone = _normalize_zone("us-east-1")
+    sg_zone = _normalize_zone("ap-southeast-1")
     targets = (
         ("Ireland (IE)", "IE"),
-        ("Virginia (US-VA)", "US-VA"),
+        ("Virginia (" + va_zone + ")", va_zone),
         ("ap-southeast-1 (" + sg_zone + ")", sg_zone),
     )
     out = {}
     for label, zone in targets:
         data = get_zone_carbon_intensity(zone)
+        raw_carbon = data.get("carbon_intensity")
+        # 0.0 with intensity_source=='none' means 'no data', never 'zero-carbon grid'
+        if data.get("intensity_source") == "none" or not raw_carbon:
+            raw_carbon = None
         out[label] = {
             "zone": data.get("zone") or zone,
-            "carbon": data.get("carbon_intensity"),
+            "carbon": raw_carbon,
             "source": data.get("intensity_source"),
             "tier": data.get("intensity_source_tier"),
             "is_live": bool(data.get("is_live")),
@@ -98,6 +121,8 @@ def _region_snapshots() -> dict:
 def _explain_score(score: float, **kw) -> dict:
     """Local mirror of the MCP 'explain_score' tool for the voice panel."""
     from app.mcp_server import explain_score as _es
+    if "zone" in kw and kw["zone"]:
+        kw["zone"] = _normalize_zone(str(kw["zone"]))
     return _es(score, **kw)
 
 
@@ -142,7 +167,7 @@ def _render_explain_tab(container) -> None:
         st.caption("Hardware vs model, data source + freshness, and the SCI that backs the number.")
         with st.form("explain_form"):
             score = st.slider("Green score (0-100)", 0.0, 100.0, 73.5, 0.5)
-            zone = st.selectbox("Zone to explain", ["IE", "US-VA", "ap-southeast-1", "US-MIDW-MISO"])
+            zone = st.selectbox("Zone to explain", ["IE", "US-MIDA-PJM", "ap-southeast-1", "US-MIDW-MISO"])
             method = st.selectbox("Energy source", ["model", "rapl", "perf", "battery"], index=0)
             energy_joules = st.number_input(
                 "Energy that produced the score (Joules, optional)",
@@ -153,7 +178,7 @@ def _render_explain_tab(container) -> None:
             submit = st.form_submit_button("Explain")
         if not submit:
             return
-        kwargs = {"zone": zone, "measurement_method": method}
+        kwargs = {"zone": _normalize_zone(zone), "measurement_method": method}
         if energy_joules and energy_joules > 0.0:
             kwargs["energy_joules"] = float(energy_joules)
         res = _explain_score(float(score), **kwargs)
@@ -191,43 +216,44 @@ def _render_explain_tab(container) -> None:
             st.write(str(i) + ". " + c)
 
 
-
-
 # --------------------------------------------------------------------------- #
 # Voice agent chat
 # --------------------------------------------------------------------------- #
-def _live_audit(zone: str) -> dict:
-    """Run the real end-to-end MCP pipeline on a canned quadratic-concat snippet.
+DEFAULT_SNIPPET = (
+    "def build(n):\n"
+    "    s = ''\n"
+    "    for i in range(n):\n"
+    "        s = s + str(i)\n"
+    "    return s\n"
+)
 
-    This is exactly the ``audit_and_score`` tool the self-hosted MCP server
-    exposes: static analysis -> a real energy measurement (hardware counter when
-    the host has one, otherwise an explicitly-labelled TDP model) -> SCI against
-    the live grid intensity of ``zone``. Every figure carries its provenance;
-    nothing here is fabricated.
-    """
+
+def _live_audit(zone: str, snippet: Optional[str] = None) -> dict:
+    """Run the real end-to-end MCP pipeline on the supplied or reference snippet."""
     from app.mcp_server import audit_and_score
 
-    snippet = (
-        "def build(n):\n"
-        "    s = 1\n"
-        "    for i in range(n):\n"
-        "        s = s + str(i)\n"
-        "    return s\n"
+    code = snippet if (snippet and snippet.strip()) else DEFAULT_SNIPPET
+    res = audit_and_score(
+        source_code=code,
+        language="python",
+        zone=_normalize_zone(zone),
+        duration_seconds=0.1,
     )
-    return audit_and_score(source_code=snippet, language="python", zone=zone,
-                           duration_seconds=1.0)
+    if res.get("status") == "ok":
+        st.session_state.last_audit = res.get("data")
+    return res
 
 
 def _answer(user_text: str) -> str:
     """Map a natural-language question to a deterministic, spoken answer.
 
-    Every number in the reply is produced by the live engine (``audit_and_score``
-    / ``explain_score``); none is hard-coded. When the host exposes a hardware
-    energy counter the reply says so, otherwise it states plainly that the figure
-    is a TDP model rather than a measurement.
+    Every number in the reply is produced by the live engine (``audit_and_score``,
+    ``explain_score``, ``refactor_code``); none is hard-coded. When the host
+    exposes a hardware energy counter the reply says so, otherwise it states
+    plainly that the figure is a TDP model rather than a measurement.
     """
     low = user_text.lower()
-    zone = st.session_state.region
+    zone = _normalize_zone(st.session_state.region)
 
     if "region" in low or "cleanest" in low or "where" in low:
         snapshots = _region_snapshots()
@@ -244,18 +270,37 @@ def _answer(user_text: str) -> str:
                 + str(best["carbon"]) + " gCO2e/kWh from the " + str(best["source"])
                 + " (" + str(best["tier"]) + "). Run the same workload there first.")
 
+    if "refactor" in low or "optimize" in low or "rewrite" in low:
+        from app.mcp_server import refactor_code
+        ref = refactor_code(
+            source_code=DEFAULT_SNIPPET,
+            language="python",
+            violation_type="string_concatenation_in_loop",
+        )
+        if ref.get("status") == "ok":
+            rd = ref["data"]
+            verified_str = "behaviour-verified" if rd.get("behaviour_verified") else "deterministic fallback"
+            return (
+                "I refactored the loop via " + str(rd.get("source")) + " ("
+                + str(rd.get("model")) + "), " + verified_str + ": "
+                + str(rd.get("reason")) + "."
+            )
+        return "I could not complete a verified refactor right now."
+
     if "explain" in low and "score" in low:
-        audit = _live_audit(zone)
-        if audit["status"] != "ok":
-            return "I could not explain that score right now."
-        d = audit["data"]
+        d = st.session_state.last_audit
+        if not d:
+            audit = _live_audit(zone)
+            if audit["status"] != "ok":
+                return "I could not explain that score right now."
+            d = audit["data"]
         energy = d.get("energy", {})
         res = _explain_score(
             float(d["green_score"]),
             zone=zone,
             measurement_method=energy.get("measurement_method", "model"),
             energy_joules=float(energy.get("energy_joules", 0.0)),
-            duration_seconds=float(energy.get("duration_seconds", 1.0)),
+            duration_seconds=float(energy.get("duration_seconds", 0.1)),
             violation_count=int(d.get("violation_count", 0)),
         )
         if res["status"] == "ok":
@@ -271,16 +316,20 @@ def _answer(user_text: str) -> str:
                            "the score.")
             hw = ("a hardware counter" if ed.get("measurement_is_hardware")
                   else "a TDP model, not a hardware counter")
+            v_count = ed.get("violation_count")
+            if v_count is None:
+                v_count = (ed.get("findings_summary") or {}).get("violation_count", 0)
             return ("Your green score is " + str(round(ed["green_score"])) + " ("
-                    + str(ed["grade"]) + "), from " + str(ed.get("violation_count"))
+                    + str(ed["grade"]) + "), from " + str(v_count)
                     + " energy finding(s). The energy came from " + hw
                     + ", and the grid intensity for " + zone + " is "
                     + str(grid.get("carbon_intensity")) + " gCO2e/kWh from the "
                     + str(grid.get("tier")) + " tier." + sci_txt)
         return "I could not explain that score right now."
 
-    # Default: a real one-line energy audit of a canned quadratic-concat snippet.
-    audit = _live_audit(zone)
+    # Default: run a real audit (using user-supplied Python code if present).
+    custom_snippet = user_text if ("def " in user_text or "for " in user_text) else None
+    audit = _live_audit(zone, snippet=custom_snippet)
     if audit["status"] != "ok":
         return "I could not complete an audit right now."
     d = audit["data"]
@@ -295,12 +344,11 @@ def _answer(user_text: str) -> str:
                    + str(grade.get("grade")) + ").")
     else:
         sci_txt = ""
-    return ("I audited a loop that rebuilds a string on every iteration. "
-            "Green score " + str(round(d["green_score"])) + " ("
+    return ("I audited the Python snippet (" + str(d.get("violation_count", 0))
+            + " finding(s)). Green score " + str(round(d["green_score"])) + " ("
             + str(d.get("grade")) + ")." + sci_txt + " Energy is " + hw
             + " (method: " + str(energy.get("measurement_method")) + "). "
-            "Collect the parts in a list and join once, and I will re-measure.")
-
+            "Collect loop outputs in a list and join or vectorize once, and I will re-measure.")
 
 
 # --------------------------------------------------------------------------- #
@@ -328,20 +376,20 @@ def main() -> None:
                 last = st.session_state.dialogue[-1]
                 if last["role"] == "alexa":
                     st.markdown("<div class='alexa-bubble'><b>GreenCode:</b> " +
-                                last["text"] + "</div>", unsafe_allow_html=True)
+                                html.escape(str(last["text"])) + "</div>", unsafe_allow_html=True)
             if st.button("REPLAY SPOKEN RESPONSES", key="replay_form"):
                 _voice_speak(" ".join(x["text"] for x in st.session_state.dialogue
                                       if x["role"] == "alexa"))
             user = st.text_input("You", key="voice_input")
             if user:
                 st.session_state.dialogue.append({"role": "user", "text": user})
-                st.markdown("<div class='user-bubble'><b>You:</b> " + user +
+                st.markdown("<div class='user-bubble'><b>You:</b> " + html.escape(user) +
                             "</div>", unsafe_allow_html=True)
                 with st.spinner("GreenCode is thinking..."):
                     answer = _answer(user)
                     _say(answer)
                     st.markdown("<div class='alexa-bubble'><b>GreenCode:</b> " +
-                                answer + "</div>", unsafe_allow_html=True)
+                                html.escape(answer) + "</div>", unsafe_allow_html=True)
 
     elif sel == "region":
         _render_region_tab(tab_region_demo)
@@ -356,4 +404,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 

@@ -244,7 +244,7 @@ def _resolve_intensity_uncached(zone: str) -> Dict[str, Any]:
 
 
 def _severity_counts(violations: List[Dict[str, Any]]) -> Dict[str, int]:
-    counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
     for violation in violations:
         severity = str(violation.get("severity", "")).upper()
         if severity in counts:
@@ -648,6 +648,7 @@ def explain_score(
                 "tier": region.get("intensity_source_tier") or "static-reference",
             },
             "scientific_context": scientific_context,
+            "violation_count": violation_count,
             "findings_summary": {
                 "violation_count": violation_count,
                 "severity_counts": severity_counts,
@@ -691,7 +692,7 @@ def audit_and_score(
     )
 
     violations = audit["data"]["violations"]
-    severity_rank = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    severity_rank = {"CRITICAL": -1, "HIGH": 0, "MEDIUM": 1, "LOW": 2}
     plan = [
         {
             "priority": index + 1,

@@ -8,6 +8,7 @@ export default function Overview() {
   const [selectedOrg] = useState('Acme Corporation (Enterprise)');
   const [selectedTeam, setSelectedTeam] = useState('All Teams');
   const [liveRepos, setLiveRepos] = useState<any[]>([]);
+  const [quotaStats, setQuotaStats] = useState({ consumed: 320.4, limit: 500.0 });
 
   useEffect(() => {
     fetch('/api/repositories?limit=5')
@@ -18,7 +19,23 @@ export default function Overview() {
         }
       })
       .catch(() => {});
+
+    fetch('/api/energy/budgets')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.budgets) && data.budgets.length > 0) {
+          const limit = data.budgets.reduce((s: number, b: any) => s + Number(b.monthly_budget_kg ?? 0), 0);
+          const consumed = data.budgets.reduce((s: number, b: any) => s + Number(b.current_consumed_kg ?? 0), 0);
+          if (limit > 0) {
+            setQuotaStats({ consumed, limit });
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const quotaPct = Math.min(100, Math.round((quotaStats.consumed / Math.max(1, quotaStats.limit)) * 100));
+  const quotaRemaining = Math.max(0, quotaStats.limit - quotaStats.consumed);
 
   const handleExportDisclosure = () => {
     window.open('/api/reports/esg/1', '_blank', 'noopener,noreferrer');
@@ -65,14 +82,14 @@ export default function Overview() {
             <span>Monthly Carbon Quota</span>
             <Building2 className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">320.4 / 500 kg</div>
+          <div className="text-2xl font-bold text-slate-900 mt-2">{quotaStats.consumed.toFixed(1)} / {quotaStats.limit.toFixed(0)} kg</div>
           <div className="mt-3">
             <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full" style={{ width: '64%' }}></div>
+              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${quotaPct}%` }}></div>
             </div>
             <div className="flex justify-between text-xs text-slate-500 mt-1.5 font-medium">
-              <span>64% Consumed</span>
-              <span>179.6 kg remaining</span>
+              <span>{quotaPct}% Consumed</span>
+              <span>{quotaRemaining.toFixed(1)} kg remaining</span>
             </div>
           </div>
         </div>

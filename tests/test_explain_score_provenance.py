@@ -121,5 +121,45 @@ class TestExplainScoreSuppliedMeasurement(unittest.TestCase):
         self.assertIsNone(sc["sci_gco2_per_functional_unit"])
 
 
+class TestSeverityAndViolationCountProvenance(unittest.TestCase):
+    """Ensure CRITICAL findings are counted/prioritized and violation_count is exposed at top-level."""
+
+    def test_severity_counts_includes_critical(self):
+        counts = mcp_server._severity_counts([
+            {"severity": "CRITICAL"},
+            {"severity": "HIGH"},
+            {"severity": "LOW"},
+        ])
+        self.assertEqual(counts["CRITICAL"], 1)
+        self.assertEqual(counts["HIGH"], 1)
+        self.assertEqual(counts["MEDIUM"], 0)
+        self.assertEqual(counts["LOW"], 1)
+
+    def test_audit_and_score_ranks_critical_before_high(self):
+        with mock.patch.object(mcp_server, "audit_code", return_value={
+            "status": "ok",
+            "warnings": [],
+            "data": {
+                "green_score": 35.0,
+                "grade": "F",
+                "violation_count": 3,
+                "violations": [
+                    {"severity": "LOW", "violation_type": "L", "line_number": 3},
+                    {"severity": "CRITICAL", "violation_type": "C", "line_number": 1},
+                    {"severity": "HIGH", "violation_type": "H", "line_number": 2},
+                ],
+            },
+        }):
+            res = mcp_server.audit_and_score("x = 1", duration_seconds=0.01)
+        order = [item["violation_type"] for item in res["data"]["remediation_plan"]]
+        self.assertEqual(order, ["C", "H", "L"])
+
+    def test_explain_score_exposes_top_level_violation_count(self):
+        res = mcp_server.explain_score(84.0, zone="IE", violation_count=4)
+        self.assertEqual(res["data"]["violation_count"], 4)
+        self.assertEqual(res["data"]["findings_summary"]["violation_count"], 4)
+
+
 if __name__ == "__main__":
     unittest.main()
+

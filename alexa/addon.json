@@ -6,7 +6,7 @@
       "value": "GreenCode"
     },
     "shortDescription": "Audits source code for energy waste and returns a green score with a ranked fix plan.",
-    "fullDescription": "GreenCode measures the carbon cost of software. Ask it to audit a snippet or a GitHub repository and it returns a 0-100 green score, the exact energy anti-patterns it found (nested loops, quadratic string building, repeated allocations), Software Carbon Intensity against the live grid of your chosen region, and a ranked remediation plan. Every energy figure states whether it came from a hardware counter or a TDP model, and every carbon figure names its data source and freshness - so an answer can be defended in an audit, not just quoted. Tools: audit_code, audit_repository, audit_and_score, calculate_sci, measure_energy, get_grid_intensity, compare_regions, refactor_code.",
+    "fullDescription": "GreenCode measures the carbon cost of software. Ask it to audit a snippet or a GitHub repository and it returns a 0-100 green score, the exact energy anti-patterns it found (nested loops, quadratic string building, repeated allocations), Software Carbon Intensity against the live grid of your chosen region, and a ranked remediation plan. Every energy figure states whether it came from a hardware counter or a TDP model, and every carbon figure names its data source and freshness - so an answer can be defended in an audit, not just quoted. Tools: audit_code, audit_repository, audit_and_score, calculate_sci, measure_energy, get_grid_intensity, compare_regions, explain_score, refactor_code.",
     "examplePhrases": [
       "Audit this Python function for energy waste",
       "What is the green score of my code snippet?",

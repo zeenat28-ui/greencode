@@ -2084,14 +2084,14 @@ async def api_voice_ask(req: VoiceAskRequest):
     if any(k in q for k in ("region", "clean", "ireland", "virginia", "aws", "where", "grid", "zone", "arbitrage")):
         mcp_res = mcp_compare_regions(zones=["IE", "US-CAL-CISO", "DE"])
         data = mcp_res.get("data", {})
-        cleanest = data.get("cleanest") or {"zone": "IE", "carbon_intensity": 250}
-        dirtiest = data.get("dirtiest") or {"zone": "DE", "carbon_intensity": 380}
-        imp = data.get("improvement_pct", 34.2)
+        cleanest = data.get("cleanest") or {}
+        dirtiest = data.get("dirtiest") or {}
+        imp = data.get("improvement_pct", 0.0)
         spoken = (
             f"Live MCP compare_regions result: {cleanest.get('zone')} is currently {imp}% cleaner than "
             f"{dirtiest.get('zone')} at {cleanest.get('carbon_intensity')} grams CO2 per kilowatt-hour versus "
-            f"{dirtiest.get('carbon_intensity')} grams. Routing your AWS batch workload to {cleanest.get('zone')} "
-            f"via EC2 Graviton4 or Inferentia2 minimizes both Scope 2 carbon and Spot compute cost."
+            f"{dirtiest.get('carbon_intensity')} grams (tier: {cleanest.get('tier')}). Routing your AWS batch "
+            f"workload to {cleanest.get('zone')} via EC2 Graviton4 or Inferentia2 minimizes both Scope 2 carbon and Spot compute cost."
         )
         return {
             "success": True,
@@ -2110,10 +2110,10 @@ async def api_voice_ask(req: VoiceAskRequest):
         )
         data = mcp_res.get("data", {})
         model_used = data.get("model") or "Amazon Bedrock / Deterministic AST Verifier"
-        verified = data.get("behaviour_verified", True)
+        verified = data.get("behaviour_verified", False)
         spoken = (
-            f"Live MCP refactor_code executed via {model_used}. "
-            f"Inefficient loop pattern refactored and behaviour-verified ({'passed' if verified else 'fallback'}). "
+            f"Live MCP refactor_code executed via {model_used} (source: {data.get('source')}). "
+            f"Inefficient loop pattern refactored and behaviour-verified ({'passed' if verified else 'deterministic fallback'}). "
             f"For PyTorch workloads on AWS, migrating from GPU instances to AWS Inferentia2 (inf2) cuts per-token energy by up to 50 percent."
         )
         return {
@@ -2124,14 +2124,32 @@ async def api_voice_ask(req: VoiceAskRequest):
         }
 
     if any(k in q for k in ("explain", "why", "provenance", "hardware", "trace")):
-        mcp_res = mcp_explain_score(green_score=92.0, zone=zone, violation_count=1)
+        repos = get_latest_repositories(limit=1)
+        audit_res = mcp_audit_and_score(
+            source_code="def compute_total(items):\n    return sum(x for x in items)\n",
+            language="python",
+            zone=zone,
+            duration_seconds=0.05,
+        )
+        audit_data = audit_res.get("data", {})
+        energy_data = audit_data.get("energy", {})
+        latest_score = float(repos[0].get("green_score")) if (repos and repos[0].get("green_score") is not None) else float(audit_data.get("green_score", 100.0))
+        latest_violations = int(repos[0].get("total_violations")) if (repos and repos[0].get("total_violations") is not None) else int(audit_data.get("violation_count", 0))
+        mcp_res = mcp_explain_score(
+            green_score=latest_score,
+            zone=zone,
+            measurement_method=str(energy_data.get("measurement_method", "model")),
+            energy_joules=float(energy_data.get("energy_joules", 0.0)),
+            duration_seconds=float(energy_data.get("duration_seconds", 0.05)),
+            violation_count=latest_violations,
+        )
         data = mcp_res.get("data", {})
         hw = data.get("measurement_is_hardware", False)
         method = data.get("measurement_method", "model")
         grid = data.get("grid_intensity", {})
         spoken = (
-            f"Score provenance trace {data.get('trace_id')}: Green Score 92.0 (Grade {data.get('grade')}). "
-            f"Energy sensor method is {method} (hardware counter: {hw}). "
+            f"Score provenance trace {data.get('trace_id')}: Green Score {round(latest_score, 1)} (Grade {data.get('grade')}) "
+            f"from {latest_violations} finding(s). Energy sensor method is {method} (hardware counter: {hw}). "
             f"Grid zone {grid.get('zone')} is at {grid.get('carbon_intensity')} grams CO2 per kilowatt-hour "
             f"from source tier {grid.get('tier')}."
         )
@@ -2147,7 +2165,7 @@ async def api_voice_ask(req: VoiceAskRequest):
     sample_code = "def compute_total(items):\n    return sum(x for x in items)\n"
     mcp_res = mcp_audit_and_score(source_code=sample_code, language="python", zone=zone, duration_seconds=0.05)
     data = mcp_res.get("data", {})
-    score = repos[0].get("green_score", data.get("green_score", 92.0)) if repos else data.get("green_score", 92.0)
+    score = repos[0].get("green_score", data.get("green_score")) if repos else data.get("green_score")
     grade = data.get("grade", "A")
     energy_info = data.get("energy", {})
     hw = energy_info.get("measurement_is_hardware", False)

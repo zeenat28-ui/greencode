@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 
 export default function Budgets() {
@@ -8,6 +8,35 @@ export default function Budgets() {
     { team: 'Payments', limitKg: 250.0, consumedKg: 235.0, burnRate: '7.8 kg/day', status: 'CRITICAL', pct: 94.0 },
     { team: 'Commerce', limitKg: 300.0, consumedKg: 310.0, burnRate: '10.3 kg/day', status: 'BREACHED', pct: 103.3 },
   ]);
+
+  useEffect(() => {
+    fetch('/api/energy/budgets')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.budgets) && data.budgets.length > 0) {
+          const mapped = data.budgets.map((b: any) => {
+            const limitKg = Number(b.monthly_budget_kg ?? 400.0);
+            const consumedKg = Number(b.current_consumed_kg ?? 0.0);
+            const pct = limitKg > 0 ? (consumedKg / limitKg) * 100.0 : 0.0;
+            const status = pct >= 100 ? 'BREACHED' : pct >= 90 ? 'CRITICAL' : 'NORMAL';
+            return {
+              team: String(b.team_id || 'Engineering Team'),
+              limitKg,
+              consumedKg,
+              burnRate: `${(consumedKg / 30.0).toFixed(1)} kg/day`,
+              status,
+              pct,
+            };
+          });
+          setTeamBudgets(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const totalQuotaKg = teamBudgets.reduce((acc, t) => acc + t.limitKg, 0);
+  const totalConsumedKg = teamBudgets.reduce((acc, t) => acc + t.consumedKg, 0);
+  const totalPct = totalQuotaKg > 0 ? (totalConsumedKg / totalQuotaKg) * 100.0 : 0.0;
 
   const handleAllocateBudget = async () => {
     const newTeam = `ML Platform (${teamBudgets.length + 1})`;
@@ -54,18 +83,22 @@ export default function Budgets() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Monthly Quota</span>
-          <div className="text-2xl font-bold text-slate-900 mt-1">1,050.0 kg CO2e</div>
-          <span className="text-xs text-slate-500 font-medium mt-2 block">Allocated across 3 engineering teams</span>
+          <div className="text-2xl font-bold text-slate-900 mt-1">{totalQuotaKg.toFixed(1)} kg CO2e</div>
+          <span className="text-xs text-slate-500 font-medium mt-2 block">Allocated across {teamBudgets.length} engineering teams</span>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Month Consumed</span>
-          <div className="text-2xl font-bold text-slate-900 mt-1">725.0 kg CO2e</div>
-          <span className="text-xs text-emerald-600 font-medium mt-2 block">69.0% total tenant consumption</span>
+          <div className="text-2xl font-bold text-slate-900 mt-1">{totalConsumedKg.toFixed(1)} kg CO2e</div>
+          <span className="text-xs text-emerald-600 font-medium mt-2 block">{totalPct.toFixed(1)}% total tenant consumption</span>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Forecasted Month-End</span>
-          <div className="text-2xl font-bold text-amber-600 mt-1">1,120.5 kg CO2e</div>
-          <span className="text-xs text-amber-600 font-medium mt-2 block">⚠️ +70.5 kg overrun projected</span>
+          <div className="text-2xl font-bold text-amber-600 mt-1">{(totalConsumedKg * 1.15).toFixed(1)} kg CO2e</div>
+          <span className="text-xs text-amber-600 font-medium mt-2 block">
+            {totalConsumedKg * 1.15 > totalQuotaKg
+              ? `⚠️ +${(totalConsumedKg * 1.15 - totalQuotaKg).toFixed(1)} kg overrun projected`
+              : `✅ ${(totalQuotaKg - totalConsumedKg * 1.15).toFixed(1)} kg under quota projected`}
+          </span>
         </div>
       </div>
 

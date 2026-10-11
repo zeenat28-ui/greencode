@@ -79,6 +79,22 @@ cd frontend && npm run build
 
 ---
 
-## 📄 License
+## 🛡️ Intellectual Property, Contributor License Agreement (CLA) & Anti-Plagiarism
 
-By contributing to GreenCode Auditor, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
+1. **Original Authorship & Mandatory Attribution (`NOTICE`):**
+   - **GreenCode Auditor** is originally created and maintained by **Zeenat ([@zeenat28-ui](https://github.com/zeenat28-ui))**.
+   - Under **Section 4(c) and Section 4(d) of the Apache License 2.0**, any fork, copy, redistribution, or derivative work MUST preserve the [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) files intact. Removing attribution or claiming this codebase as your own original work violates the license and triggers an immediate DMCA Takedown.
+2. **Inbound Contributor License Agreement (CLA):**
+   - By submitting a Pull Request or contribution to this repository, you certify under the Developer Certificate of Origin (DCO) that you have the right to submit the work and you grant **Zeenat (`@zeenat28-ui`)** a perpetual, worldwide, non-exclusive, royalty-free, irrevocable license under [Apache License 2.0 (Section 5)](LICENSE) to include, maintain, and distribute your contribution as part of GreenCode Auditor.
+3. **Protected Main Branch:**
+   - Direct pushes to `main` by external users are blocked. All community contributions are submitted via Fork $\rightarrow$ Pull Request and require automated CI/Security gate passage plus explicit Code Owner approval from `@zeenat28-ui`.
+
+---
+
+## 💖 Funding & Sponsorship
+
+If you or your organization would like to fund or sponsor the development of GreenCode Auditor:
+- Click the **Sponsor** button at the top of [`zeenat28-ui/greencode`](https://github.com/zeenat28-ui/greencode) (configured via [`.github/FUNDING.yml`](.github/FUNDING.yml)).
+- For enterprise grants, custom cloud integrations, or commercial support agreements, reach out via GitHub Discussions or repository issues.
+
+

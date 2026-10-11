@@ -781,5 +781,16 @@ The workflow never fabricates a reading. On a runner with no counter it emits a
 warning and the verdict stays `UNVERIFIED` — the correct outcome, not a problem
 to paper over.
 
+---
 
+## 🛡️ License, Anti-Plagiarism Protection (`NOTICE`), & Contributions
 
+- **Original Author & Copyright Holder:** Copyright (c) 2026 **Zeenat ([@zeenat28-ui](https://github.com/zeenat28-ui))**.
+- **License:** Distributed under the [Apache License 2.0](LICENSE) with mandatory attribution enforced via [`NOTICE`](NOTICE) (Section 4(c) & 4(d)).
+- **Anti-Plagiarism & Attribution Lock:** Any fork, redistribution, or derivative work must preserve both [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) attributing `@zeenat28-ui`. Removing copyright notices or claiming original authorship voids the license immediately.
+- **Contributing:** Community Pull Requests are welcome! Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). All PRs require automated CI/Security passage and Code Owner (`@zeenat28-ui`) approval.
+
+## 💖 Funding & Sponsorship
+
+GreenCode Auditor is open to community sponsorships, sustainability grants, and enterprise backing:
+- Click the **Sponsor** button at the top of [`github.com/zeenat28-ui/greencode`](https://github.com/zeenat28-ui/greencode) (powered by [`.github/FUNDING.yml`](.github/FUNDING.yml)) or visit [`github.com/sponsors/zeenat28-ui`](https://github.com/sponsors/zeenat28-ui).

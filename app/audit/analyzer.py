@@ -12,7 +12,10 @@ class CodeAnalyzer:
     def scan_path(cls, path: str) -> Dict[str, Any]:
         """Perform static carbon and energy analysis on file or folder."""
         if os.path.isfile(path):
-            return audit_file(path)
+            res = audit_file(path)
+            res.setdefault("total_files", 1)
+            res.setdefault("total_lines", res.get("lines_count", 0))
+            return res
         elif os.path.isdir(path):
             return audit_repository(path)
         return {

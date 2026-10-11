@@ -76,9 +76,14 @@ async def get_energy_budgets(
     period: Optional[str] = Query(None),
 ):
     """Query active organizational energy & carbon budget statuses."""
-    return BudgetService.get_team_status(
+    team_status = BudgetService.get_team_status(
         org_id=org_id,
         team_id=team_id,
         period=period,
     )
+    all_budgets = BudgetService.list_org_budgets(org_id=org_id, period=period)
+    return {
+        **team_status,
+        "budgets": all_budgets,
+    }
 

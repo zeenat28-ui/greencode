@@ -138,7 +138,8 @@ async def export_esg_disclosure_package(
 ):
     """Export signed CSRD/SEC ESG disclosure bundle for the caller's tenant."""
     org = {"name": "Enterprise Workspace", "slug": "enterprise", "id": actor.get("org_id") or 1}
-    audits = get_latest_repositories(limit=25)
+    audits_page = get_latest_repositories(limit=25)
+    audits = audits_page.get("items", []) if isinstance(audits_page, dict) else audits_page
     report = ESGComplianceExporter.generate_disclosure_package(organization=org, audits=audits)
     return {
         "success": True,
@@ -227,9 +228,12 @@ async def get_team_energy_debt(
     from app.database import get_latest_repositories
     from app.parser import audit_source_code
 
-    repos = get_latest_repositories(limit=10)
+    repos_page = get_latest_repositories(limit=10)
+    repos = repos_page.get("items", []) if isinstance(repos_page, dict) else repos_page
     real_violations = []
     for repo in repos:
+        if not isinstance(repo, dict):
+            continue
         v_list = repo.get("violations")
         if isinstance(v_list, list):
             real_violations.extend(v_list)

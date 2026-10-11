@@ -1164,6 +1164,30 @@ def get_audit_history_endpoint(
     }
 
 
+@app.get("/api/repositories", tags=["Audit History"])
+def list_monitored_repositories_endpoint(
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    """Return latest audited repositories for the enterprise control plane overview."""
+    page = get_latest_repositories(limit=limit, offset=offset)
+    items = page.get("items", []) if isinstance(page, dict) else page
+    enriched = [
+        {
+            **r,
+            "repo_name": r.get("full_name") or r.get("name") or "audited/repository",
+        }
+        for r in items
+        if isinstance(r, dict)
+    ]
+    return {
+        "repositories": enriched,
+        "total": page.get("total", len(enriched)) if isinstance(page, dict) else len(enriched),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 @app.get("/api/repository/{repo_id}")
 def get_repository_details_endpoint(
     repo_id: int,
@@ -1964,7 +1988,8 @@ async def api_export_esg_disclosure(
     """Generate CSRD / SEC compliant signed corporate sustainability disclosure package."""
     org_id = current_user.get("org_id") or 1
     org = get_organization_by_id(org_id) or {"name": "Enterprise Workspace", "slug": "enterprise"}
-    audits = get_latest_repositories(limit=25)
+    audits_page = get_latest_repositories(limit=25)
+    audits = audits_page.get("items", []) if isinstance(audits_page, dict) else audits_page
     report = ESGComplianceExporter.generate_disclosure_package(organization=org, audits=audits)
     return {
         "success": True,
@@ -2124,7 +2149,8 @@ async def api_voice_ask(req: VoiceAskRequest):
         }
 
     if any(k in q for k in ("explain", "why", "provenance", "hardware", "trace")):
-        repos = get_latest_repositories(limit=1)
+        repos_page = get_latest_repositories(limit=1)
+        repos = repos_page.get("items", []) if isinstance(repos_page, dict) else repos_page
         audit_res = mcp_audit_and_score(
             source_code="def compute_total(items):\n    return sum(x for x in items)\n",
             language="python",
@@ -2133,8 +2159,8 @@ async def api_voice_ask(req: VoiceAskRequest):
         )
         audit_data = audit_res.get("data", {})
         energy_data = audit_data.get("energy", {})
-        latest_score = float(repos[0].get("green_score")) if (repos and repos[0].get("green_score") is not None) else float(audit_data.get("green_score", 100.0))
-        latest_violations = int(repos[0].get("total_violations")) if (repos and repos[0].get("total_violations") is not None) else int(audit_data.get("violation_count", 0))
+        latest_score = float(repos[0].get("green_score")) if (repos and isinstance(repos[0], dict) and repos[0].get("green_score") is not None) else float(audit_data.get("green_score", 100.0))
+        latest_violations = int(repos[0].get("total_violations")) if (repos and isinstance(repos[0], dict) and repos[0].get("total_violations") is not None) else int(audit_data.get("violation_count", 0))
         mcp_res = mcp_explain_score(
             green_score=latest_score,
             zone=zone,
@@ -2161,11 +2187,12 @@ async def api_voice_ask(req: VoiceAskRequest):
         }
 
     # Default: repository / audit_and_score
-    repos = get_latest_repositories(limit=1)
+    repos_page = get_latest_repositories(limit=1)
+    repos = repos_page.get("items", []) if isinstance(repos_page, dict) else repos_page
     sample_code = "def compute_total(items):\n    return sum(x for x in items)\n"
     mcp_res = mcp_audit_and_score(source_code=sample_code, language="python", zone=zone, duration_seconds=0.05)
     data = mcp_res.get("data", {})
-    score = repos[0].get("green_score", data.get("green_score")) if repos else data.get("green_score")
+    score = repos[0].get("green_score", data.get("green_score")) if (repos and isinstance(repos[0], dict)) else data.get("green_score")
     grade = data.get("grade", "A")
     energy_info = data.get("energy", {})
     hw = energy_info.get("measurement_is_hardware", False)

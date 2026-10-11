@@ -685,3 +685,10 @@ def resolve_carbon_intensity(
         citation=None,
     )
 
+
+def get_zone_carbon_intensity(zone: str = "US-CAL-CISO", api_key: Optional[str] = None) -> Dict[str, Any]:
+    """Convenience bridge returning the full 4-tier carbon intensity dictionary for a zone."""
+    from app.optimizer import get_zone_carbon_intensity as _opt_get_zone
+    return _opt_get_zone(zone=zone, api_key=api_key)
+
+

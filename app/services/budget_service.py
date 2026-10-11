@@ -138,6 +138,8 @@ class BudgetService:
             "period": period,
             "monthly_budget_kg_co2e": limit_kg,
             "consumed_kg_co2e": consumed_kg,
+            "monthly_budget_kg": limit_kg,
+            "current_consumed_kg": consumed_kg,
             "remaining_kg_co2e": remaining_kg,
             "consumption_pct": consumption_pct,
             "daily_burn_rate_kg": daily_burn_rate,
@@ -147,6 +149,33 @@ class BudgetService:
             "alert_severity": alert_severity,
             "is_breached": budget.get("is_breached", False) or consumption_pct >= 100.0,
         }
+
+    @classmethod
+    def list_org_budgets(
+        cls,
+        org_id: int = 1,
+        period: Optional[str] = None,
+    ) -> list[Dict[str, Any]]:
+        """List all team budget statuses for an organization in the active period."""
+        period = period or cls._current_period()
+        db = SessionLocal()
+        try:
+            rows = (
+                db.query(CarbonBudget)
+                .filter(
+                    CarbonBudget.org_id == org_id,
+                    CarbonBudget.period_year_month == period,
+                )
+                .order_by(CarbonBudget.team_id.asc())
+                .all()
+            )
+            team_ids = [r.team_id for r in rows]
+        finally:
+            db.close()
+
+        if not team_ids:
+            team_ids = ["core-infra"]
+        return [cls.get_team_status(org_id=org_id, team_id=tid, period=period) for tid in team_ids]
 
     @classmethod
     def evaluate_pr_impact(

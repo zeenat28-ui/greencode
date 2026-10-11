@@ -22,23 +22,31 @@ class AuditService:
             repo_record = None
             if project_id:
                 proj = db.query(Project).filter(Project.id == project_id).first()
-                repo_record = db.query(Repository).filter(Repository.project_id == project_id).first()
-                if not repo_record and proj:
-                    repo_record = Repository(
-                        name=proj.name,
-                        url=f"https://internal/{proj.slug}",
-                        default_branch="main",
-                        green_score=green_score,
-                        carbon_intensity_tier="LOW" if green_score >= 80 else "MEDIUM",
-                        project_id=proj.id,
-                        org_id=proj.org_id,
+                if proj:
+                    repo_record = (
+                        db.query(Repository)
+                        .filter(Repository.org_id == proj.org_id, Repository.name == proj.name)
+                        .first()
                     )
-                    db.add(repo_record)
-                    db.flush()
+                    if not repo_record:
+                        repo_record = Repository(
+                            name=proj.name,
+                            path_or_url=proj.repo_url or f"https://internal/{proj.slug}",
+                            default_branch=proj.default_branch or "main",
+                            green_score=green_score,
+                            total_files=int(analysis_result.get("total_files", 0)),
+                            total_lines=int(analysis_result.get("total_lines", 0)),
+                            org_id=proj.org_id,
+                            status="completed",
+                        )
+                        db.add(repo_record)
+                        db.flush()
 
             if repo_record:
                 repo_record.green_score = green_score
-                repo_record.last_scanned = datetime.now(timezone.utc)
+                repo_record.total_files = int(analysis_result.get("total_files", 0))
+                repo_record.total_lines = int(analysis_result.get("total_lines", 0))
+                repo_record.created_at = datetime.now(timezone.utc)
                 db.commit()
 
             return {
@@ -61,17 +69,25 @@ class AuditService:
         """Retrieve historical audits for a project."""
         db = SessionLocal()
         try:
-            repo = db.query(Repository).filter(Repository.project_id == project_id).first()
-            if not repo:
-                return []
+            proj = db.query(Project).filter(Project.id == project_id).first()
+            if proj:
+                repos = (
+                    db.query(Repository)
+                    .filter(Repository.org_id == proj.org_id, Repository.name == proj.name)
+                    .order_by(Repository.created_at.desc())
+                    .all()
+                )
+            else:
+                repos = db.query(Repository).filter(Repository.id == project_id).all()
             return [
                 {
                     "id": repo.id,
                     "name": repo.name,
                     "green_score": repo.green_score,
-                    "carbon_intensity_tier": repo.carbon_intensity_tier,
-                    "last_scanned": repo.last_scanned.isoformat() if repo.last_scanned else None,
+                    "carbon_intensity_tier": "LOW" if (repo.green_score or 100.0) >= 80.0 else "MEDIUM",
+                    "last_scanned": repo.created_at.isoformat() if repo.created_at else None,
                 }
+                for repo in repos
             ]
         finally:
             db.close()

@@ -864,6 +864,118 @@ def test_spine_memory_and_lawyer_upgrades():
     assert "12 characters" in weak_res["error"]
 
 
+def test_full_seven_part_end_to_end_integration(tmp_path):
+    """Verify all 7 architectural subsystems (Eyes -> Ears -> Brain -> Hands -> Legs -> Voice -> Spine) integrate end-to-end."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.parser import audit_source_code
+    from app.carbon_intensity import get_zone_carbon_intensity
+    from app.calibrated_energy import CalibratedEnergyModel
+    from app.energy_predictor import GreenDeployPredictor
+    from app.services.energy_diff_service import EnergyDiffService
+    from app.amazon_service import get_region_carbon_intensity, list_available_regions
+    from app.esg_disclosure import ESGComplianceExporter
+    from app.database import get_latest_repositories, SessionLocal, Project
+    from app.audit.service import AuditService
+
+    # Part 1 (Eyes): Scan inefficient vs optimized Python code
+    bad_code = (
+        "def calc(items):\n"
+        "    out = ''\n"
+        "    for i in items:\n"
+        "        for j in items:\n"
+        "            for k in items:\n"
+        "                out = out + str(i) + str(j) + str(k)\n"
+        "    return out\n"
+    )
+    good_code = "def calc(items):\n    return ''.join(f'{i}{j}{k}' for i in items for j in items for k in items)\n"
+    base_scan = audit_source_code(good_code, "python")
+    head_scan = audit_source_code(bad_code, "python")
+    assert head_scan["green_score"] < base_scan["green_score"]
+
+    # Part 2 (Ears & Sensors): Fetch grid intensity & derive calibrated energy
+    grid = get_zone_carbon_intensity("IE")
+    assert grid["carbon_intensity"] > 0
+    cal = CalibratedEnergyModel.calculate_energy(duration_seconds=1.2, cpu_utilization_pct=55.0, cloud_instance="c6g.xlarge")
+    assert cal.energy_joules > 0
+
+    # Part 3 (Brain): Predict PR impact and cloud cost
+    pred = GreenDeployPredictor.predict_pr_impact("PR-777", base_scan, head_scan)
+    assert pred.energy_delta_percent > 0
+    assert pred.decision in ("PASS", "WARN", "BLOCK")
+
+    # Part 4 (Hands): Evaluate PR Energy Diff Gate
+    diff_gate = EnergyDiffService.compare_scans(
+        base_scan=base_scan,
+        head_scan=head_scan,
+        grid_zone="IE",
+        instance_type="c6g.xlarge",
+    )
+    assert diff_gate["verdict"] in ("BLOCKED", "WARNING", "PASSED")
+    assert "pr_markdown_comment" in diff_gate
+
+    # Part 5 (Legs): Compare AWS region intensities (Ember 2024 cited fallback / live grid)
+    se_region = get_region_carbon_intensity("eu-north-1")
+    us_region = get_region_carbon_intensity("us-east-1")
+    assert se_region["carbon_intensity"] < us_region["carbon_intensity"]
+    assert "eu-north-1" in list_available_regions()
+
+    # Part 6 & Part 7 (Voice/Face + Spine/Memory/Lawyer) via FastAPI TestClient
+    client = TestClient(app)
+
+    # /api/repositories (used by Overview.tsx)
+    repos_resp = client.get("/api/repositories?limit=5")
+    assert repos_resp.status_code == 200
+    repos_json = repos_resp.json()
+    assert "repositories" in repos_json
+    assert isinstance(repos_json["repositories"], list)
+
+    # /api/energy/budgets (used by Overview.tsx and Budgets.tsx)
+    budgets_resp = client.get("/api/energy/budgets?org_id=1&team_id=core-infra")
+    assert budgets_resp.status_code == 200
+    budgets_json = budgets_resp.json()
+    assert "budgets" in budgets_json
+    assert isinstance(budgets_json["budgets"], list)
+    assert len(budgets_json["budgets"]) >= 1
+    assert "monthly_budget_kg" in budgets_json["budgets"][0]
+    assert "current_consumed_kg" in budgets_json["budgets"][0]
+
+    # /api/voice/ask (used by AlexaVoiceCockpit.tsx) - verify all 4 branches work even when DB has repositories
+    for query_text in ("which region is cleanest?", "refactor loop with bedrock", "explain provenance score", "audit repository"):
+        v_resp = client.post("/api/voice/ask", json={"query": query_text, "zone": "IE"})
+        assert v_resp.status_code == 200
+        v_data = v_resp.json()
+        assert v_data["success"] is True
+        assert "mcp_envelope" in v_data
+
+    # ESGComplianceExporter handles get_latest_repositories() paginated dict directly
+    latest_page = get_latest_repositories(limit=5)
+    disclosure = ESGComplianceExporter.generate_disclosure_package(
+        organization={"name": "Acme Corp", "slug": "acme"},
+        audits=latest_page,
+    )
+    assert disclosure.report_id.startswith("CSRD-GC-")
+
+    # AuditService.execute_audit & get_project_audits work cleanly with a real Project row
+    sample_file = tmp_path / "service_check.py"
+    sample_file.write_text("def f(x):\n    return x + 1\n", encoding="utf-8")
+    db = SessionLocal()
+    try:
+        proj = Project(org_id=1, name="sync-check-service", slug="sync-check-service")
+        db.add(proj)
+        db.commit()
+        db.refresh(proj)
+        proj_id = proj.id
+    finally:
+        db.close()
+
+    exec_res = AuditService.execute_audit(path=str(sample_file), project_id=proj_id)
+    assert exec_res["green_score"] == 100.0
+    hist_res = AuditService.get_project_audits(project_id=proj_id)
+    assert len(hist_res) >= 1
+    assert hist_res[0]["name"] == "sync-check-service"
+
+
 
 
 

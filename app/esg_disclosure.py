@@ -53,15 +53,18 @@ class ESGComplianceExporter:
         org_name = organization.get("name", "Enterprise Tenant")
         slug = organization.get("slug", "enterprise-tenant")
 
+        if isinstance(audits, dict):
+            audits = audits.get("items", []) or []
+
         total_repos = len(audits)
         if total_repos == 0:
             mean_score = 100.0
             total_kwh = 0.0
             total_carbon_g = 0.0
         else:
-            mean_score = sum(a.get("green_score", 100.0) for a in audits) / total_repos
-            total_kwh = sum(a.get("energy_kwh", 0.005) for a in audits)
-            total_carbon_g = sum(a.get("carbon_gco2", 1.25) for a in audits)
+            mean_score = sum(a.get("green_score", 100.0) for a in audits if isinstance(a, dict)) / total_repos
+            total_kwh = sum(a.get("energy_kwh", 0.005) for a in audits if isinstance(a, dict))
+            total_carbon_g = sum(a.get("carbon_gco2", 1.25) for a in audits if isinstance(a, dict))
 
         # Allocate Scope 2 (direct datacenter electricity consumption) and Scope 3 (cloud supply-chain)
         scope_2_kg = round((total_carbon_g * 0.70) / 1000.0, 4)

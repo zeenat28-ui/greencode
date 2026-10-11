@@ -21,6 +21,15 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def setup_database():
     init_db(use_alembic=False)
+    from app.database import Subscription, Invoice, UsageEvent
+    db = SessionLocal()
+    try:
+        db.query(UsageEvent).delete()
+        db.query(Invoice).delete()
+        db.query(Subscription).delete()
+        db.commit()
+    finally:
+        db.close()
 
 
 def _admin_headers(role=Role.SUPERADMIN, org_id=1):
@@ -111,7 +120,7 @@ def test_consume_quota_enforces_limit():
 # Router-level tests
 # ---------------------------------------------------------------------------
 def test_subscription_create_endpoint():
-    headers = _admin_headers()
+    headers = _admin_headers(org_id=10)
     res = client.post(
         "/api/billing/subscription",
         json={"org_id": 10, "tier": "pro", "seats": 2, "status": "active"},
@@ -139,7 +148,7 @@ def test_anonymous_billing_write_is_denied():
 
 
 def test_invoice_generation_endpoint():
-    headers = _admin_headers()
+    headers = _admin_headers(org_id=11)
     res = client.post(
         "/api/billing/invoice",
         json={"org_id": 11, "period": "2026-10"},
@@ -151,7 +160,7 @@ def test_invoice_generation_endpoint():
 
 
 def test_pay_invoice_endpoint():
-    headers = _admin_headers()
+    headers = _admin_headers(org_id=12)
     invoice = BillingService.generate_invoice(org_id=12, period="2026-10")
     res = client.post(
         f"/api/billing/invoice/{invoice['invoice_number']}/pay",

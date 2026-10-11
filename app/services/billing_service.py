@@ -253,7 +253,7 @@ class BillingService:
             rows = (
                 db.query(Invoice)
                 .filter(Invoice.org_id == org_id)
-                .order_by(Invoice.created_at.desc())
+                .order_by(Invoice.created_at.desc(), Invoice.id.desc())
                 .limit(limit)
                 .all()
             )
@@ -269,7 +269,20 @@ class BillingService:
         # Deterministic-ish, unique per org+period; suffix keeps collisions away.
         seq = len(cls.list_invoices(org_id, limit=1000)) + 1
         compact = period.replace("-", "")
-        return f"GC-{compact}-{seq:04d}"
+        base_num = f"GC-{compact}-{seq:04d}"
+        db: Session = SessionLocal()
+        try:
+            exists = db.query(Invoice).filter(Invoice.invoice_number == base_num).first()
+            if not exists:
+                return base_num
+            candidate = f"{base_num}-O{org_id}"
+            idx = 2
+            while db.query(Invoice).filter(Invoice.invoice_number == candidate).first():
+                candidate = f"{base_num}-O{org_id}-{idx}"
+                idx += 1
+            return candidate
+        finally:
+            db.close()
 
     @staticmethod
     def _audit(org_id: int, action: str, resource_id: str, details: str) -> None:

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Sliders, Save, CheckCircle2 } from 'lucide-react';
 
 export default function Policies() {
@@ -9,7 +9,47 @@ export default function Policies() {
   const [dirtyGridLimit, setDirtyGridLimit] = useState(450.0);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  const handleSave = () => {
+  useEffect(() => {
+    const token = localStorage.getItem('greencode_token');
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch('/api/policies/1', { headers })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const p = data?.policy || data;
+        if (p && typeof p === 'object') {
+          if (p.max_regression_pct !== undefined) setMaxRegression(Number(p.max_regression_pct));
+          if (p.max_sci_score !== undefined) setMinGreenScore(Number(p.max_sci_score));
+          if (p.auto_block_deploy !== undefined) setAutoBlock(Boolean(p.auto_block_deploy));
+          if (p.auto_rollback_k8s !== undefined) setAutoRollback(Boolean(p.auto_rollback_k8s));
+          if (p.dirty_grid_threshold_gco2e !== undefined) setDirtyGridLimit(Number(p.dirty_grid_threshold_gco2e));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSave = async () => {
+    try {
+      const token = localStorage.getItem('greencode_token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+      await fetch('/api/policies', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          org_id: 1,
+          name: 'Enterprise Standard Policy',
+          max_regression_pct: maxRegression,
+          max_sci_score: minGreenScore,
+          auto_block_deploy: autoBlock,
+          auto_rollback_k8s: autoRollback,
+          dirty_grid_threshold_gco2e: dirtyGridLimit,
+        }),
+      });
+    } catch {
+      // Fall back to local state confirmation if unauthenticated
+    }
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
   };

@@ -145,7 +145,9 @@ class UsageService:
             user_id=user_id,
             request_id=request_id,
         )
-        return cls.check_quota(org_id, tier, event_type=event_type)
+        post_status = cls.check_quota(org_id, tier, event_type=event_type)
+        post_status["allowed"] = True
+        return post_status
 
     @staticmethod
     def _audit_rejection(org_id: int, event_type: str, status: Dict[str, Any]) -> None:

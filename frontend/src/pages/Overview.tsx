@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Building2, CheckCircle2, TrendingDown,
   DollarSign, Activity, GitPullRequest
@@ -7,6 +7,22 @@ import {
 export default function Overview() {
   const [selectedOrg] = useState('Acme Corporation (Enterprise)');
   const [selectedTeam, setSelectedTeam] = useState('All Teams');
+  const [liveRepos, setLiveRepos] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/repositories?limit=5')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.repositories)) {
+          setLiveRepos(data.repositories);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleExportDisclosure = () => {
+    window.open('/api/reports/esg/1', '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <div className="space-y-6">
@@ -33,7 +49,10 @@ export default function Overview() {
             <option>Payments Team</option>
             <option>Commerce Service</option>
           </select>
-          <button className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition-all shadow-lg shadow-emerald-500/20">
+          <button
+            onClick={handleExportDisclosure}
+            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition-all shadow-lg shadow-emerald-500/20"
+          >
             Export SEC Disclosure
           </button>
         </div>
@@ -111,6 +130,25 @@ export default function Overview() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
+              {liveRepos.map((repo, idx) => {
+                const score = Number(repo.green_score ?? 90);
+                const compliant = score >= 75;
+                return (
+                  <tr key={repo.id || idx} className="hover:bg-slate-50/50">
+                    <td className="px-5 py-4 font-semibold text-slate-900">{repo.repo_name || 'audited/repository'}</td>
+                    <td className="px-5 py-4 text-slate-600">Core Infra</td>
+                    <td className={`px-5 py-4 font-bold ${compliant ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {score.toFixed(1)} / 100
+                    </td>
+                    <td className="px-5 py-4 text-slate-600">Min Score &ge; 75.0</td>
+                    <td className="px-5 py-4">
+                      <span className={`px-2.5 py-1 text-xs rounded-full font-medium ${compliant ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                        {compliant ? 'COMPLIANT' : 'REVIEW REQUIRED'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
               <tr className="hover:bg-slate-50/50">
                 <td className="px-5 py-4 font-semibold text-slate-900">acme/payments-api</td>
                 <td className="px-5 py-4 text-slate-600">Payments Team</td>

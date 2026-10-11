@@ -3,12 +3,36 @@ import { Plus } from 'lucide-react';
 
 export default function Budgets() {
   const [prEmissionsInput, setPrEmissionsInput] = useState<number>(25.0);
-
-  const teamBudgets = [
+  const [teamBudgets, setTeamBudgets] = useState([
     { team: 'Core Infra', limitKg: 500.0, consumedKg: 180.0, burnRate: '6.0 kg/day', status: 'NORMAL', pct: 36.0 },
     { team: 'Payments', limitKg: 250.0, consumedKg: 235.0, burnRate: '7.8 kg/day', status: 'CRITICAL', pct: 94.0 },
     { team: 'Commerce', limitKg: 300.0, consumedKg: 310.0, burnRate: '10.3 kg/day', status: 'BREACHED', pct: 103.3 },
-  ];
+  ]);
+
+  const handleAllocateBudget = async () => {
+    const newTeam = `ML Platform (${teamBudgets.length + 1})`;
+    try {
+      const token = localStorage.getItem('greencode_token');
+      await fetch('/api/budgets/allocate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          org_id: 1,
+          team_id: newTeam,
+          monthly_budget_kg: 400.0,
+        }),
+      });
+    } catch {
+      // Continue with UI update if unauthenticated
+    }
+    setTeamBudgets((prev) => [
+      ...prev,
+      { team: newTeam, limitKg: 400.0, consumedKg: 42.0, burnRate: '1.4 kg/day', status: 'NORMAL', pct: 10.5 },
+    ]);
+  };
 
   return (
     <div className="space-y-6">
@@ -18,7 +42,10 @@ export default function Budgets() {
           <h1 className="text-xl font-bold text-slate-900">Enterprise Carbon & Cost Budgets</h1>
           <p className="text-sm text-slate-500">Allocate monthly carbon quotas (kg CO2e) and prevent team overruns</p>
         </div>
-        <button className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-colors shadow-sm">
+        <button
+          onClick={handleAllocateBudget}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-colors shadow-sm"
+        >
           <Plus className="w-4 h-4" /> Allocate Team Budget
         </button>
       </div>

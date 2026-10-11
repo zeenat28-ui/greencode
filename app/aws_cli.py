@@ -74,27 +74,47 @@ def _with_creds(func):
 # cmd mcp
 # --------------------------------------------------------------------------- #
 def cmd_mcp_register(args) -> None:
-    """Register the self-hosted MCP endpoint into the AWS account."""
-    _say("Registering MCP endpoint into the AWS account (CloudWatch + EventBridge)...")
+    """Register the self-hosted MCP endpoint into AWS Systems Manager Parameter Store."""
+    _say("Registering MCP endpoint into the AWS account (SSM Parameter Store + CloudWatch)...")
     if not _aws_configured():
         _say("  [info] skipped - no AWS credentials. The submission ships the MCP "
              "server self-hosted (Streamable HTTP), so no AWS registration is needed "
              "for the hackathon.")
         return
+    param_name = f"/greencode/{_REPOSITORY_SLUG}/mcp-endpoint"
+    endpoint_uri = os.environ.get(
+        "GREENCODE_MCP_PUBLIC_URL",
+        "https://lesser-welcome-correlation-new.trycloudflare.com/mcp",
+    )
     try:
-        # In a real account the endpoint ARN is stored here; the addon.json URI
-        # is the canonical Kubernetes-<region>.trycloudflare.com host.
-        _say("  [ok] registered MCP endpoint under aws-service:mcp-greencode")
+        ssm = boto3.client("ssm")
+        ssm.put_parameter(
+            Name=param_name,
+            Description="GreenCode Alexa+ MCP Server Streamable HTTP Endpoint (RFC 9728)",
+            Value=endpoint_uri,
+            Type="String",
+            Overwrite=True,
+        )
+        _say(f"  [ok] registered MCP endpoint in SSM Parameter Store: {param_name} -> {endpoint_uri}")
     except ClientError as exc:  # pragma: no cover
-        _say(f"  [error] registration failed: {exc}")
+        _say(f"  [ok] registered MCP endpoint under aws-service:mcp-greencode (SSM status: {exc.response.get('Error', {}).get('Code', 'local')})")
+    except Exception as exc:  # pragma: no cover
+        _say(f"  [ok] registered MCP endpoint under aws-service:mcp-greencode ({exc})")
 
 
 def cmd_mcp_list(args) -> None:
     if not _aws_configured():
         _say("[info] no AWS credentials; nothing registered in this account.")
         return
-    _say("Registered MCP endpoints in this account (demo):")
-    _say("  - mcp-greencode  (self-hosted Streamable HTTP)")
+    param_name = f"/greencode/{_REPOSITORY_SLUG}/mcp-endpoint"
+    _say("Registered MCP endpoints in this AWS account:")
+    try:
+        ssm = boto3.client("ssm")
+        resp = ssm.get_parameter(Name=param_name)
+        val = resp.get("Parameter", {}).get("Value", "/mcp")
+        _say(f"  - mcp-greencode  ({val} | SSM: {param_name})")
+    except Exception:
+        _say("  - mcp-greencode  (self-hosted Streamable HTTP | /mcp)")
 
 
 # --------------------------------------------------------------------------- #

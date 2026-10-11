@@ -38,10 +38,15 @@ class CloudInstanceProfile:
 
 # Calibrated hardware power coefficients from SPECpower & Cloud Carbon Footprint database
 CLOUD_POWER_PROFILES: Dict[str, CloudInstanceProfile] = {
-    # AWS Graviton (High-efficiency ARM64)
+    # AWS Graviton 2/3/4 (High-efficiency ARM64 Neoverse)
     "c6g.xlarge": CloudInstanceProfile("AWS", "c6g.xlarge", 4, 8.0, 3.2, 18.5, "arm64"),
     "m6g.2xlarge": CloudInstanceProfile("AWS", "m6g.2xlarge", 8, 32.0, 6.8, 38.0, "arm64"),
     "c7g.2xlarge": CloudInstanceProfile("AWS", "c7g.2xlarge", 8, 16.0, 5.5, 32.0, "arm64"),
+    "c8g.2xlarge": CloudInstanceProfile("AWS", "c8g.2xlarge", 8, 16.0, 4.4, 25.5, "arm64_graviton4"),
+    "r8g.2xlarge": CloudInstanceProfile("AWS", "r8g.2xlarge", 8, 64.0, 5.2, 29.0, "arm64_graviton4"),
+    # AWS Custom AI Silicon (Inferentia2 / Trainium)
+    "inf2.xlarge": CloudInstanceProfile("AWS", "inf2.xlarge", 4, 16.0, 18.0, 190.0, "aws_inferentia2"),
+    "trn1.2xlarge": CloudInstanceProfile("AWS", "trn1.2xlarge", 8, 32.0, 28.0, 300.0, "aws_trainium1"),
     # AWS Intel / AMD
     "c5.xlarge": CloudInstanceProfile("AWS", "c5.xlarge", 4, 8.0, 7.8, 36.4, "x86_64"),
     "m5.2xlarge": CloudInstanceProfile("AWS", "m5.2xlarge", 8, 32.0, 15.2, 72.8, "x86_64"),

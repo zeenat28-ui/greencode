@@ -41,6 +41,9 @@ class CloudCostMapper:
             "lambda_per_gb_second": 0.0000166667,
             "ec2_t3_medium_per_hr": 0.0416,
             "ec2_c6g_xlarge_per_hr": 0.1360,
+            "ec2_c8g_xlarge_per_hr": 0.1445,
+            "ec2_inf2_xlarge_per_hr": 0.7582,
+            "ec2_trn1_2xlarge_per_hr": 1.3400,
             "kwh_electricity_usd": 0.115,
         },
         "gcp": {
@@ -58,9 +61,16 @@ class CloudCostMapper:
     # Regional grid carbon intensity baselines (gCO2eq/kWh)
     REGIONAL_CARBON_FACTORS = {
         "us-east-1": 390.0,
+        "us-east-2": 410.0,
         "us-west-2": 215.0,
+        "ca-central-1": 28.0,
         "eu-west-1": 280.0,
+        "eu-west-2": 185.0,
+        "eu-central-1": 340.0,
+        "eu-north-1": 18.0,
         "ap-southeast-1": 490.0,
+        "ap-northeast-1": 460.0,
+        "ap-south-1": 650.0,
         "default": 380.0,
     }
 
@@ -86,10 +96,17 @@ class CloudCostMapper:
         electricity_cost = kwh * elec_rate
 
         # 2. Hyperscaler compute billing component
-        if "lambda" in service_type.lower() or "function" in service_type.lower():
+        st_lower = service_type.lower()
+        if "lambda" in st_lower or "function" in st_lower:
             # Assume 1GB allocation standard
             compute_cost = duration_seconds * rates.get("lambda_per_gb_second", 0.0000166667)
-        elif "c6g" in service_type.lower():
+        elif "inf2" in st_lower or "inferentia" in st_lower:
+            compute_cost = hours * rates.get("ec2_inf2_xlarge_per_hr", 0.7582)
+        elif "trn1" in st_lower or "trainium" in st_lower:
+            compute_cost = hours * rates.get("ec2_trn1_2xlarge_per_hr", 1.3400)
+        elif "c8g" in st_lower or "graviton4" in st_lower:
+            compute_cost = hours * rates.get("ec2_c8g_xlarge_per_hr", 0.1445)
+        elif "c6g" in st_lower or "graviton" in st_lower:
             compute_cost = hours * rates.get("ec2_c6g_xlarge_per_hr", 0.1360)
         else:
             compute_cost = hours * rates.get("ec2_t3_medium_per_hr", 0.0416)
@@ -98,8 +115,20 @@ class CloudCostMapper:
         # Annualized run rate (8,760 hours in a year)
         annualized = (total_cost / hours) * 8760.0
 
-        grid_carbon = grid_carbon_override or cls.REGIONAL_CARBON_FACTORS.get(region, cls.REGIONAL_CARBON_FACTORS["default"])
-        co2_kg = (kwh * grid_carbon) / 1000.0
+        grid_carbon = grid_carbon_override
+        if grid_carbon is None:
+            if region in cls.REGIONAL_CARBON_FACTORS:
+                grid_carbon = cls.REGIONAL_CARBON_FACTORS[region]
+            else:
+                try:
+                    from app.optimizer import get_zone_carbon_intensity
+                    zone_info = get_zone_carbon_intensity(region)
+                    grid_carbon = zone_info.get("carbon_intensity")
+                except Exception:
+                    grid_carbon = None
+        if grid_carbon is None:
+            grid_carbon = cls.REGIONAL_CARBON_FACTORS["default"]
+        co2_kg = (kwh * float(grid_carbon)) / 1000.0
 
         return CloudCostBreakdown(
             provider=provider_clean.upper(),

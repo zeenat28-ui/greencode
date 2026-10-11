@@ -110,6 +110,16 @@ async def generate_invoice(
     return BillingService.generate_invoice(org_id=payload.org_id, period=payload.period)
 
 
+@router.get("/usage", status_code=status.HTTP_200_OK)
+async def get_usage_snapshot(
+    org_id: int = Query(..., gt=0),
+    actor: Dict[str, Any] = Depends(get_current_actor),
+):
+    """Live usage vs quota for the customer dashboard + billing controls (GET)."""
+    _enforce_tenant(actor, org_id)
+    return BillingService.usage_snapshot(org_id=org_id)
+
+
 @router.post("/usage", status_code=status.HTTP_200_OK)
 async def usage_snapshot(
     payload: GenerateInvoiceRequest,
@@ -122,12 +132,13 @@ async def usage_snapshot(
 
 @router.get("/invoices", status_code=status.HTTP_200_OK)
 async def list_invoices(
-    payload: ListInvoicesRequest,
+    org_id: int = Query(..., gt=0),
+    limit: int = Query(24, ge=1, le=1000),
     actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """List the tenant's invoice history (newest first)."""
-    _enforce_tenant(actor, payload.org_id)
-    return BillingService.list_invoices(org_id=payload.org_id, limit=payload.limit)
+    _enforce_tenant(actor, org_id)
+    return BillingService.list_invoices(org_id=org_id, limit=limit)
 
 
 @router.get(

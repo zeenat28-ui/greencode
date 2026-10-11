@@ -1,9 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Download, ShieldCheck, ExternalLink } from 'lucide-react';
 
 export default function Reports() {
   const [integrityStatus, setIntegrityStatus] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const [esgData, setEsgData] = useState<any>(null);
+
+  useEffect(() => {
+    fetch('/api/reports/esg/1')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setEsgData(data);
+      })
+      .catch(() => {});
+  }, []);
 
   const verifyAuditLedger = async () => {
     setVerifying(true);
@@ -75,8 +85,13 @@ export default function Reports() {
 
       {/* Scope 2 & Scope 3 Breakdown */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="p-5 border-b border-slate-200">
+        <div className="p-5 border-b border-slate-200 flex justify-between items-center">
           <h2 className="font-semibold text-slate-900">Emissions Inventory by Accounting Standard</h2>
+          {esgData?.reporting_period && (
+            <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full">
+              Live Ledger Period: {esgData.reporting_period}
+            </span>
+          )}
         </div>
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-200">
@@ -91,13 +106,17 @@ export default function Reports() {
             <tr>
               <td className="px-5 py-4 font-semibold text-slate-900">Cloud Compute (Scope 2)</td>
               <td className="px-5 py-4 text-slate-600">GHG Protocol Market-Based</td>
-              <td className="px-5 py-4 font-medium text-slate-900">0.340 tCO2e (883.6 kWh)</td>
+              <td className="px-5 py-4 font-medium text-slate-900">
+                {esgData?.scope_2_tonnes_co2e !== undefined ? `${esgData.scope_2_tonnes_co2e} tCO2e` : '0.340 tCO2e (883.6 kWh)'}
+              </td>
               <td className="px-5 py-4 text-slate-600">$106.03 USD</td>
             </tr>
             <tr>
               <td className="px-5 py-4 font-semibold text-slate-900">Embodied Hardware (Scope 3)</td>
               <td className="px-5 py-4 text-slate-600">GSF SCI v1.0 Hardware Factor</td>
-              <td className="px-5 py-4 font-medium text-slate-900">0.061 tCO2e</td>
+              <td className="px-5 py-4 font-medium text-slate-900">
+                {esgData?.scope_3_tonnes_co2e !== undefined ? `${esgData.scope_3_tonnes_co2e} tCO2e` : '0.061 tCO2e'}
+              </td>
               <td className="px-5 py-4 text-slate-600">Amortized Infrastructure</td>
             </tr>
             <tr className="bg-emerald-50/50">

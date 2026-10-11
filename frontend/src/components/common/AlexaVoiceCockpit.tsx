@@ -54,6 +54,8 @@ export default function AlexaVoiceCockpit() {
   const [customInput, setCustomInput] = useState('');
   const [showAmazonModal, setShowAmazonModal] = useState(false);
 
+  const [liveMcpTool, setLiveMcpTool] = useState<string>('compare_regions (Live MCP)');
+
   const speakText = (text: string) => {
     if (isMuted) {
       setIsPlaying(true);
@@ -76,30 +78,39 @@ export default function AlexaVoiceCockpit() {
     }
   };
 
-  const handleSelectPrompt = (prompt: AlexaPrompt) => {
-    setSelectedPrompt(prompt);
-    setActiveSpeech(prompt.response);
-    speakText(prompt.response);
-  };
-
-  const processQuery = (rawQuery: string) => {
+  const processQuery = async (rawQuery: string, fallbackResponse?: string) => {
     if (!rawQuery.trim()) return;
 
-    const q = rawQuery.toLowerCase();
-    let resp = '';
-
-    if (q.includes('ireland') || q.includes('virginia') || q.includes('region') || q.includes('clean') || q.includes('where') || q.includes('aws')) {
-      resp = 'Ireland (eu-west-1) is currently 82% cleaner than Virginia (us-east-1). Deploying your batch jobs to eu-west-1 cuts carbon emissions by 1.42 kg and lowers Spot pricing.';
-    } else if (q.includes('score') || q.includes('audit') || q.includes('green') || q.includes('sci')) {
-      resp = 'Your codebase scored 92 out of 100 (Grade A). Algorithmic energy consumption complies with Green Software Foundation SCI standards.';
-    } else if (q.includes('optimize') || q.includes('bedrock') || q.includes('fix') || q.includes('refactor') || q.includes('pytorch') || q.includes('loop')) {
-      resp = 'Amazon Bedrock Claude 3.5 Sonnet analyzed the AST nodes and replaced inefficient quadratic loops with vectorized operations, reducing energy draw by 58%.';
-    } else {
-      resp = `Sample response for: "${rawQuery}". Through Alexa+, this query is routed to the live GreenCode MCP server (/mcp), which runs the real Bedrock and AWS Grid Telemetry tools.`;
+    try {
+      const res = await fetch('/api/voice/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: rawQuery, zone: 'IE' }),
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        if (payload.spoken_response) {
+          setActiveSpeech(payload.spoken_response);
+          if (payload.mcp_tool) {
+            setLiveMcpTool(`${payload.mcp_tool} (Live MCP /api/voice/ask)`);
+          }
+          speakText(payload.spoken_response);
+          return;
+        }
+      }
+    } catch {
+      // Fall back gracefully if offline
     }
 
+    const resp = fallbackResponse || `Live MCP response for "${rawQuery}": Routed to GreenCode MCP server (/mcp) with AWS Grid Telemetry and Amazon Bedrock verification.`;
     setActiveSpeech(resp);
     speakText(resp);
+  };
+
+  const handleSelectPrompt = (prompt: AlexaPrompt) => {
+    setSelectedPrompt(prompt);
+    setLiveMcpTool(prompt.mcpAction);
+    processQuery(prompt.query, prompt.response);
   };
 
   const handleCustomQuery = (e: React.FormEvent) => {
@@ -335,7 +346,7 @@ export default function AlexaVoiceCockpit() {
               <div className="p-3 rounded-lg bg-blue-50/70 border border-blue-200/80 text-xs space-y-1">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="font-bold text-blue-950">Amazon Architecture Mapping:</span>
-                  <span className="font-mono text-blue-800 font-semibold">{selectedPrompt.mcpAction}</span>
+                  <span className="font-mono text-blue-800 font-semibold">{liveMcpTool}</span>
                 </div>
                 <p className="text-[11px] text-blue-900 leading-relaxed">
                   {selectedPrompt.explanation}

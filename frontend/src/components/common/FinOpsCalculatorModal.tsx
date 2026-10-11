@@ -21,6 +21,22 @@ interface InstanceTypeOption {
 
 const INSTANCE_OPTIONS: InstanceTypeOption[] = [
   {
+    id: 'c8g.2xlarge',
+    name: 'AWS c8g.2xlarge (Graviton4)',
+    provider: 'Amazon Web Services',
+    specs: '8 vCPU ARM Neoverse-V2, 16 GiB RAM (Latest AWS Silicon)',
+    hourlyRate: 0.289,
+    watts: 102,
+  },
+  {
+    id: 'inf2.xlarge',
+    name: 'AWS inf2.xlarge (Inferentia2)',
+    provider: 'Amazon Web Services',
+    specs: '1x AWS Inferentia2 Accelerator, 32 GiB HBM (GenAI Inference)',
+    hourlyRate: 0.758,
+    watts: 190,
+  },
+  {
     id: 'c6i.2xlarge',
     name: 'AWS c6i.2xlarge',
     provider: 'Amazon Web Services',
@@ -38,19 +54,11 @@ const INSTANCE_OPTIONS: InstanceTypeOption[] = [
   },
   {
     id: 'm6g.2xlarge',
-    name: 'AWS m6g.2xlarge (Graviton)',
+    name: 'AWS m6g.2xlarge (Graviton2)',
     provider: 'Amazon Web Services',
     specs: '8 vCPU ARM Graviton2, 32 GiB RAM',
     hourlyRate: 0.308,
     watts: 120,
-  },
-  {
-    id: 'n2-standard-8',
-    name: 'GCP n2-standard-8',
-    provider: 'Google Cloud Platform',
-    specs: '8 vCPU, 32 GiB RAM (General Purpose)',
-    hourlyRate: 0.388,
-    watts: 190,
   },
 ];
 

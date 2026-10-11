@@ -17,8 +17,13 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
 # Hardware Accelerator TDP & Energy Coefficients (Joules per Token per Billion Parameters)
-# Source: MLPerf & Hugging Face Carbon Footprint Benchmarks
+# Source: MLPerf, AWS Neuron / Inferentia2 Sustainability Benchmarks & Hugging Face Carbon Data
 ACCELERATOR_SPECIFICATIONS: Dict[str, Dict[str, float]] = {
+    "aws_inferentia2": {"tdp_watts": 190.0, "pue": 1.15, "joules_per_token_per_b": 0.00018},
+    "inf2": {"tdp_watts": 190.0, "pue": 1.15, "joules_per_token_per_b": 0.00018},
+    "aws_trainium": {"tdp_watts": 300.0, "pue": 1.15, "joules_per_token_per_b": 0.00024},
+    "trn1": {"tdp_watts": 300.0, "pue": 1.15, "joules_per_token_per_b": 0.00024},
+    "aws_graviton4": {"tdp_watts": 95.0, "pue": 1.15, "joules_per_token_per_b": 0.00320},
     "h100": {"tdp_watts": 700.0, "pue": 1.15, "joules_per_token_per_b": 0.00035},
     "a100": {"tdp_watts": 400.0, "pue": 1.15, "joules_per_token_per_b": 0.00065},
     "rtx_4090": {"tdp_watts": 450.0, "pue": 1.25, "joules_per_token_per_b": 0.00095},
@@ -333,10 +338,20 @@ class MLCarbonAnalyzer:
         annual_kwh_scale = total_kwh * (runs_per_year / safe_tokens)
         annual_cost_usd = annual_kwh_scale * kwh_cost_usd
 
-        rec = (
-            f"Using {hardware.upper()} for {safe_params}B parameters. "
-            f"Quantizing to 4-bit/AWQ reduces active Joules/token by up to 68%."
-        )
+        inf2_spec = ACCELERATOR_SPECIFICATIONS["aws_inferentia2"]
+        inf2_jpt = safe_params * inf2_spec["joules_per_token_per_b"] * inf2_spec["pue"]
+        if hw_key not in ("aws_inferentia2", "inf2") and joules_per_token > inf2_jpt:
+            inf2_savings_pct = round(((joules_per_token - inf2_jpt) / joules_per_token) * 100.0, 1)
+            rec = (
+                f"Using {hardware.upper()} for {safe_params}B parameters. "
+                f"Migrating to AWS Inferentia2 (inf2 / AWS Neuron SDK) cuts Joules/token by {inf2_savings_pct}%, "
+                f"and 4-bit/AWQ quantization reduces memory bandwidth energy by up to 68%."
+            )
+        else:
+            rec = (
+                f"Using {hardware.upper()} (optimal AWS custom AI silicon) for {safe_params}B parameters. "
+                f"Enabling FP8/INT8 quantization via AWS Neuron SDK further reduces active Joules/token by up to 54%."
+            )
 
         return MLTokenCarbonResult(
             parameter_count_b=safe_params,

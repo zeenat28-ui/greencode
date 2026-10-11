@@ -431,6 +431,9 @@ def predict(input_tensor):
                   onChange={(e) => setTokenForm({ ...tokenForm, hardware: e.target.value })}
                   className="input py-1.5"
                 >
+                  <option value="aws_inferentia2">AWS Inferentia2 (inf2 &middot; 190W TDP &middot; BF16/FP8 NeuronCore-v2)</option>
+                  <option value="aws_trainium">AWS Trainium1 (trn1 &middot; 500W TDP &middot; High-Efficiency Training)</option>
+                  <option value="aws_graviton4">AWS Graviton4 (c8g/r8g &middot; 130W TDP &middot; ARM Neoverse-V2)</option>
                   <option value="h100">NVIDIA H100 SXM5 (700W TDP &middot; FP8 Engine)</option>
                   <option value="a100">NVIDIA A100 80GB (400W TDP &middot; Standard Cloud)</option>
                   <option value="rtx_4090">NVIDIA RTX 4090 (450W TDP &middot; Edge Workstation)</option>
@@ -512,6 +515,12 @@ def predict(input_tensor):
                       </p>
                     </div>
                   </div>
+                  {tokenResult.aws_silicon_recommendation && (
+                    <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-950">
+                      <span className="font-bold">AWS Native Silicon Advisory: </span>
+                      {tokenResult.aws_silicon_recommendation}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -519,7 +528,7 @@ def predict(input_tensor):
                 <Zap size={36} className="mx-auto text-slate-300" />
                 <p className="text-sm font-semibold text-slate-700">Token Model Uncomputed</p>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                  Simulate energy consumption across NVIDIA H100 and A100 architectures under varying sequence lengths.
+                  Simulate energy consumption across AWS Inferentia2, Trainium, Graviton4, and NVIDIA H100/A100 architectures.
                 </p>
               </div>
             )}

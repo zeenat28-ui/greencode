@@ -8,7 +8,7 @@ import {
   Lock, Globe, ChevronDown, CheckCircle2, Cpu, ArrowRight,
   Sparkles, Play, FileCode2
 } from 'lucide-react';
-import { DEMO_REPOSITORIES, DEMO_SCAN_DATA } from '../utils/demoData';
+import { DEMO_SCAN_DATA } from '../utils/demoData';
 
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -165,13 +165,89 @@ export default function ScanRepository() {
     }
   };
 
-  const handleLoadDemo = (slug: string) => {
-    const demo = DEMO_SCAN_DATA[slug] || Object.values(DEMO_SCAN_DATA)[0];
-    if (demo) {
-      setScanData(applyEnergyEstimates(demo));
+  const [directSlug, setDirectSlug] = useState('');
+  const [localSubpath, setLocalSubpath] = useState('samples');
+
+  const handleScanLocalSubpath = async (subpath: string, repoLabel: string) => {
+    setIsScanning(true);
+    setScanError(null);
+    setStatusMessage(`Auditing local workspace path '${subpath}'...`);
+    try {
+      const res = await fetch('/api/scan/local-workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subpath,
+          repo_name: repoLabel,
+          team_id: 'core-platform',
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.detail || 'Local workspace audit failed.');
+      }
+      setScanData(applyEnergyEstimates(body));
       navigate('/dashboard');
+    } catch (err: any) {
+      const demo = DEMO_SCAN_DATA[repoLabel] || Object.values(DEMO_SCAN_DATA)[0];
+      if (demo && !navigator.onLine) {
+        setScanData(applyEnergyEstimates(demo));
+        navigate('/dashboard');
+      } else {
+        setScanError(err?.message || 'Could not complete workspace audit.');
+      }
+    } finally {
+      setIsScanning(false);
     }
   };
+
+  const handleDirectGitHubScan = async () => {
+    const clean = directSlug
+      .replace(/^https?:\/\/github\.com\//i, '')
+      .replace(/\.git$/i, '')
+      .replace(/\/$/, '')
+      .trim();
+    if (!clean.includes('/')) {
+      setScanError('Enter a valid GitHub repository slug (e.g. zeenat28-ui/greencode) or URL.');
+      return;
+    }
+    setIsScanning(true);
+    setScanError(null);
+    setStatusMessage(`Auditing GitHub repository '${clean}'...`);
+    try {
+      const res = await scanService.scanGitHub(clean);
+      setScanData(applyEnergyEstimates(res.data));
+      navigate('/dashboard');
+    } catch (err: any) {
+      setScanError(err?.response?.data?.detail || err?.message || 'Could not audit GitHub repository.');
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const LIVE_WORKSPACE_TARGETS = [
+    {
+      subpath: 'samples',
+      repo_name: 'greencode-org/samples-benchmark',
+      name: 'samples/ (Multi-Language Benchmark)',
+      language: 'Python / JS / C++ / Java / Go',
+      description: 'Live on-disk benchmark suite containing real cubic loops, uncached network calls, and raw DB cursors alongside optimized code.',
+    },
+    {
+      subpath: 'app',
+      repo_name: 'greencode-org/greencode-backend',
+      name: 'app/ (GreenCode Core Engine)',
+      language: 'Python',
+      description: 'Live self-audit of GreenCode FastAPI routers, AST/Tree-sitter parser, and calibrated energy profiler (100/100 target).',
+    },
+    {
+      subpath: 'frontend/src',
+      repo_name: 'greencode-org/greencode-frontend',
+      name: 'frontend/src/ (React + TypeScript UI)',
+      language: 'TypeScript',
+      description: 'Live lexical & CST static analysis of all React pages, hooks, and API client services.',
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -181,7 +257,7 @@ export default function ScanRepository() {
           <span className="badge bg-olive-100 text-olive-900 border border-olive-200">GreenCode Audit</span>
         </div>
         <p className="text-xs text-slate-500 mt-1">
-          Select any connected GitHub repository or popular open-source project to audit energy efficiency and generate Amazon Bedrock optimizations.
+          Audit any local workspace directory, public GitHub URL, or connected GitHub repository for energy bottlenecks.
         </p>
       </div>
 
@@ -192,27 +268,74 @@ export default function ScanRepository() {
         </div>
       )}
 
-      {/* 1-Click Demo Evaluation Projects */}
+      {/* Direct Public GitHub URL / Local Path Scanner */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card p-4 space-y-2.5">
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-800">
+            Scan Any Public GitHub Repository (URL or owner/repo)
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={directSlug}
+              onChange={(e) => setDirectSlug(e.target.value)}
+              placeholder="e.g. zeenat28-ui/greencode or https://github.com/..."
+              className="input text-xs font-mono flex-1"
+            />
+            <button
+              onClick={handleDirectGitHubScan}
+              disabled={isScanning || !directSlug.trim()}
+              className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5 shrink-0"
+            >
+              <Play size={11} /> Scan GitHub
+            </button>
+          </div>
+        </div>
+
+        <div className="card p-4 space-y-2.5">
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-800">
+            Scan Local Workspace Subdirectory
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={localSubpath}
+              onChange={(e) => setLocalSubpath(e.target.value)}
+              placeholder="e.g. samples, app, frontend/src, scripts, ."
+              className="input text-xs font-mono flex-1"
+            />
+            <button
+              onClick={() => handleScanLocalSubpath(localSubpath.trim() || '.', `greencode-org/${(localSubpath.trim() || 'workspace').replace(/[^a-zA-Z0-9_-]/g, '-')}`)}
+              disabled={isScanning}
+              className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5 shrink-0"
+            >
+              <Play size={11} /> Scan Local Path
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Live Local Workspace & Benchmark Targets */}
       <div className="card p-5 border-olive-200/90 bg-gradient-to-r from-olive-50/40 via-white to-slate-50/40">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2 border-b border-olive-100">
           <div>
             <h2 className="text-xs font-bold uppercase tracking-wider text-olive-950 flex items-center gap-1.5">
               <Sparkles size={13} className="text-olive-700" />
-              Instant Reference Projects (1-Click Evaluation)
+              Live Workspace &amp; Benchmark Targets (1-Click Real Backend Scan)
             </h2>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Instantly audit pre-configured microservices with real algorithmic bottlenecks without configuring tokens.
+              Executes real multi-language AST/Tree-sitter static analysis on disk and persists results to the database.
             </p>
           </div>
           <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-olive-100 text-olive-900 border border-olive-200 w-fit">
-            Ready to Evaluate
+            Live AST Engine
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {DEMO_REPOSITORIES.map((demo) => (
+          {LIVE_WORKSPACE_TARGETS.map((target) => (
             <div
-              key={demo.full_name}
+              key={target.subpath}
               className="p-3.5 rounded-lg border border-slate-200 bg-white hover:border-olive-400 hover:shadow-sm transition-all flex flex-col justify-between"
             >
               <div>
@@ -220,28 +343,29 @@ export default function ScanRepository() {
                   <div className="flex items-center gap-1.5 min-w-0">
                     <FileCode2 size={14} className="text-olive-700 shrink-0" />
                     <span className="font-mono text-xs font-bold text-slate-900 truncate">
-                      {demo.name}
+                      {target.name}
                     </span>
                   </div>
                   <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
-                    {demo.language}
+                    {target.language}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">
-                  {demo.description}
+                  {target.description}
                 </p>
               </div>
 
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-[10px] font-mono text-slate-400">
-                  {formatSize(demo.size_kb)} &middot; {demo.stars} stars
+                  path: {target.subpath}
                 </span>
                 <button
-                  onClick={() => handleLoadDemo(demo.full_name)}
+                  onClick={() => handleScanLocalSubpath(target.subpath, target.repo_name)}
+                  disabled={isScanning}
                   className="btn-primary text-xs px-2.5 py-1 flex items-center gap-1 text-[11px]"
                 >
                   <Play size={10} />
-                  Audit Project
+                  Run Live Audit
                 </button>
               </div>
             </div>

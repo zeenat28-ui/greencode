@@ -53,18 +53,29 @@ export default function Dashboard() {
   const handleScanSample = async () => {
     setLoadingSample(true);
     try {
-      // Re-run the most recent audit, if there is one, to refresh the dashboard.
+      const res = await fetch('/api/scan/local-workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subpath: 'samples',
+          repo_name: 'greencode-org/samples-benchmark',
+          team_id: 'core-platform',
+        }),
+      });
+      if (res.ok) {
+        const liveData = await res.json();
+        setScanData(liveData);
+        return;
+      }
       const history = await scanService.getHistory(1, 0);
       const latest = history.data.repositories?.[0];
       if (latest?.full_name) {
         const resp = await scanService.scanGitHub(latest.full_name, latest.default_branch || undefined);
         setScanData(resp.data);
       } else {
-        // Instant sample evaluation for demonstration
         setScanData(Object.values(DEMO_SCAN_DATA)[0]);
       }
     } catch {
-      // Load fallback demo benchmark on network issue
       setScanData(Object.values(DEMO_SCAN_DATA)[0]);
     } finally {
       setLoadingSample(false);
@@ -392,7 +403,7 @@ export default function Dashboard() {
       <CiCdBadgeModal
         isOpen={showCiCdModal}
         onClose={() => setShowCiCdModal(false)}
-        repoName={scanData?.repo_path || 'demo-org/ecommerce-api'}
+        repoName={scanData?.repo_path || 'greencode-org/greencode'}
         score={greenScore}
       />
 

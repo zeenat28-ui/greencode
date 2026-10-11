@@ -9,6 +9,7 @@ import os
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
+from app.ml_carbon import ML_VIOLATIONS_CATALOG
 from app.parser import VIOLATION_METADATA, ViolationType
 
 SARIF_SCHEMA_URI = (
@@ -27,9 +28,11 @@ SEVERITY_TO_SARIF_LEVEL = {
 
 
 def _build_sarif_rules() -> List[Dict[str, Any]]:
-    """Build SARIF rule metadata definitions for all Green Software Foundation anti-patterns."""
+    """Build SARIF rule metadata definitions for all Green Software Foundation & AI/ML anti-patterns."""
     rules = []
+    seen_ids = set()
     for vtype, meta in VIOLATION_METADATA.items():
+        seen_ids.add(vtype)
         sarif_level = SEVERITY_TO_SARIF_LEVEL.get(meta.get("severity", "MEDIUM"), "warning")
         rule_def = {
             "id": vtype,
@@ -54,6 +57,34 @@ def _build_sarif_rules() -> List[Dict[str, Any]]:
             },
         }
         rules.append(rule_def)
+
+    for ml_rule, ml_meta in ML_VIOLATIONS_CATALOG.items():
+        if ml_rule in seen_ids:
+            continue
+        seen_ids.add(ml_rule)
+        sarif_level = SEVERITY_TO_SARIF_LEVEL.get(ml_meta.get("severity", "HIGH"), "error")
+        rules.append({
+            "id": ml_rule,
+            "name": "".join(word.capitalize() for word in ml_rule.split("_")),
+            "shortDescription": {"text": f"AI/ML Optimization: {ml_rule}"},
+            "fullDescription": {"text": ml_meta.get("description", "")},
+            "help": {
+                "text": f"{ml_meta.get('description', '')}\n\nRemediation Guidance:\n{ml_meta.get('remediation', '')}\n\nGSF Pattern: GSF-AI-01-ACCELERATOR-EFFICIENCY",
+                "markdown": f"**GSF Pattern**: `GSF-AI-01-ACCELERATOR-EFFICIENCY`\n\n{ml_meta.get('description', '')}\n\n### Remediation Guidance\n{ml_meta.get('remediation', '')}\n\n*Energy Impact Deduction*: `-{ml_meta.get('deduction', 0.0)} points`",
+            },
+            "defaultConfiguration": {"level": sarif_level},
+            "properties": {
+                "tags": [
+                    "green-computing",
+                    "ai-ml-efficiency",
+                    "sustainability",
+                    "gsf-sci-v1.0",
+                ],
+                "precision": "high",
+                "severity": ml_meta.get("severity", "HIGH"),
+                "deduction": ml_meta.get("deduction", 0.0),
+            },
+        })
     return rules
 
 

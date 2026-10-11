@@ -110,7 +110,62 @@ with torch.inference_mode():
         self.assertGreater(proj.carbon_gco2e, 0.0)
         self.assertGreater(proj.gco2e_per_1k_tokens, 0.0)
 
+    def test_missing_inference_mode_detected_and_unified_parser_wired(self):
+        from app.parser import audit_source_code, ViolationType
+
+        unguarded_eval = """
+import torch
+model = MyModel()
+model.eval()
+out = model(inputs)
+"""
+        res = audit_source_code(unguarded_eval, "python", "eval_infer.py")
+        vtypes = {v["violation_type"] for v in res["violations"]}
+        self.assertIn("ML_MISSING_INFERENCE_MODE", vtypes)
+
+        guarded_eval = """
+import torch
+model = MyModel()
+model.eval()
+with torch.inference_mode():
+    out = model(inputs)
+"""
+        res_clean = audit_source_code(guarded_eval, "python", "eval_clean.py")
+        vtypes_clean = {v["violation_type"] for v in res_clean["violations"]}
+        self.assertNotIn("ML_MISSING_INFERENCE_MODE", vtypes_clean)
+
+    def test_parser_session_assignment_fstring_sql_and_string_var_concat(self):
+        from app.parser import audit_source_code, ViolationType
+
+        # 1. Pooled session assigned to variable must NOT be flagged as uncached network call
+        pooled_code = """
+import requests
+session = requests.Session()
+for url in urls:
+    session.get(url)
+"""
+        res_pooled = audit_source_code(pooled_code, "python", "pooled.py")
+        self.assertNotIn(
+            ViolationType.UNCACHED_NETWORK_IN_LOOP,
+            {v["violation_type"] for v in res_pooled["violations"]},
+        )
+
+        # 2. F-string SQL SELECT inside loop + variable-bound string concat + async for
+        real_world_hazards = """
+async def process_users(cursor, user_ids, chunks):
+    msg = ""
+    async for uid in user_ids:
+        cursor.execute(f"SELECT * FROM users WHERE id = {uid}")
+        msg += uid
+    return msg
+"""
+        res_hazards = audit_source_code(real_world_hazards, "python", "hazards.py")
+        hazard_types = {v["violation_type"] for v in res_hazards["violations"]}
+        self.assertIn(ViolationType.N_PLUS_ONE_QUERY_IN_LOOP, hazard_types)
+        self.assertIn(ViolationType.QUADRATIC_STRING_CONCAT, hazard_types)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -136,6 +136,9 @@ class MLCodeVisitor(ast.NodeVisitor):
         self.loop_depth = 0
         self.inside_function = False
         self.function_names: List[str] = []
+        self.inference_context_depth = 0
+        self.eval_models: Set[str] = set()
+        self._flagged_inference_lines: Set[int] = set()
 
     def _add_violation(self, rule: str, node: ast.AST) -> None:
         meta = ML_VIOLATIONS_CATALOG.get(rule)
@@ -158,12 +161,29 @@ class MLCodeVisitor(ast.NodeVisitor):
             )
         )
 
+    @staticmethod
+    def _is_grad_guard(expr: ast.AST) -> bool:
+        """Return True if expr is torch.inference_mode(), torch.no_grad(), or set_grad_enabled(False)."""
+        target = expr.func if isinstance(expr, ast.Call) else expr
+        name = ""
+        if isinstance(target, ast.Name):
+            name = target.id
+        elif isinstance(target, ast.Attribute):
+            name = target.attr
+        if name in ("inference_mode", "no_grad"):
+            return True
+        if name == "set_grad_enabled" and isinstance(expr, ast.Call) and expr.args:
+            first = expr.args[0]
+            if isinstance(first, ast.Constant) and first.value is False:
+                return True
+        return False
+
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             name = alias.name.lower()
             if "torch" in name:
                 self.frameworks.add("PyTorch")
-            elif "tensorflow" in name or "tf" in name:
+            elif "tensorflow" in name or name == "tf" or name.startswith("tf."):
                 self.frameworks.add("TensorFlow")
             elif "transformers" in name:
                 self.frameworks.add("HuggingFace Transformers")
@@ -177,15 +197,38 @@ class MLCodeVisitor(ast.NodeVisitor):
         mod = (node.module or "").lower()
         if "torch" in mod:
             self.frameworks.add("PyTorch")
-        elif "tensorflow" in mod:
+        elif "tensorflow" in mod or mod == "tf" or mod.startswith("tf."):
             self.frameworks.add("TensorFlow")
         elif "transformers" in mod:
             self.frameworks.add("HuggingFace Transformers")
         elif "vllm" in mod:
             self.frameworks.add("vLLM")
+        elif "onnx" in mod:
+            self.frameworks.add("ONNX")
         self.generic_visit(node)
 
+    def visit_With(self, node: ast.With) -> None:
+        is_guard = any(self._is_grad_guard(item.context_expr) for item in node.items)
+        if is_guard:
+            self.inference_context_depth += 1
+        self.generic_visit(node)
+        if is_guard:
+            self.inference_context_depth -= 1
+
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        is_guard = any(self._is_grad_guard(item.context_expr) for item in node.items)
+        if is_guard:
+            self.inference_context_depth += 1
+        self.generic_visit(node)
+        if is_guard:
+            self.inference_context_depth -= 1
+
     def visit_For(self, node: ast.For) -> None:
+        self.loop_depth += 1
+        self.generic_visit(node)
+        self.loop_depth -= 1
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
         self.loop_depth += 1
         self.generic_visit(node)
         self.loop_depth -= 1
@@ -195,22 +238,59 @@ class MLCodeVisitor(ast.NodeVisitor):
         self.generic_visit(node)
         self.loop_depth -= 1
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self.function_names.append(node.name)
+    def _visit_function_node(self, node: ast.AST) -> None:
+        fname = getattr(node, "name", "")
+        decorators = getattr(node, "decorator_list", [])
+        has_guard_decorator = any(self._is_grad_guard(d) for d in decorators)
+        self.function_names.append(fname)
         self.inside_function = True
+        if has_guard_decorator:
+            self.inference_context_depth += 1
         self.generic_visit(node)
+        if has_guard_decorator:
+            self.inference_context_depth -= 1
         self.function_names.pop()
         self.inside_function = bool(self.function_names)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function_node(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function_node(node)
 
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
 
         # 1. Check DataLoader bottlenecks
         func_name = ""
+        receiver_name = ""
         if isinstance(func, ast.Name):
             func_name = func.id
         elif isinstance(func, ast.Attribute):
             func_name = func.attr
+            if isinstance(func.value, ast.Name):
+                receiver_name = func.value.id
+
+        # Track model.eval() calls to detect missing torch.inference_mode() / torch.no_grad()
+        if func_name == "eval" and receiver_name and not node.args:
+            self.eval_models.add(receiver_name)
+
+        # Check ML_MISSING_INFERENCE_MODE: calling a model placed in .eval() mode
+        # or calling .forward() / .generate() on a PyTorch/HF model without no_grad/inference_mode
+        if self.inference_context_depth == 0 and ("PyTorch" in self.frameworks or "HuggingFace Transformers" in self.frameworks):
+            line_no = getattr(node, "lineno", 1)
+            is_unguarded_forward = False
+            if func_name in self.eval_models and func_name != "":
+                is_unguarded_forward = True
+            elif receiver_name in self.eval_models and func_name in ("forward", "generate", "__call__"):
+                is_unguarded_forward = True
+            elif func_name == "generate" and receiver_name and any(
+                tok in receiver_name.lower() for tok in ("model", "llm", "pipe", "pipeline", "decoder", "net")
+            ):
+                is_unguarded_forward = True
+            if is_unguarded_forward and line_no not in self._flagged_inference_lines:
+                self._flagged_inference_lines.add(line_no)
+                self._add_violation("ML_MISSING_INFERENCE_MODE", node)
 
         if func_name == "DataLoader":
             has_pin_memory = False
@@ -236,7 +316,9 @@ class MLCodeVisitor(ast.NodeVisitor):
         if self.loop_depth > 0:
             if isinstance(func, ast.Attribute):
                 attr = func.attr
-                if attr in ("cuda", "cpu", "numpy", "item"):
+                if attr == "cuda":
+                    self._add_violation("ML_SYNC_GPU_TENSOR_TRANSFER", node)
+                elif attr in ("cpu", "numpy", "item") and self.frameworks:
                     self._add_violation("ML_SYNC_GPU_TENSOR_TRANSFER", node)
                 elif attr == "to":
                     # Check if transferring to cuda/gpu
@@ -292,6 +374,31 @@ class MLCarbonAnalyzer:
             violations=visitor.violations,
             frameworks_detected=sorted(list(visitor.frameworks)),
         )
+
+    @classmethod
+    def analyze_code(cls, source_code: str, file_path: str = "script.py") -> Dict[str, Any]:
+        """Analyze Python code and return parser-compatible violation dictionaries."""
+        res = cls.audit_code(source_code, file_path=file_path)
+        return {
+            "file_or_repo": res.file_or_repo,
+            "ml_green_score": res.ml_green_score,
+            "total_deductions": res.total_deductions,
+            "violations_count": res.violations_count,
+            "frameworks_detected": res.frameworks_detected,
+            "violations": [
+                {
+                    "line_number": v.line,
+                    "end_line_number": v.line,
+                    "violation_type": v.rule,
+                    "severity": v.severity,
+                    "deduction": v.deduction,
+                    "description": v.description,
+                    "remediation": v.remediation,
+                    "snippet": v.code_snippet,
+                }
+                for v in res.violations
+            ],
+        }
 
     @classmethod
     def audit_file(cls, file_path: str) -> MLAnalysisResult:

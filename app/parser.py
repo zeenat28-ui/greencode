@@ -428,11 +428,62 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
         self.violations: List[Dict[str, Any]] = []
 
         self.loop_stack: List[ast.AST] = []
-        self.with_stack: List[ast.With] = []
+        self.with_stack: List[ast.AST] = []
         # Names bound to pooled HTTP session objects via `with … as <name>` or assignment
         self._session_names: Set[str] = set()
+        # Names bound to string values (e.g. `msg = ""`) for quadratic concat detection
+        self._string_vars: Set[str] = set()
         # Intra-module call graph: function_name -> list of (violation_type, provenance_detail)
         self._func_loop_hazards: Dict[str, List[Tuple[str, str]]] = {}
+
+    @staticmethod
+    def _extract_sql_prefix(expr: Optional[ast.AST]) -> str:
+        """Extract leading SQL text from Constant, f-string (JoinedStr), %-format, or .format()."""
+        if expr is None:
+            return ""
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            return expr.value.lstrip().upper()
+        if isinstance(expr, ast.JoinedStr) and expr.values:
+            first_part = expr.values[0]
+            if isinstance(first_part, ast.Constant) and isinstance(first_part.value, str):
+                return first_part.value.lstrip().upper()
+        if isinstance(expr, ast.BinOp) and isinstance(expr.left, ast.Constant) and isinstance(expr.left.value, str):
+            return expr.left.value.lstrip().upper()
+        if (
+            isinstance(expr, ast.Call)
+            and isinstance(expr.func, ast.Attribute)
+            and expr.func.attr == "format"
+            and isinstance(expr.func.value, ast.Constant)
+            and isinstance(expr.func.value.value, str)
+        ):
+            return expr.func.value.value.lstrip().upper()
+        return ""
+
+    @staticmethod
+    def _is_session_constructor_call(expr: Optional[ast.AST]) -> bool:
+        """Return True if expr constructs a pooled HTTP session or client."""
+        if not isinstance(expr, ast.Call):
+            return False
+        func = expr.func
+        ctor_name = ""
+        if isinstance(func, ast.Attribute):
+            ctor_name = func.attr
+        elif isinstance(func, ast.Name):
+            ctor_name = func.id
+        return ctor_name in SESSION_CONSTRUCTORS
+
+    @staticmethod
+    def _is_string_expr(expr: Optional[ast.AST]) -> bool:
+        """Return True if expr is statically known to evaluate to a str."""
+        if expr is None:
+            return False
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            return True
+        if isinstance(expr, ast.JoinedStr):
+            return True
+        if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name) and expr.func.id in ("str", "format", "repr"):
+            return True
+        return False
 
     def _index_call_graph(self, root: ast.AST) -> None:
         """Build an intra-module call graph to detect loop anti-patterns across helper functions."""
@@ -467,11 +518,9 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                         elif recv in NETWORK_MODULE_NAMES and attr in ("get", "post", "put", "delete", "patch", "request", "urlopen", "fetch"):
                             hazards.append((ViolationType.UNCACHED_NETWORK_IN_LOOP, f"{fname}() -> {recv}.{attr}()"))
                         if attr in ("execute", "query", "executescript") and child.args:
-                            first_arg = child.args[0]
-                            if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-                                q = first_arg.value.lstrip().upper()
-                                if q.startswith(("SELECT", "WITH")):
-                                    hazards.append((ViolationType.N_PLUS_ONE_QUERY_IN_LOOP, f"{fname}() -> {recv}.{attr}('SELECT ...')"))
+                            q = self._extract_sql_prefix(child.args[0])
+                            if q.startswith(("SELECT", "WITH")):
+                                hazards.append((ViolationType.N_PLUS_ONE_QUERY_IN_LOOP, f"{fname}() -> {recv}.{attr}('SELECT ...')"))
             if hazards:
                 direct_hazards[fname] = hazards
             if callees:
@@ -529,27 +578,16 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
             }
         )
 
-    def visit_With(self, node: ast.With) -> None:
+    def _handle_with_block(self, node: ast.AST) -> None:
         # Record any `with requests.Session() as name:` bindings so that
         # subsequent calls like `name.get(...)` inside a loop are not flagged.
         new_session_names: List[str] = []
-        for item in node.items:
+        for item in getattr(node, "items", []):
             ctx = item.context_expr
             alias = item.optional_vars
             if alias is None:
                 continue
-            # Match: with <anything>.Session() as name  OR  with Session() as name
-            is_session_ctor = False
-            if isinstance(ctx, ast.Call):
-                func = ctx.func
-                ctor_name = ""
-                if isinstance(func, ast.Attribute):
-                    ctor_name = func.attr
-                elif isinstance(func, ast.Name):
-                    ctor_name = func.id
-                if ctor_name in SESSION_CONSTRUCTORS:
-                    is_session_ctor = True
-            if is_session_ctor and isinstance(alias, ast.Name):
+            if self._is_session_constructor_call(ctx) and isinstance(alias, ast.Name):
                 new_session_names.append(alias.id)
                 self._session_names.add(alias.id)
 
@@ -560,19 +598,28 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
         for name in new_session_names:
             self._session_names.discard(name)
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        """Flag self-recursion that never caches its subresults.
+    def visit_With(self, node: ast.With) -> None:
+        self._handle_with_block(node)
 
-        Naive recursive functions (fib, tree walks without a memo table)
-        recompute the same subtrees exponentially: pure wasted CPU. A
-        cache/memo decorator means the author already knew this, so those
-        definitions are exempt.
-        """
-        name = node.name
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        self._handle_with_block(node)
+
+    def _handle_function_def(self, node: ast.AST) -> None:
+        """Flag self-recursion that never caches its subresults."""
+        name = getattr(node, "name", "")
+        decorator_list = getattr(node, "decorator_list", [])
         decorator_text = " ".join(
-            ast.unparse(d) if hasattr(ast, "unparse") else "" for d in node.decorator_list
+            ast.unparse(d) if hasattr(ast, "unparse") else "" for d in decorator_list
         ).lower()
-        if "cache" not in decorator_text and "memo" not in decorator_text:
+        # Also exempt functions that accept an explicit memo/cache/visited parameter
+        args_obj = getattr(node, "args", None)
+        arg_names = {
+            a.arg.lower()
+            for a in (getattr(args_obj, "args", []) + getattr(args_obj, "kwonlyargs", []))
+        } if args_obj else set()
+        has_explicit_memo_param = bool(arg_names & {"memo", "cache", "visited", "seen", "dp"})
+
+        if "cache" not in decorator_text and "memo" not in decorator_text and not has_explicit_memo_param:
             recurses = False
             for child in ast.walk(node):
                 if not isinstance(child, ast.Call):
@@ -596,28 +643,40 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                 )
         self.generic_visit(node)
 
-    def visit_For(self, node: ast.For) -> None:
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._handle_function_def(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._handle_function_def(node)
+
+    def _handle_for_loop(self, node: ast.AST) -> None:
         # Evaluate target and iterable before entering loop scope
-        self.visit(node.target)
-        self.visit(node.iter)
+        self.visit(getattr(node, "target"))
+        self.visit(getattr(node, "iter"))
         self.loop_stack.append(node)
-        if len(self.loop_stack) >= 3 and len(self.loop_stack) == 3:
+        if len(self.loop_stack) == 3:
             self._add_violation(
                 ViolationType.NESTED_LOOPS,
                 node,
                 f"Loop is nested at depth {len(self.loop_stack)}. Algorithmic cost scales to O(N^{len(self.loop_stack)}).",
             )
-        for stmt in node.body:
+        for stmt in getattr(node, "body", []):
             self.visit(stmt)
-        for stmt in node.orelse:
+        for stmt in getattr(node, "orelse", []):
             self.visit(stmt)
         self.loop_stack.pop()
+
+    def visit_For(self, node: ast.For) -> None:
+        self._handle_for_loop(node)
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self._handle_for_loop(node)
 
     def visit_While(self, node: ast.While) -> None:
         # Evaluate test condition before entering loop scope
         self.visit(node.test)
         self.loop_stack.append(node)
-        if len(self.loop_stack) >= 3 and len(self.loop_stack) == 3:
+        if len(self.loop_stack) == 3:
             self._add_violation(
                 ViolationType.NESTED_LOOPS,
                 node,
@@ -629,12 +688,60 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
             self.visit(stmt)
         self.loop_stack.pop()
 
+    def visit_Assign(self, node: ast.Assign) -> None:
+        # Track pooled HTTP sessions and string variables bound via assignment
+        is_sess = self._is_session_constructor_call(node.value)
+        is_str = self._is_string_expr(node.value)
+        for target in node.targets:
+            t_name = ""
+            if isinstance(target, ast.Name):
+                t_name = target.id
+            elif isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self":
+                t_name = target.attr
+            if t_name:
+                if is_sess:
+                    self._session_names.add(t_name)
+                if is_str:
+                    self._string_vars.add(t_name)
+
+            # Check quadratic string concatenation via `s = s + ...` inside loop
+            if len(self.loop_stack) > 0 and isinstance(target, ast.Name):
+                if isinstance(node.value, ast.BinOp) and isinstance(node.value.op, ast.Add):
+                    left, right = node.value.left, node.value.right
+                    matches_target = (isinstance(left, ast.Name) and left.id == target.id) or (
+                        isinstance(right, ast.Name) and right.id == target.id
+                    )
+                    if matches_target and (
+                        target.id in self._string_vars
+                        or self._is_string_expr(left)
+                        or self._is_string_expr(right)
+                    ):
+                        self._add_violation(
+                            ViolationType.QUADRATIC_STRING_CONCAT,
+                            node,
+                            "Quadratic string concatenation (s = s + ...) inside loop causes continuous heap reallocations.",
+                        )
+
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if isinstance(node.target, ast.Name):
+            t_name = node.target.id
+            if self._is_session_constructor_call(node.value):
+                self._session_names.add(t_name)
+            if (
+                (isinstance(node.annotation, ast.Name) and node.annotation.id == "str")
+                or self._is_string_expr(node.value)
+            ):
+                self._string_vars.add(t_name)
+        self.generic_visit(node)
+
     def visit_Call(self, node: ast.Call) -> None:
         # Check raw database cursor
         if isinstance(node.func, ast.Attribute) and node.func.attr == "cursor":
             in_with = False
             for w in self.with_stack:
-                for item in w.items:
+                for item in getattr(w, "items", []):
                     if item.context_expr == node:
                         in_with = True
                         break
@@ -644,6 +751,29 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                     node,
                     "Database cursor obtained without a 'with' context manager risks unclosed socket leakage.",
                 )
+
+        # Check hidden row-by-row DataFrame iteration (df.iterrows(), df.itertuples(), df.apply(..., axis=1))
+        if isinstance(node.func, ast.Attribute):
+            attr_name = node.func.attr
+            if attr_name in ("iterrows", "itertuples") and not node.args:
+                self._add_violation(
+                    ViolationType.HIDDEN_ITERATIVE_COMPUTATION,
+                    node,
+                    f"DataFrame.{attr_name}() iterates rows sequentially in Python, bypassing SIMD/vectorized columnar execution.",
+                )
+            elif attr_name == "apply":
+                has_axis_1 = any(
+                    kw.arg == "axis"
+                    and isinstance(kw.value, ast.Constant)
+                    and kw.value.value in (1, "columns")
+                    for kw in node.keywords
+                )
+                if has_axis_1:
+                    self._add_violation(
+                        ViolationType.HIDDEN_ITERATIVE_COMPUTATION,
+                        node,
+                        "DataFrame.apply(..., axis=1) executes a Python callback per row instead of vectorized column operations.",
+                    )
 
         # Check uncached network calls in loops
         if len(self.loop_stack) > 0:
@@ -667,6 +797,10 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                             is_net_call = True
                         elif any(isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.startswith(("http://", "https://", "/")) for a in node.args):
                             is_net_call = True
+                elif isinstance(node.func.value, ast.Attribute) and isinstance(node.func.value.value, ast.Name) and node.func.value.value.id == "self":
+                    attr_recv = node.func.value.attr
+                    if attr_recv in self._session_names:
+                        is_pooled = True
                 elif isinstance(node.func.value, ast.Call):
                     sub_func = node.func.value.func
                     call_name = ""
@@ -717,19 +851,17 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                 if isinstance(func.value, ast.Name):
                     receiver_name = func.value.id
 
-            # N+1 query: a SELECT (or WITH ... SELECT) issued per iteration.
-            # Writes/DDL are excluded: batched row inserts are a separate
-            # discussion and flagging them would fire on eco_pipeline.
+            # N+1 query: a SELECT (or WITH ... SELECT) issued per iteration,
+            # including Constant, f-string, %-formatted, or .format() SQL strings.
             if func_name_str in ("execute", "query", "executescript"):
                 first_arg = node.args[0] if node.args else None
-                if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-                    q = first_arg.value.lstrip().upper()
-                    if q.startswith(("SELECT", "WITH")):
-                        self._add_violation(
-                            ViolationType.N_PLUS_ONE_QUERY_IN_LOOP,
-                            node,
-                            "SELECT query executed once per loop iteration (N+1 pattern): each row costs a separate database round trip.",
-                        )
+                q = self._extract_sql_prefix(first_arg)
+                if q.startswith(("SELECT", "WITH")):
+                    self._add_violation(
+                        ViolationType.N_PLUS_ONE_QUERY_IN_LOOP,
+                        node,
+                        "SELECT query executed once per loop iteration (N+1 pattern): each row costs a separate database round trip.",
+                    )
 
             # Regex compiled/executed per iteration: re.* module functions
             # re-parse the pattern on every call.
@@ -811,18 +943,10 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
-        # Check quadratic string concatenation
+        # Check quadratic string concatenation (+= on string expression or known string variable)
         if len(self.loop_stack) > 0 and isinstance(node.op, ast.Add):
-            is_string_val = False
-            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-                is_string_val = True
-            elif isinstance(node.value, ast.JoinedStr):
-                is_string_val = True
-            elif isinstance(node.value, ast.Call):
-                if isinstance(node.value.func, ast.Name) and node.value.func.id in ("str", "format"):
-                    is_string_val = True
-
-            if is_string_val:
+            target_is_str_var = isinstance(node.target, ast.Name) and node.target.id in self._string_vars
+            if self._is_string_expr(node.value) or target_is_str_var:
                 self._add_violation(
                     ViolationType.QUADRATIC_STRING_CONCAT,
                     node,
@@ -1264,14 +1388,14 @@ def audit_source_code(source_code: str, language: str = "python", file_path: str
             # Deep AI/ML Workload Energy Profiling (PyTorch, TF, HuggingFace, ONNX)
             try:
                 from app.ml_carbon import MLCarbonAnalyzer
-                ml_analyzer = MLCarbonAnalyzer()
-                ml_res = ml_analyzer.analyze_code(source_code, file_path=file_path)
+                ml_res = MLCarbonAnalyzer.analyze_code(source_code, file_path=file_path)
                 for mv in ml_res.get("violations", []):
                     m_key = (mv["line_number"], mv["violation_type"])
                     if m_key not in seen_v_keys:
                         seen_v_keys.add(m_key)
                         all_violations.append({
                             "file_path": file_path,
+                            "language": "python",
                             "line_number": mv["line_number"],
                             "end_line_number": mv.get("end_line_number", mv["line_number"]),
                             "violation_type": mv["violation_type"],
@@ -1334,6 +1458,13 @@ def audit_source_code(source_code: str, language: str = "python", file_path: str
         ViolationType.SYNC_FILE_IO_IN_LOOP: "O(N * Disk_IO)",
         ViolationType.THREAD_THRASHING_IN_LOOP: "O(N * OS_ContextSwitch)",
         ViolationType.HIDDEN_ITERATIVE_COMPUTATION: "O(N_unvectorized)",
+        "ML_MISSING_INFERENCE_MODE": "O(N * Autograd_DAG)",
+        "ML_INEFFICIENT_BATCH_SIZE": "O(N_unbatched_GPU)",
+        "ML_SYNC_GPU_TENSOR_TRANSFER": "O(N * PCIe_Sync)",
+        "ML_DATALOADER_CPU_BOTTLENECK": "O(N * Sync_Disk_DMA)",
+        "ML_UNQUANTIZED_INFERENCE": "O(N * FP32_Bandwidth)",
+        "ML_RETRAINING_IN_ENDPOINT": "O(Epochs * N_Params)",
+        "ML_MISSING_KV_CACHE": "O(N^2_Tokens)",
     }
     for v in filtered_violations:
         vtype = v.get("violation_type", "")
@@ -1632,7 +1763,7 @@ def audit_git_diff(
 
     for raw_line in (diff_text or "").splitlines():
         if raw_line.startswith("+++ "):
-            target = raw_line[4:].strip()
+            target = raw_line[4:].split("\t")[0].strip().strip('"')
             if target == "/dev/null":
                 current_file = None
                 continue
@@ -1665,6 +1796,7 @@ def audit_git_diff(
     diff_violations: List[Dict[str, Any]] = []
     per_file_results: List[Dict[str, Any]] = []
     total_hunks = 0
+    real_repo_root = os.path.realpath(repo_root) if repo_root else None
 
     for rel_path, hunks in file_hunks.items():
         if not hunks:
@@ -1674,9 +1806,12 @@ def audit_git_diff(
         code: Optional[str] = None
         if source_files and rel_path in source_files:
             code = source_files[rel_path]
-        elif repo_root:
-            candidate_path = os.path.join(repo_root, rel_path)
-            if os.path.isfile(candidate_path):
+        elif repo_root and real_repo_root:
+            candidate_path = os.path.realpath(os.path.join(repo_root, rel_path))
+            if (
+                candidate_path == real_repo_root
+                or candidate_path.startswith(real_repo_root + os.sep)
+            ) and os.path.isfile(candidate_path):
                 with open(candidate_path, "r", encoding="utf-8", errors="replace") as f:
                     code = f.read()
         if code is None:

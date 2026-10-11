@@ -431,6 +431,68 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
         self.with_stack: List[ast.With] = []
         # Names bound to pooled HTTP session objects via `with … as <name>` or assignment
         self._session_names: Set[str] = set()
+        # Intra-module call graph: function_name -> list of (violation_type, provenance_detail)
+        self._func_loop_hazards: Dict[str, List[Tuple[str, str]]] = {}
+
+    def _index_call_graph(self, root: ast.AST) -> None:
+        """Build an intra-module call graph to detect loop anti-patterns across helper functions."""
+        direct_hazards: Dict[str, List[Tuple[str, str]]] = {}
+        call_edges: Dict[str, Set[str]] = {}
+
+        for node in ast.walk(root):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            fname = node.name
+            decorator_text = " ".join(
+                ast.unparse(d) if hasattr(ast, "unparse") else "" for d in node.decorator_list
+            ).lower()
+            if "cache" in decorator_text or "memo" in decorator_text:
+                continue
+
+            hazards: List[Tuple[str, str]] = []
+            callees: Set[str] = set()
+            for child in ast.walk(node):
+                if not isinstance(child, ast.Call):
+                    continue
+                if isinstance(child.func, ast.Name):
+                    callees.add(child.func.id)
+                    if child.func.id in ("urlopen", "fetch"):
+                        hazards.append((ViolationType.UNCACHED_NETWORK_IN_LOOP, f"{fname}() -> {child.func.id}()"))
+                elif isinstance(child.func, ast.Attribute):
+                    attr = child.func.attr
+                    if isinstance(child.func.value, ast.Name):
+                        recv = child.func.value.id
+                        if recv in ("self", "cls"):
+                            callees.add(attr)
+                        elif recv in NETWORK_MODULE_NAMES and attr in ("get", "post", "put", "delete", "patch", "request", "urlopen", "fetch"):
+                            hazards.append((ViolationType.UNCACHED_NETWORK_IN_LOOP, f"{fname}() -> {recv}.{attr}()"))
+                        if attr in ("execute", "query", "executescript") and child.args:
+                            first_arg = child.args[0]
+                            if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                                q = first_arg.value.lstrip().upper()
+                                if q.startswith(("SELECT", "WITH")):
+                                    hazards.append((ViolationType.N_PLUS_ONE_QUERY_IN_LOOP, f"{fname}() -> {recv}.{attr}('SELECT ...')"))
+            if hazards:
+                direct_hazards[fname] = hazards
+            if callees:
+                call_edges[fname] = callees
+
+        # Fixed-point propagation across up to 3 call-graph hops
+        resolved: Dict[str, List[Tuple[str, str]]] = {k: list(v) for k, v in direct_hazards.items()}
+        for _ in range(3):
+            for caller, callees in call_edges.items():
+                for callee in callees:
+                    if callee == caller or callee not in resolved:
+                        continue
+                    for vtype, chain in resolved[callee]:
+                        existing_types = {vt for vt, _ in resolved.get(caller, [])}
+                        if vtype not in existing_types:
+                            resolved.setdefault(caller, []).append((vtype, f"{caller}() -> {chain}"))
+        self._func_loop_hazards = resolved
+
+    def visit_Module(self, node: ast.Module) -> None:
+        self._index_call_graph(node)
+        self.generic_visit(node)
 
     def _get_snippet(self, node: ast.AST) -> str:
         start_line = getattr(node, "lineno", 1) - 1
@@ -736,6 +798,15 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                     node,
                     f"{func_name_str}() inside a loop performs a synchronous I/O syscall once per iteration.",
                 )
+
+            # Intra-module call-graph transitive hazard detection
+            if func_name_str in self._func_loop_hazards and receiver_name in ("", "self", "cls"):
+                for hazard_vtype, call_chain in self._func_loop_hazards[func_name_str]:
+                    self._add_violation(
+                        hazard_vtype,
+                        node,
+                        f"Cross-function loop anti-pattern detected via call graph ({call_chain}) executed inside loop.",
+                    )
 
         self.generic_visit(node)
 
@@ -1538,3 +1609,110 @@ def _resolve_archive_root(temp_dir: str) -> str:
     if os.path.isdir(candidate) and not os.path.islink(candidate):
         return candidate
     return temp_dir
+
+
+_DIFF_HUNK_RE = re.compile(r"^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?\s+@@")
+
+
+def audit_git_diff(
+    diff_text: str,
+    repo_root: Optional[str] = None,
+    source_files: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """Audit only the modified files and line intervals in a unified git diff (PR hunk gating).
+
+    Parses unified diff headers (`+++ b/<path>` and `@@ -old +new_start,new_count @@`),
+    runs full AST / lexical analysis on each modified file, and retains only violations
+    whose `[line_number, end_line_number]` span intersects at least one modified hunk.
+    """
+    file_hunks: Dict[str, List[Tuple[int, int]]] = {}
+    reconstructed_lines: Dict[str, Dict[int, str]] = {}
+    current_file: Optional[str] = None
+    current_new_line: int = 0
+
+    for raw_line in (diff_text or "").splitlines():
+        if raw_line.startswith("+++ "):
+            target = raw_line[4:].strip()
+            if target == "/dev/null":
+                current_file = None
+                continue
+            if target.startswith("b/"):
+                target = target[2:]
+            current_file = target.replace("\\", "/")
+            file_hunks.setdefault(current_file, [])
+            reconstructed_lines.setdefault(current_file, {})
+            continue
+
+        if current_file is None:
+            continue
+
+        m = _DIFF_HUNK_RE.match(raw_line)
+        if m:
+            start_ln = int(m.group(1))
+            count_ln = int(m.group(2)) if m.group(2) is not None else 1
+            if count_ln > 0:
+                file_hunks[current_file].append((start_ln, start_ln + count_ln - 1))
+            current_new_line = start_ln
+            continue
+
+        if raw_line.startswith("+") and not raw_line.startswith("+++"):
+            reconstructed_lines[current_file][current_new_line] = raw_line[1:]
+            current_new_line += 1
+        elif raw_line.startswith(" "):
+            reconstructed_lines[current_file][current_new_line] = raw_line[1:]
+            current_new_line += 1
+
+    diff_violations: List[Dict[str, Any]] = []
+    per_file_results: List[Dict[str, Any]] = []
+    total_hunks = 0
+
+    for rel_path, hunks in file_hunks.items():
+        if not hunks:
+            continue
+        total_hunks += len(hunks)
+        lang = detect_file_language(rel_path) or "python"
+        code: Optional[str] = None
+        if source_files and rel_path in source_files:
+            code = source_files[rel_path]
+        elif repo_root:
+            candidate_path = os.path.join(repo_root, rel_path)
+            if os.path.isfile(candidate_path):
+                with open(candidate_path, "r", encoding="utf-8", errors="replace") as f:
+                    code = f.read()
+        if code is None:
+            line_map = reconstructed_lines.get(rel_path, {})
+            max_ln = max(line_map.keys()) if line_map else 0
+            code = "\n".join(line_map.get(i, "") for i in range(1, max_ln + 1))
+
+        full_audit = audit_source_code(code, language=lang, file_path=rel_path)
+        matched_violations: List[Dict[str, Any]] = []
+        for v in full_audit.get("violations", []):
+            v_start = int(v.get("line_number", 1))
+            v_end = int(v.get("end_line_number", v_start))
+            if any(not (v_end < h_start or v_start > h_end) for h_start, h_end in hunks):
+                v_copy = dict(v)
+                v_copy["diff_scoped"] = True
+                matched_violations.append(v_copy)
+                diff_violations.append(v_copy)
+
+        file_deductions = sum(float(v.get("deduction", 5.0)) for v in matched_violations)
+        per_file_results.append({
+            "file_path": rel_path,
+            "language": lang,
+            "hunks": [{"start_line": s, "end_line": e} for s, e in hunks],
+            "diff_violations_count": len(matched_violations),
+            "diff_green_score": max(0.0, round(100.0 - file_deductions, 2)),
+            "violations": matched_violations,
+        })
+
+    total_deductions = sum(float(v.get("deduction", 5.0)) for v in diff_violations)
+    diff_green_score = max(0.0, round(100.0 - total_deductions, 2))
+    return {
+        "modified_files_count": len(per_file_results),
+        "hunks_analyzed": total_hunks,
+        "total_diff_violations": len(diff_violations),
+        "diff_green_score": diff_green_score,
+        "violations": diff_violations,
+        "per_file_results": per_file_results,
+    }
+

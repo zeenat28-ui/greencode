@@ -256,6 +256,99 @@ def _fetch_entsoe(zone: str, key_override: Optional[Dict[str, str]] = None) -> O
     }
 
 
+US_EIA_BALANCING_AUTHORITIES: Dict[str, str] = {
+    "US-CAL-CISO": "CISO",
+    "US-MIDA-PJM": "PJM",
+    "US-TEX-ERCO": "ERCO",
+    "US-MIDW-MISO": "MISO",
+    "US-NE-ISNE": "ISNE",
+    "US-NW-PACW": "BPAT",
+    "US-NY-NYIS": "NYIS",
+    "US-SE-SOCO": "SOCO",
+    "US-CENT-SWPP": "SWPP",
+}
+
+US_EIA_FUEL_EMISSION_FACTORS_GCO2_KWH: Dict[str, float] = {
+    "COL": 995.0,   # Coal (IPCC AR5 / EPA eGRID lifecycle median)
+    "NG": 490.0,    # Natural Gas
+    "OIL": 840.0,   # Petroleum
+    "SUN": 25.0,    # Solar PV
+    "WND": 11.0,    # Wind
+    "WAT": 24.0,    # Hydroelectric
+    "NUC": 12.0,    # Nuclear
+    "OTH": 350.0,   # Other / Geothermal / Biomass mix
+}
+
+
+def _fetch_us_eia(zone: str, key_override: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
+    """US Energy Information Administration (EIA-930) Hourly Electric Grid Monitor.
+
+    Official U.S. federal balancing-authority generation-by-fuel telemetry
+    (api.eia.gov/v2/electricity/rto/fuel-type-data/data/). Requires a free
+    EIA Open Data API key (`EIA_API_KEY`). Computes hourly generation-weighted
+    carbon intensity (gCO2eq/kWh) from the latest reported hour across Coal,
+    Natural Gas, Petroleum, Solar, Wind, Hydro, and Nuclear generation.
+    """
+    api_key = _key_for("EIA_API_KEY", key_override)
+    if not api_key:
+        return None
+    ba = US_EIA_BALANCING_AUTHORITIES.get(zone.upper())
+    if not ba:
+        return None
+
+    url = (
+        "https://api.eia.gov/v2/electricity/rto/fuel-type-data/data/"
+        f"?api_key={quote(api_key, safe='')}"
+        f"&frequency=hourly&data[0]=value&facets[respondent][]={quote(ba, safe='')}"
+        "&sort[0][column]=period&sort[0][direction]=desc&length=24"
+    )
+    payload, err = _get_json(url, timeout=8.0)
+    if err or not payload:
+        return None
+
+    rows = ((payload.get("response") or {}).get("data")) or []
+    if not rows:
+        return None
+
+    latest_period = rows[0].get("period")
+    total_mwh = 0.0
+    weighted_emissions = 0.0
+    for row in rows:
+        if latest_period and row.get("period") != latest_period:
+            continue
+        fuel_code = str(row.get("fueltype") or "").upper()
+        factor = US_EIA_FUEL_EMISSION_FACTORS_GCO2_KWH.get(fuel_code)
+        if factor is None:
+            continue
+        try:
+            mwh = float(row.get("value") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if mwh <= 0.0:
+            continue
+        total_mwh += mwh
+        weighted_emissions += mwh * factor
+
+    if total_mwh <= 0.0:
+        return None
+
+    observed_iso = datetime.now(timezone.utc).isoformat()
+    if isinstance(latest_period, str) and len(latest_period) >= 13:
+        # EIA period format is e.g. '2026-10-11T15' (UTC hour)
+        try:
+            parsed_period = datetime.strptime(latest_period[:13], "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
+            observed_iso = parsed_period.isoformat()
+        except ValueError:
+            pass  # no-op: keep current UTC timestamp if format varies
+
+    return {
+        "carbon_intensity": round(weighted_emissions / total_mwh, 1),
+        "observed_at": observed_iso,
+        "resolution": "PT1H",
+        "citation": f"US EIA-930 Hourly Electric Grid Monitor (Balancing Authority {ba})",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Tier 2: customer-supplied providers.
 #
@@ -335,6 +428,18 @@ def _providers() -> List[Provider]:
             requires_key=False,
             citation="https://carbonintensity.org.uk / api.carbonintensity.org.uk",
             verified=True,          # reached live 2026-09-30, HTTP 200, no key
+        ),
+        Provider(
+            provider_id="us_eia_930",
+            label="US EIA-930 Hourly Electric Grid Monitor (federal BA data)",
+            tier=TIER_PRIMARY_OFFICIAL,
+            resolution="PT1H",
+            zones=tuple(US_EIA_BALANCING_AUTHORITIES.keys()),
+            fetch=_fetch_us_eia,
+            requires_key=True,
+            key_env="EIA_API_KEY",
+            citation="https://api.eia.gov/v2/electricity/rto/fuel-type-data/",
+            verified=False,
         ),
         Provider(
             provider_id="entsoe",

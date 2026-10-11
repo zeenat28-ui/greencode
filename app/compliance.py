@@ -168,3 +168,88 @@ class ComplianceManager:
         finally:
             db.close()
 
+    @classmethod
+    def export_audit_chain_to_s3_worm(
+        cls,
+        org_id: int,
+        bucket_name: str,
+        region_name: str = "us-east-1",
+        retention_days: int = 365,
+        s3_client: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Verify SHA-256 audit log chain and export to AWS S3 Object Lock WORM (COMPLIANCE mode).
+
+        Fails closed if:
+        1. `AuditLogManager.verify_integrity(org_id)` reports a broken hash link.
+        2. `bucket_name` is empty or the AWS S3 API call fails.
+        """
+        import base64
+        import hashlib
+
+        if not bucket_name or not bucket_name.strip():
+            return {"archived": False, "reason": "S3 bucket_name is required for WORM archival."}
+
+        integrity = AuditLogManager.verify_integrity(org_id)
+        if not integrity.get("valid", False):
+            return {
+                "archived": False,
+                "reason": f"Audit log chain integrity check failed ({integrity.get('status')}); refusing WORM export.",
+                "integrity": integrity,
+            }
+
+        records = list(reversed(AuditLogManager.get_trail(org_id=org_id, limit=10000)))
+
+        now_utc = datetime.now(timezone.utc)
+        retain_until = now_utc + timedelta(days=max(1, int(retention_days)))
+        envelope = {
+            "schema": "greencode.audit.worm.v1",
+            "org_id": org_id,
+            "exported_at": now_utc.isoformat(),
+            "object_lock_mode": "COMPLIANCE",
+            "retain_until": retain_until.isoformat(),
+            "integrity": integrity,
+            "record_count": len(records),
+            "records": records,
+        }
+        payload_bytes = json.dumps(envelope, indent=2, sort_keys=True).encode("utf-8")
+        sha256_digest = hashlib.sha256(payload_bytes).digest()
+        sha256_hex = sha256_digest.hex()
+        sha256_b64 = base64.b64encode(sha256_digest).decode("ascii")
+        object_key = f"greencode-audit-worm/org-{org_id}/audit-chain-{now_utc.strftime('%Y%m%dT%H%M%SZ')}.json"
+
+        try:
+            if s3_client is None:
+                import boto3
+                s3_client = boto3.client("s3", region_name=region_name)
+
+            resp = s3_client.put_object(
+                Bucket=bucket_name.strip(),
+                Key=object_key,
+                Body=payload_bytes,
+                ContentType="application/json",
+                ObjectLockMode="COMPLIANCE",
+                ObjectLockRetainUntilDate=retain_until,
+                ChecksumSHA256=sha256_b64,
+            )
+            return {
+                "archived": True,
+                "bucket": bucket_name.strip(),
+                "object_key": object_key,
+                "object_lock_mode": "COMPLIANCE",
+                "retain_until": retain_until.isoformat(),
+                "record_count": len(records),
+                "sha256_hex": sha256_hex,
+                "etag": resp.get("ETag"),
+                "version_id": resp.get("VersionId"),
+            }
+        except Exception as exc:
+            return {
+                "archived": False,
+                "bucket": bucket_name.strip(),
+                "object_key": object_key,
+                "record_count": len(records),
+                "sha256_hex": sha256_hex,
+                "reason": f"AWS S3 Object Lock WORM upload failed ({type(exc).__name__}: {exc})",
+            }
+
+

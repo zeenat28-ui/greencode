@@ -236,6 +236,133 @@ class EnterpriseGovernanceManager:
             return cfg
         return None
 
+    @staticmethod
+    def _normalize_cert_body(pem_or_b64: str) -> str:
+        """Strip PEM headers/footers and whitespace to compare canonical base64 X.509 bodies."""
+        lines = [
+            ln.strip()
+            for ln in (pem_or_b64 or "").splitlines()
+            if ln.strip() and not ln.strip().startswith("-----")
+        ]
+        return "".join(lines)
+
+    def verify_saml_response(self, org_id: int, saml_response_b64: str) -> Dict[str, Any]:
+        """Parse and validate a SAML 2.0 XML Response/Assertion against the organization's IdP configuration.
+
+        Enforces:
+        - XXE / DTD entity expansion defense (`<!DOCTYPE` / `<!ENTITY` rejection)
+        - Issuer / IdP EntityID match against registered `EnterpriseSSOConfig`
+        - `<Conditions NotBefore="..." NotOnOrAfter="...">` UTC clock window validation
+        - Embedded `<ds:X509Certificate>` match against tenant's pinned X.509 certificate
+        - Subject `<NameID>` email domain enforcement against `allowed_domains`
+        """
+        import base64
+        import hashlib
+        import xml.etree.ElementTree as ET
+
+        cfg = self.get_sso_config(org_id)
+        if not cfg or not cfg.enabled:
+            return {"verified": False, "reason": f"SSO is not configured or not enabled for organization {org_id}."}
+
+        raw_input = (saml_response_b64 or "").strip()
+        if not raw_input:
+            return {"verified": False, "reason": "Empty SAMLResponse payload."}
+
+        if raw_input.startswith("<"):
+            xml_text = raw_input
+        else:
+            try:
+                xml_text = base64.b64decode(raw_input, validate=False).decode("utf-8", errors="strict")
+            except Exception as exc:
+                return {"verified": False, "reason": f"Invalid base64 SAMLResponse encoding: {exc}"}
+
+        # Security: block XML External Entity (XXE) & billion-laughs DTD declarations
+        upper_xml = xml_text.upper()
+        if "<!DOCTYPE" in upper_xml or "<!ENTITY" in upper_xml:
+            return {"verified": False, "reason": "Security Violation: DTD/ENTITY declarations are forbidden in SAML XML."}
+
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as exc:
+            return {"verified": False, "reason": f"Malformed SAML XML document: {exc}"}
+
+        def _local_name(tag: str) -> str:
+            return tag.split("}", 1)[-1] if "}" in tag else tag
+
+        issuer_val: Optional[str] = None
+        name_id_val: Optional[str] = None
+        not_before_str: Optional[str] = None
+        not_on_or_after_str: Optional[str] = None
+        embedded_cert: Optional[str] = None
+
+        for elem in root.iter():
+            lname = _local_name(elem.tag)
+            if lname == "Issuer" and elem.text and not issuer_val:
+                issuer_val = elem.text.strip()
+            elif lname == "NameID" and elem.text and not name_id_val:
+                name_id_val = elem.text.strip()
+            elif lname == "Conditions":
+                not_before_str = elem.attrib.get("NotBefore") or not_before_str
+                not_on_or_after_str = elem.attrib.get("NotOnOrAfter") or not_on_or_after_str
+            elif lname == "X509Certificate" and elem.text and not embedded_cert:
+                embedded_cert = elem.text.strip()
+
+        expected_issuers = {cfg.issuer.strip(), cfg.idp_entity_id.strip()}
+        if not issuer_val or issuer_val not in expected_issuers:
+            return {
+                "verified": False,
+                "reason": f"SAML Issuer mismatch: got '{issuer_val}', expected one of {sorted(expected_issuers)}.",
+            }
+
+        now_utc = datetime.now(timezone.utc)
+        if not_before_str:
+            try:
+                nb_dt = datetime.fromisoformat(not_before_str.replace("Z", "+00:00"))
+                if now_utc < nb_dt:
+                    return {"verified": False, "reason": f"SAML Assertion is not yet valid (NotBefore={not_before_str})."}
+            except ValueError:
+                return {"verified": False, "reason": f"Unparseable NotBefore timestamp: {not_before_str}"}
+
+        if not_on_or_after_str:
+            try:
+                noa_dt = datetime.fromisoformat(not_on_or_after_str.replace("Z", "+00:00"))
+                if now_utc >= noa_dt:
+                    return {"verified": False, "reason": f"SAML Assertion has expired (NotOnOrAfter={not_on_or_after_str})."}
+            except ValueError:
+                return {"verified": False, "reason": f"Unparseable NotOnOrAfter timestamp: {not_on_or_after_str}"}
+
+        expected_cert_body = self._normalize_cert_body(cfg.certificate_x509)
+        actual_cert_body = self._normalize_cert_body(embedded_cert or "")
+        if not actual_cert_body or actual_cert_body != expected_cert_body:
+            return {
+                "verified": False,
+                "reason": "SAML X.509 signing certificate missing or does not match organization's pinned IdP certificate.",
+            }
+
+        if not name_id_val:
+            return {"verified": False, "reason": "SAML Assertion is missing a Subject <NameID>."}
+
+        if cfg.allowed_domains and "@" in name_id_val:
+            user_domain = name_id_val.rsplit("@", 1)[-1].lower()
+            allowed_set = {d.lower().lstrip("@") for d in cfg.allowed_domains}
+            if user_domain not in allowed_set:
+                return {
+                    "verified": False,
+                    "reason": f"Subject email domain '{user_domain}' is not permitted by organization SSO allowed_domains.",
+                }
+
+        cert_fingerprint = hashlib.sha256(actual_cert_body.encode("utf-8")).hexdigest()
+        return {
+            "verified": True,
+            "org_id": org_id,
+            "subject_name_id": name_id_val,
+            "issuer": issuer_val,
+            "not_before": not_before_str,
+            "not_on_or_after": not_on_or_after_str,
+            "cert_sha256_fingerprint": cert_fingerprint,
+            "reason": "SAML 2.0 XML Assertion verified against pinned IdP entity, X.509 certificate, and validity window.",
+        }
+
     # -----------------------------------------------------------------------
     # SCIM 2.0 PROTOCOL IMPLEMENTATION (RFC 7644)
     # -----------------------------------------------------------------------

@@ -341,3 +341,78 @@ class BillingService:
             "breakdown": breakdown,
             "plan": PricingManager.get_tier(sub["tier"]).__dict__,
         }
+
+    @classmethod
+    def sync_usage_to_aws_marketplace(
+        cls,
+        org_id: int,
+        product_code: str,
+        customer_identifier: str,
+        dimension: str = "api_calls",
+        period: Optional[str] = None,
+        region_name: str = "us-east-1",
+        metering_client: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Report tenant's database-backed metered usage to AWS Marketplace Metering Service (`BatchMeterUsage`).
+
+        Fails closed when `product_code` / `customer_identifier` are missing or when
+        AWS Marketplace credentials / endpoints are unreachable.
+        """
+        if not product_code or not product_code.strip():
+            return {"metered": False, "reason": "AWS Marketplace product_code is required."}
+        if not customer_identifier or not customer_identifier.strip():
+            return {"metered": False, "reason": "AWS Marketplace customer_identifier is required."}
+
+        quantity = int(UsageService.get_monthly_usage(org_id, period=period))
+        now_utc = datetime.now(timezone.utc)
+        usage_record = {
+            "Timestamp": now_utc,
+            "CustomerIdentifier": customer_identifier.strip(),
+            "Dimension": dimension,
+            "Quantity": max(0, quantity),
+        }
+
+        try:
+            if metering_client is None:
+                import boto3
+                metering_client = boto3.client("meteringmarketplace", region_name=region_name)
+
+            resp = metering_client.batch_meter_usage(
+                UsageRecords=[usage_record],
+                ProductCode=product_code.strip(),
+            )
+            results = resp.get("Results") or []
+            unprocessed = resp.get("UnprocessedRecords") or []
+            metered_ok = len(results) > 0 and len(unprocessed) == 0
+            metering_record_id = results[0].get("MeteringRecordId") if results else None
+            status_code = results[0].get("Status") if results else "UNPROCESSED"
+
+            if metered_ok:
+                cls._audit(
+                    org_id,
+                    "aws_marketplace:batch_meter_usage",
+                    str(metering_record_id or product_code),
+                    f"dimension={dimension} quantity={quantity} status={status_code}",
+                )
+            return {
+                "metered": metered_ok,
+                "org_id": org_id,
+                "product_code": product_code.strip(),
+                "customer_identifier": customer_identifier.strip(),
+                "dimension": dimension,
+                "quantity": quantity,
+                "metering_record_id": metering_record_id,
+                "marketplace_status": status_code,
+                "unprocessed_count": len(unprocessed),
+            }
+        except Exception as exc:
+            return {
+                "metered": False,
+                "org_id": org_id,
+                "product_code": product_code.strip(),
+                "customer_identifier": customer_identifier.strip(),
+                "dimension": dimension,
+                "quantity": quantity,
+                "reason": f"AWS Marketplace BatchMeterUsage failed ({type(exc).__name__}: {exc})",
+            }
+

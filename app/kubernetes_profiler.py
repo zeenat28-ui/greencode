@@ -267,6 +267,151 @@ class KubernetesEnergyMonitor:
         detail, _, _ = self._execute_cluster_rollback(namespace, deployment_name)
         return detail
 
+    def parse_prometheus_kepler_metrics(
+        self,
+        metrics_text: str,
+        duration_seconds: float = 60.0,
+        grid_carbon_intensity: float = 380.0,
+    ) -> List[PodEnergySample]:
+        """Parse CNCF Kepler Prometheus exposition metrics into calibrated PodEnergySample records.
+
+        Supports standard Kepler exporter metrics:
+        - `kepler_container_joules_total{pod_name="...",container_namespace="...",container_name="...",mode="..."}`
+        - `kepler_container_package_joules_total{...}` / `kepler_container_dram_joules_total{...}`
+        - `container_memory_working_set_bytes{pod="...",namespace="...",container="..."}`
+        """
+        import re
+
+        duration_seconds = max(1.0, float(duration_seconds))
+        line_re = re.compile(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)\{([^}]*)\}\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)")
+        label_re = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"')
+
+        joules_by_container: Dict[Tuple[str, str, str], float] = {}
+        memory_by_container: Dict[Tuple[str, str, str], int] = {}
+
+        for raw_line in (metrics_text or "").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = line_re.match(line)
+            if not m:
+                continue
+            metric_name, labels_blob, val_str = m.group(1), m.group(2), m.group(3)
+            try:
+                val = float(val_str)
+            except ValueError:
+                continue
+            labels = dict(label_re.findall(labels_blob))
+
+            ns = labels.get("container_namespace") or labels.get("namespace") or "default"
+            pod = labels.get("pod_name") or labels.get("pod") or ""
+            container = labels.get("container_name") or labels.get("container") or "main"
+            if not pod:
+                continue
+            key = (ns, pod, container)
+
+            if metric_name in (
+                "kepler_container_joules_total",
+                "kepler_container_package_joules_total",
+                "kepler_container_dram_joules_total",
+                "kepler_container_core_joules_total",
+            ):
+                if val >= 0.0:
+                    joules_by_container[key] = joules_by_container.get(key, 0.0) + val
+            elif metric_name == "container_memory_working_set_bytes":
+                memory_by_container[key] = max(0, int(val))
+
+        samples: List[PodEnergySample] = []
+        now_ts = datetime.now(timezone.utc).isoformat()
+        for (ns, pod, container), total_joules in sorted(joules_by_container.items()):
+            watts = total_joules / duration_seconds
+            energy_kwh = total_joules / 3_600_000.0
+            annual_kwh = (watts * 8760.0) / 1000.0
+            annual_cost_usd = annual_kwh * self.DEFAULT_KWH_COST_USD
+            annual_co2_kg = (annual_kwh * grid_carbon_intensity) / 1000.0
+            mem_bytes = memory_by_container.get((ns, pod, container), 0)
+            # Estimate equivalent millicores from power envelope (~18W per 1000m on server CPU)
+            est_millicores = round((watts / 18.0) * 1000.0, 1)
+
+            deploy_prefix = pod.rsplit("-", 2)[0] if "-" in pod else pod
+            baseline = self._baselines.get(f"{ns}/{deploy_prefix}") or self._baselines.get(f"{ns}/{pod}")
+            anomaly = False
+            reason = None
+            if baseline and watts > baseline * 1.25:
+                anomaly = True
+                delta = ((watts - baseline) / baseline) * 100.0
+                reason = f"Kepler eBPF/RAPL telemetry spike +{delta:.1f}% over baseline ({watts:.2f}W vs {baseline:.2f}W)"
+
+            samples.append(
+                PodEnergySample(
+                    pod_name=pod,
+                    namespace=ns,
+                    container_name=container,
+                    cpu_millicores=est_millicores,
+                    memory_bytes=mem_bytes,
+                    duration_seconds=duration_seconds,
+                    power_watts=round(watts, 3),
+                    energy_joules=round(total_joules, 2),
+                    energy_kwh=round(energy_kwh, 6),
+                    annual_cost_usd=round(annual_cost_usd, 2),
+                    annual_co2_kg=round(annual_co2_kg, 2),
+                    timestamp=now_ts,
+                    anomaly_detected=anomaly,
+                    anomaly_reason=reason,
+                )
+            )
+        return samples
+
+    def scrape_kepler_endpoint(
+        self,
+        metrics_url: str,
+        duration_seconds: float = 60.0,
+        grid_carbon_intensity: float = 380.0,
+        timeout: float = 5.0,
+    ) -> Dict[str, Any]:
+        """Scrape a live CNCF Kepler / Prometheus exporter endpoint and fail closed if unreachable."""
+        import urllib.request
+
+        if not metrics_url or not metrics_url.startswith(("http://", "https://")):
+            return {
+                "available": False,
+                "reason": "Invalid or missing Kepler Prometheus metrics URL.",
+                "samples": [],
+            }
+        try:
+            req = urllib.request.Request(
+                metrics_url,
+                headers={"Accept": "text/plain; version=0.0.4"},
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = resp.read().decode("utf-8", errors="replace")
+        except Exception as exc:
+            return {
+                "available": False,
+                "reason": f"Kepler endpoint unreachable ({type(exc).__name__}: {exc})",
+                "samples": [],
+            }
+
+        samples = self.parse_prometheus_kepler_metrics(
+            metrics_text=body,
+            duration_seconds=duration_seconds,
+            grid_carbon_intensity=grid_carbon_intensity,
+        )
+        if not samples:
+            return {
+                "available": False,
+                "reason": "Endpoint responded but contained zero kepler_container_*_joules_total metrics.",
+                "samples": [],
+            }
+        return {
+            "available": True,
+            "source": "cncf_kepler_prometheus",
+            "metrics_url": metrics_url,
+            "pods_count": len(samples),
+            "samples": [asdict(s) for s in samples],
+        }
+
 
 # Global singleton instance for operational telemetry
 kubernetes_monitor = KubernetesEnergyMonitor()
@@ -283,5 +428,6 @@ def trigger_kubernetes_rollback(namespace: str, deployment_name: str) -> Dict[st
         "is_live_cluster": is_live_cluster,
         "execution_mode": execution_mode,
     }
+
 
 

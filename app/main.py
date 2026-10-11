@@ -2163,6 +2163,102 @@ async def api_voice_ask(req: VoiceAskRequest):
     }
 
 
+@app.post("/api/audit-diff", tags=["Static Analysis & Carbon Engine"])
+async def api_audit_git_diff(payload: Dict[str, Any]):
+    """Audit only the modified files and line intervals in a unified git diff (PR hunk gating)."""
+    from app.parser import audit_git_diff
+    diff_text = str(payload.get("diff_text") or "")
+    source_files = payload.get("source_files")
+    repo_root = payload.get("repo_root")
+    return audit_git_diff(
+        diff_text=diff_text,
+        repo_root=repo_root if isinstance(repo_root, str) else None,
+        source_files=source_files if isinstance(source_files, dict) else None,
+    )
+
+
+@app.post("/api/k8s/kepler-parse", tags=["Enterprise Cloud & K8s"])
+async def api_parse_kepler_metrics(payload: Dict[str, Any]):
+    """Parse CNCF Kepler Prometheus exposition metrics into calibrated PodEnergySample records."""
+    from dataclasses import asdict
+    from app.kubernetes_profiler import kubernetes_monitor
+    metrics_text = str(payload.get("metrics_text") or "")
+    duration_seconds = float(payload.get("duration_seconds") or 60.0)
+    grid_carbon_intensity = float(payload.get("grid_carbon_intensity") or 380.0)
+    samples = kubernetes_monitor.parse_prometheus_kepler_metrics(
+        metrics_text=metrics_text,
+        duration_seconds=duration_seconds,
+        grid_carbon_intensity=grid_carbon_intensity,
+    )
+    return {
+        "source": "cncf_kepler_prometheus",
+        "pods_count": len(samples),
+        "samples": [asdict(s) for s in samples],
+    }
+
+
+@app.post("/api/enterprise/sso/verify-saml", tags=["Enterprise Governance"])
+async def api_verify_saml_assertion(payload: Dict[str, Any]):
+    """Verify a SAML 2.0 XML Assertion against an organization's pinned IdP configuration."""
+    from app.enterprise_governance import governance_manager
+    org_id = int(payload.get("org_id") or 1)
+    saml_response = str(payload.get("saml_response") or "")
+    return governance_manager.verify_saml_response(org_id=org_id, saml_response_b64=saml_response)
+
+
+@app.get("/api/reports/esg-evidence-bundle", tags=["Enterprise Governance"])
+async def api_download_esg_evidence_bundle(org_id: int = 1, period: Optional[str] = None):
+    """Download a cryptographically signed CSRD/SEC Audit Evidence ZIP bundle."""
+    from fastapi.responses import Response
+    from app.reports.esg_report import ESGReportGenerator
+    zip_bytes, manifest = ESGReportGenerator.generate_evidence_bundle(org_id=org_id, period=period)
+    filename = f"greencode_csrd_evidence_org{org_id}_{manifest['reporting_period']}.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-GreenCode-Bundle-SHA256": str(manifest.get("bundle_root_sha256", "")),
+        },
+    )
+
+
+@app.post("/api/compliance/export-s3-worm", tags=["Enterprise Governance"])
+async def api_export_audit_chain_s3_worm(payload: Dict[str, Any]):
+    """Verify SHA-256 audit log chain and export to AWS S3 Object Lock WORM (COMPLIANCE mode)."""
+    from app.compliance import ComplianceManager
+    org_id = int(payload.get("org_id") or 1)
+    bucket_name = str(payload.get("bucket_name") or "")
+    region_name = str(payload.get("region_name") or "us-east-1")
+    retention_days = int(payload.get("retention_days") or 365)
+    return ComplianceManager.export_audit_chain_to_s3_worm(
+        org_id=org_id,
+        bucket_name=bucket_name,
+        region_name=region_name,
+        retention_days=retention_days,
+    )
+
+
+@app.post("/api/billing/aws-marketplace-sync", tags=["Enterprise Billing"])
+async def api_sync_aws_marketplace_usage(payload: Dict[str, Any]):
+    """Sync tenant's database-backed metered usage to AWS Marketplace Metering Service (BatchMeterUsage)."""
+    from app.services.billing_service import BillingService
+    org_id = int(payload.get("org_id") or 1)
+    product_code = str(payload.get("product_code") or "")
+    customer_identifier = str(payload.get("customer_identifier") or "")
+    dimension = str(payload.get("dimension") or "api_calls")
+    period = payload.get("period")
+    region_name = str(payload.get("region_name") or "us-east-1")
+    return BillingService.sync_usage_to_aws_marketplace(
+        org_id=org_id,
+        product_code=product_code,
+        customer_identifier=customer_identifier,
+        dimension=dimension,
+        period=str(period) if period else None,
+        region_name=region_name,
+    )
+
+
 # has been built. Keeps "removed endpoint" behaviour identical in dev and prod.
 @app.api_route(
     "/api/{full_path:path}",

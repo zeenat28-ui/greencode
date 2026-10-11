@@ -398,6 +398,256 @@ def test_bedrock_sci_for_ai_token_metering():
     assert sonnet_fp["sci_gco2_per_1k_tokens"] > 0.0
 
 
+def test_us_eia_930_hourly_grid_carbon_provider(monkeypatch):
+    import app.carbon_intensity as ci
+
+    sample_eia_payload = {
+        "response": {
+            "data": [
+                {"period": "2026-10-11T16", "respondent": "PJM", "fueltype": "NG", "value": "40000"},
+                {"period": "2026-10-11T16", "respondent": "PJM", "fueltype": "NUC", "value": "30000"},
+                {"period": "2026-10-11T16", "respondent": "PJM", "fueltype": "COL", "value": "10000"},
+                {"period": "2026-10-11T16", "respondent": "PJM", "fueltype": "WND", "value": "20000"},
+            ]
+        }
+    }
+    monkeypatch.setattr(ci, "_get_json", lambda url, headers=None, timeout=6.0: (sample_eia_payload, None))
+
+    res = ci.resolve_carbon_intensity(
+        zone="US-MIDA-PJM",
+        use_cache=False,
+        key_override={"EIA_API_KEY": "eia-test-key-123"},
+    )
+    assert res.is_live is True
+    assert res.intensity_source == "us_eia_930"
+    assert res.intensity_source_tier == ci.TIER_PRIMARY_OFFICIAL
+    # Weighted: (40000*490 + 30000*12 + 10000*995 + 20000*11) / 100000 = 301.3 gCO2/kWh
+    assert abs(res.carbon_intensity - 301.3) < 0.2
+
+
+def test_cross_function_call_graph_loop_detection_and_git_diff_audit():
+    from app.parser import audit_source_code, audit_git_diff
+
+    code_with_helper_chain = """
+import requests
+
+def low_level_http(endpoint):
+    return requests.get(endpoint)
+
+def fetch_customer_profile(cid):
+    return low_level_http(f"https://api.example.com/customers/{cid}")
+
+def sync_all_customers(customer_ids):
+    results = []
+    for cid in customer_ids:
+        results.append(fetch_customer_profile(cid))
+    return results
+"""
+    res = audit_source_code(code_with_helper_chain, language="python", file_path="sync.py")
+    vtypes = [v["violation_type"] for v in res["violations"]]
+    assert "UNCACHED_NETWORK_IN_LOOP" in vtypes
+    chain_Violation = [v for v in res["violations"] if v["violation_type"] == "UNCACHED_NETWORK_IN_LOOP"][0]
+    assert "fetch_customer_profile()" in chain_Violation["description"]
+    assert "low_level_http()" in chain_Violation["description"]
+
+    # Unified Git Diff audit: file has a pre-existing violation at lines 4-8, and a newly added violation at lines 16-18
+    full_file = """import requests
+
+def legacy_func(urls):
+    for u in urls:
+        requests.get(u)
+
+def clean_func(x):
+    return x * 2
+
+def new_pr_func(items):
+    out = ""
+    for item in items:
+        out += str(item)
+    return out
+"""
+    unified_diff = """diff --git a/service.py b/service.py
+index 1111111..2222222 100644
+--- a/service.py
++++ b/service.py
+@@ -10,5 +10,5 @@ def clean_func(x):
+ def new_pr_func(items):
+     out = ""
+     for item in items:
++        out += str(item)
+     return out
+"""
+    diff_audit = audit_git_diff(unified_diff, source_files={"service.py": full_file})
+    assert diff_audit["modified_files_count"] == 1
+    assert diff_audit["total_diff_violations"] == 1
+    assert diff_audit["violations"][0]["violation_type"] == "QUADRATIC_STRING_CONCAT_IN_LOOP"
+    assert diff_audit["violations"][0]["diff_scoped"] is True
+
+
+def test_cncf_kepler_prometheus_metrics_parser():
+    monitor = KubernetesEnergyMonitor(cluster_name="eks-prod")
+    monitor.record_baseline("payments", "ledger-api", baseline_watts=20.0)
+
+    kepler_exposition = """
+# HELP kepler_container_joules_total Total energy in Joules consumed by container via RAPL/eBPF
+# TYPE kepler_container_joules_total counter
+kepler_container_joules_total{container_name="ledger",container_namespace="payments",mode="dynamic",pod_name="ledger-api-7f9c8b-x2k"} 1500.0
+kepler_container_joules_total{container_name="ledger",container_namespace="payments",mode="idle",pod_name="ledger-api-7f9c8b-x2k"} 300.0
+container_memory_working_set_bytes{container="ledger",namespace="payments",pod="ledger-api-7f9c8b-x2k"} 268435456
+"""
+    samples = monitor.parse_prometheus_kepler_metrics(kepler_exposition, duration_seconds=60.0)
+    assert len(samples) == 1
+    s = samples[0]
+    assert s.pod_name == "ledger-api-7f9c8b-x2k"
+    assert s.namespace == "payments"
+    assert abs(s.energy_joules - 1800.0) < 1e-3
+    assert abs(s.power_watts - 30.0) < 1e-3  # 1800 J / 60 s = 30 W (> 20W * 1.25 baseline -> anomaly!)
+    assert s.anomaly_detected is True
+    assert "Kepler eBPF/RAPL telemetry spike" in (s.anomaly_reason or "")
+
+
+def test_saml_20_xml_assertion_verification_and_xxe_defense():
+    import base64
+    from datetime import datetime, timedelta, timezone
+    from app.enterprise_governance import EnterpriseGovernanceManager
+
+    mgr = EnterpriseGovernanceManager()
+    pinned_cert = (
+        "-----BEGIN CERTIFICATE-----\n"
+        "MIIDXTCCAkWgAwIBAgIJALa8X9z1EXAMPLECERTBODY1234567890\n"
+        "-----END CERTIFICATE-----"
+    )
+    mgr.configure_sso(
+        org_id=88,
+        idp_entity_id="http://www.okta.com/exk88greencode",
+        sso_url="https://acme.okta.com/app/greencode/sso/saml",
+        certificate_x509=pinned_cert,
+        issuer="http://www.okta.com/exk88greencode",
+        allowed_domains=["acme.com"],
+    )
+
+    now = datetime.now(timezone.utc)
+    nb = (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    noa = (now + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    valid_saml_xml = f"""<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+  <saml:Issuer>http://www.okta.com/exk88greencode</saml:Issuer>
+  <ds:Signature>
+    <ds:KeyInfo>
+      <ds:X509Data>
+        <ds:X509Certificate>MIIDXTCCAkWgAwIBAgIJALa8X9z1EXAMPLECERTBODY1234567890</ds:X509Certificate>
+      </ds:X509Data>
+    </ds:KeyInfo>
+  </ds:Signature>
+  <saml:Assertion>
+    <saml:Subject>
+      <saml:NameID>architect@acme.com</saml:NameID>
+    </saml:Subject>
+    <saml:Conditions NotBefore="{nb}" NotOnOrAfter="{noa}" />
+  </saml:Assertion>
+</samlp:Response>"""
+
+    b64_payload = base64.b64encode(valid_saml_xml.encode("utf-8")).decode("ascii")
+    res_ok = mgr.verify_saml_response(org_id=88, saml_response_b64=b64_payload)
+    assert res_ok["verified"] is True
+    assert res_ok["subject_name_id"] == "architect@acme.com"
+    assert len(res_ok["cert_sha256_fingerprint"]) == 64
+
+    # Unauthorized email domain must be rejected
+    bad_domain_xml = valid_saml_xml.replace("architect@acme.com", "intruder@evil.org")
+    res_dom = mgr.verify_saml_response(org_id=88, saml_response_b64=bad_domain_xml)
+    assert res_dom["verified"] is False
+    assert "allowed_domains" in res_dom["reason"]
+
+    # XXE / DOCTYPE payload must be blocked
+    xxe_xml = '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>' + valid_saml_xml
+    res_xxe = mgr.verify_saml_response(org_id=88, saml_response_b64=xxe_xml)
+    assert res_xxe["verified"] is False
+    assert "DTD/ENTITY" in res_xxe["reason"]
+
+
+def test_csrd_audit_evidence_zip_bundle_and_s3_worm_archival():
+    import hashlib
+    import io
+    import json
+    import zipfile
+    from app.reports.esg_report import ESGReportGenerator
+    from app.compliance import ComplianceManager
+
+    zip_bytes, manifest = ESGReportGenerator.generate_evidence_bundle(org_id=1, period="2026-10")
+    assert len(zip_bytes) > 200
+    assert len(manifest["bundle_root_sha256"]) == 64
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+        names = set(zf.namelist())
+        assert {
+            "esg_disclosure.json",
+            "esg_disclosure.html",
+            "underlying_telemetry.csv",
+            "audit_chain_certificate.json",
+            "manifest.sha256.json",
+        }.issubset(names)
+        for fname, expected_digest in manifest["file_digests"].items():
+            actual_digest = hashlib.sha256(zf.read(fname)).hexdigest()
+            assert actual_digest == expected_digest
+
+    class FakeS3WORMClient:
+        def __init__(self):
+            self.last_kwargs = None
+
+        def put_object(self, **kwargs):
+            self.last_kwargs = kwargs
+            return {"ETag": '"worm-etag-123"', "VersionId": "v-worm-001"}
+
+    s3_stub = FakeS3WORMClient()
+    worm_res = ComplianceManager.export_audit_chain_to_s3_worm(
+        org_id=1,
+        bucket_name="greencode-sec-csrd-worm-vault",
+        retention_days=2555,  # 7-year SOX/CSRD retention
+        s3_client=s3_stub,
+    )
+    assert worm_res["archived"] is True
+    assert worm_res["object_lock_mode"] == "COMPLIANCE"
+    assert s3_stub.last_kwargs["ObjectLockMode"] == "COMPLIANCE"
+    assert len(worm_res["sha256_hex"]) == 64
+
+
+def test_aws_marketplace_batch_meter_usage_sync():
+    from app.services.billing_service import BillingService
+
+    BillingService.consume(org_id=1, tier="enterprise", event_type="api_call")
+
+    class FakeMarketplaceClient:
+        def __init__(self):
+            self.calls = []
+
+        def batch_meter_usage(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "Results": [
+                    {
+                        "MeteringRecordId": "mp-rec-998877",
+                        "Status": "Success",
+                    }
+                ],
+                "UnprocessedRecords": [],
+            }
+
+    mp_client = FakeMarketplaceClient()
+    sync_res = BillingService.sync_usage_to_aws_marketplace(
+        org_id=1,
+        product_code="prod-greencode-enterprise",
+        customer_identifier="cust-amzn-001",
+        dimension="api_calls",
+        metering_client=mp_client,
+    )
+    assert sync_res["metered"] is True
+    assert sync_res["metering_record_id"] == "mp-rec-998877"
+    assert sync_res["quantity"] >= 1
+    assert mp_client.calls[0]["ProductCode"] == "prod-greencode-enterprise"
+
+
+
 
 
 

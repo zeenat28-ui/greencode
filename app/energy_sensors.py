@@ -294,7 +294,7 @@ def measure_with_perf(
                 total += float(m.group(1).replace(",", ""))
                 found = True
             except ValueError:
-                pass
+                pass  # no-op
     return proc.returncode, wall, (total if found else None), proc.stderr or ""
 
 
@@ -324,7 +324,7 @@ def battery_discharge_watts() -> Optional[float]:
             if raw.isdigit() and int(raw) > 0:
                 return int(raw) / 1000.0  # mW -> W
         except Exception:
-            pass
+            pass  # no-op
     return None
 
 

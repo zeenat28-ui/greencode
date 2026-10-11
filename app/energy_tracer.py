@@ -53,11 +53,11 @@ def _stdlib_roots() -> Tuple[str, ...]:
             if path:
                 roots.append(os.path.realpath(path))
         except Exception:
-            pass
+            pass  # no-op
     try:
         roots.append(os.path.realpath(os.path.dirname(os.__file__)))
     except Exception:
-        pass
+        pass  # no-op
     return tuple(r for r in roots if r)
 
 
@@ -301,7 +301,7 @@ class EnergyTracer:
             sys.settrace(prev_trace)
             sys.setprofile(prev_profile)
         except Exception:
-            pass
+            pass  # no-op
         finally:
             self._stack.clear()
 

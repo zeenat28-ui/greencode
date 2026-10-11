@@ -122,7 +122,7 @@ def _probe():
                 if _line.startswith("VmHWM:"):
                     _peak["rss_kb"] = int(_line.split()[1])
     except Exception:
-        pass
+        pass  # no-op
 def _loop():
     while True:
         _probe()
@@ -425,7 +425,7 @@ class DynamicAnalyzer:
                 try:
                     container.kill()
                 except Exception:
-                    pass
+                    pass  # no-op
                 wait_result = {"StatusCode": -1, "Error": "timeout"}
 
             duration = time.perf_counter() - t0
@@ -448,12 +448,12 @@ class DynamicAnalyzer:
                 logs = container.logs(stdout=False, stderr=False, tail=2000)
                 stdout_bytes = logs if isinstance(logs, bytes) else str(logs).encode()
             except Exception:
-                pass
+                pass  # no-op
             try:
                 err_logs = container.logs(stdout=True, stderr=True, tail=2000)
                 stderr_bytes = err_logs if isinstance(err_logs, bytes) else str(err_logs).encode()
             except Exception:
-                pass
+                pass  # no-op
 
         finally:
             # BaseException, not Exception: an interrupt or a hard exit between
@@ -462,7 +462,7 @@ class DynamicAnalyzer:
             try:
                 container.remove(force=True)
             except BaseException:
-                pass
+                pass  # no-op
             self._cleanup_probe(workdir, language)
 
         result = self._finalise(
@@ -537,7 +537,7 @@ class DynamicAnalyzer:
                     container.remove(force=True)
                     removed += 1
                 except Exception:
-                    pass
+                    pass  # no-op
             return removed
         except Exception:
             # Reaping is housekeeping; never let it fail an analysis.
@@ -550,7 +550,7 @@ class DynamicAnalyzer:
         try:
             os.remove(os.path.join(workdir, ".greencode_probe.py"))
         except OSError:
-            pass
+            pass  # no-op
 
     def _finalise(
         self,

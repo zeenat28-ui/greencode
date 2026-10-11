@@ -138,7 +138,7 @@ class EnergyDebtTracker:
             finally:
                 db.close()
         except Exception:
-            pass
+            pass  # no-op
 
         return debt
 

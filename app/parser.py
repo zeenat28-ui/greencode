@@ -1214,9 +1214,9 @@ def audit_source_code(source_code: str, language: str = "python", file_path: str
                             "context_code": mv.get("snippet", ""),
                         })
             except Exception:
-                pass
+                pass  # no-op
         except SyntaxError:
-            pass
+            pass  # no-op
 
     # 3. Universal Lexical Scope & Pattern Analyzer (Tier 2 - covers ALL 500+ languages)
     univ_violations = audit_universal_lexical_scope(source_code, language, file_path)
@@ -1297,7 +1297,7 @@ def audit_file(file_path: str) -> Dict[str, Any]:
                 "notice": "Skipped static analysis: file exceeds 2MB limit",
             }
     except Exception:
-        pass
+        pass  # no-op
 
     lang = detect_file_language(file_path) or "python"
     with open(file_path, "r", encoding="utf-8", errors="replace") as f:
@@ -1424,7 +1424,7 @@ def cleanup_workspace(workspace_dir: Optional[str] = None) -> None:
             try:
                 shutil.rmtree(workspace_dir, ignore_errors=True)
             except Exception:
-                pass
+                pass  # no-op
 
 
 def cleanup_all_workspaces() -> None:
@@ -1435,7 +1435,7 @@ def cleanup_all_workspaces() -> None:
             try:
                 shutil.rmtree(ws, ignore_errors=True)
             except Exception:
-                pass
+                pass  # no-op
     _ACTIVE_WORKSPACES.clear()
 
 

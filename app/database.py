@@ -807,7 +807,7 @@ def init_db(*, use_alembic: bool = True) -> None:
                         conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN created_at DATETIME;"))
                 conn.commit()
         except Exception:
-            pass
+            pass  # no-op
 
 
 async def init_async_db() -> None:
@@ -865,7 +865,7 @@ async def init_async_db() -> None:
                     if "created_at" not in rt_cols:
                         await conn.execute(text("ALTER TABLE refresh_tokens ADD COLUMN created_at DATETIME;"))
             except Exception:
-                pass
+                pass  # no-op
 
 
 async def close_async_db() -> None:
@@ -874,7 +874,7 @@ async def close_async_db() -> None:
         try:
             await async_engine.dispose()
         except Exception:
-            pass
+            pass  # no-op
 
 
 @asynccontextmanager

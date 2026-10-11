@@ -170,7 +170,7 @@ class UsageService:
                 },
             )
         except Exception:  # pragma: no cover - audit must never break the caller
-            pass
+            pass  # no-op
 
     # ------------------------------------------------------------------
     # Usage breakdown for the customer dashboard

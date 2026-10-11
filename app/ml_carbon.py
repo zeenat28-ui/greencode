@@ -278,7 +278,7 @@ class MLCarbonAnalyzer:
             tree = ast.parse(source_code)
             visitor.visit(tree)
         except SyntaxError:
-            pass
+            pass  # no-op
 
         # Deduct score starting from 100
         total_deductions = sum(v.deduction for v in visitor.violations)

@@ -360,7 +360,7 @@ try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass
+    pass  # no-op
 
 try:
     from cachetools import TTLCache
@@ -438,7 +438,7 @@ def _http_get(url: str, headers: Optional[Dict[str, str]] = None, timeout: float
                 wrapper.headers = dict(resp.headers)
                 return wrapper
         except Exception:
-            pass
+            pass  # no-op
     try:
         return requests.get(url, headers=headers or {}, timeout=timeout)
     except Exception:

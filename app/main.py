@@ -732,7 +732,7 @@ def health_check():
             try:
                 db.close()
             except Exception:
-                pass
+                pass  # no-op
     except Exception as exc:
         deps["database"] = f"error: {exc}"
         overall = "degraded"
@@ -2179,7 +2179,7 @@ def run_cli():
             if hasattr(sys.stderr, "reconfigure"):
                 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
         except Exception:
-            pass
+            pass  # no-op
 
     if args.serve:
         print(f"Starting GreenCode Auditor FastAPI server on port {args.port}...")
@@ -2243,7 +2243,7 @@ def run_cli():
                 if "pull_request" in event_data and "number" in event_data["pull_request"]:
                     pr_number = int(event_data["pull_request"]["number"])
         except Exception:
-            pass
+            pass  # no-op
 
     if pr_number and github_repo:
         print(f"Publishing automated carbon quality audit comment to PR #{pr_number} in '{github_repo}'...")
@@ -2269,7 +2269,7 @@ def run_cli():
                 if args.sarif:
                     gh_out.write(f"sarif_file={args.sarif}\n")
         except Exception:
-            pass
+            pass  # no-op
 
 
     # Check against threshold

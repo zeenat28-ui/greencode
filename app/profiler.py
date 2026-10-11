@@ -158,10 +158,10 @@ def kill_process_tree(pid: int) -> None:
             try:
                 child.kill()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
+                pass  # no-op
         parent.kill()
     except (psutil.NoSuchProcess, psutil.AccessDenied):
-        pass
+        pass  # no-op
 
 
 class DynamicExecutionProfiler:
@@ -198,7 +198,7 @@ class DynamicExecutionProfiler:
                             verify=True,
                         )
                     except Exception:
-                        pass
+                        pass  # no-op
                 self.docker_client = docker.DockerClient(base_url=target_host, tls=tls_config, timeout=4)
                 self.docker_client.ping()
                 if target_host.startswith("tcp://"):
@@ -373,7 +373,7 @@ class DynamicExecutionProfiler:
                     if usage_bytes > 0:
                         mem_samples_mb.append(usage_bytes / (1024 * 1024))
             except Exception:
-                pass
+                pass  # no-op
 
         monitor_thread = threading.Thread(target=monitor_stats, daemon=True)
 
@@ -397,7 +397,7 @@ class DynamicExecutionProfiler:
                 try:
                     container.kill()
                 except Exception:
-                    pass
+                    pass  # no-op
                 exit_code = 124
             finally:
                 end_time = time.perf_counter()
@@ -412,7 +412,7 @@ class DynamicExecutionProfiler:
             try:
                 container.remove(force=True)
             except BaseException:
-                pass
+                pass  # no-op
             is_running = False
 
         avg_cpu = sum(cpu_samples) / len(cpu_samples) if cpu_samples else 25.0
@@ -606,7 +606,7 @@ class DynamicExecutionProfiler:
                         try:
                             all_procs.extend(ps_proc.children(recursive=True))
                         except Exception:
-                            pass
+                            pass  # no-op
 
                         tree_cpu = 0.0
                         tree_mem = 0.0
@@ -615,7 +615,7 @@ class DynamicExecutionProfiler:
                                 tree_cpu += p.cpu_percent(interval=None)
                                 tree_mem += p.memory_info().rss / (1024 * 1024)
                             except (psutil.NoSuchProcess, psutil.AccessDenied):
-                                pass
+                                pass  # no-op
 
                         if tree_cpu > 0:
                             cpu_samples.append(tree_cpu)
@@ -625,7 +625,7 @@ class DynamicExecutionProfiler:
                         break
                     time.sleep(0.04)
             except Exception:
-                pass
+                pass  # no-op
 
             stdout, stderr = proc.communicate()
             exit_code = proc.returncode or 0
@@ -638,7 +638,7 @@ class DynamicExecutionProfiler:
                 try:
                     os.remove(cleanup_file)
                 except Exception:
-                    pass
+                    pass  # no-op
 
         end_time = time.perf_counter()
         duration = max(0.001, end_time - start_time)

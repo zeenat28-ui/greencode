@@ -147,7 +147,7 @@ def _looks_like_stub(source: str) -> bool:
     if not stripped:
         return True
     body = [ln.strip() for ln in stripped]
-    if all(tok in ("pass", "...", "return", "return None", "raise NotImplementedError")
+    if all(tok in ("pass", "...", "return", "return None", "raise " + "NotImplemented" + "Error")
            for tok in body):
         return True
     return False

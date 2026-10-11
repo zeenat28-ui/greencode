@@ -14,18 +14,18 @@ allocations), Software Carbon Intensity against the live grid of the region you
 pick, and a ranked remediation plan. Every energy figure declares whether it
 came from a hardware counter or a TDP model, and every carbon figure names its
 data source and freshness — answers that survive an audit, not just a demo.
-Eight MCP tools (audit_code, audit_repository, audit_and_score, calculate_sci,
-measure_energy, get_grid_intensity, compare_regions, refactor_code) run over
+Nine MCP tools (`audit_code`, `audit_repository`, `audit_and_score`, `calculate_sci`,
+`measure_energy`, `get_grid_intensity`, `compare_regions`, `explain_score`, `refactor_code`) run over
 Streamable HTTP behind a 401 + RFC 9728 discovery handshake, exactly as the
-Alexa+ quickstart requires, with a Bedrock client (optional, degrades to a
-local fallback) for the AI refactor suggestions.
+Alexa+ quickstart requires, with a Bedrock Converse API client (`app/bedrock_client.py`, optional, degrades to a
+deterministic AST fallback) and AWS Custom Silicon (`Graviton4`, `Inferentia2`, `Trainium1`) energy/cost modeling.
 
 ## Tracks
 
 - **Alexa+** (primary): MCP server + `alexa/addon.json` manifest, tested in the
   Alexa web simulator flow against the published compliance checklist.
 - **AWS Builder (mini)**: Bedrock Converse API client
-  (`app/bedrock_client.py`) for LLM refactor suggestions; works without AWS via
+  (`app/bedrock_client.py`) for LLM refactor suggestions + AWS Custom Silicon (`Graviton4 c8g`, `Inferentia2 inf2`, `Trainium1 trn1`) energy/cost profiler (`app/ml_carbon.py`, `app/calibrated_energy.py`) + `boto3` operations CLI (`app/aws_cli.py`); works without AWS credentials via
   a local rule-based fallback so no billing is ever required.
 - **Open Source (mini)**: Apache-2.0 `LICENSE`, public repo.
 
@@ -33,15 +33,15 @@ local fallback) for the AI refactor suggestions.
 
 - Voice/LLM-driven energy audit of code snippets and repositories with a
   0-100 green score and ranked fixes.
-- Scientific Carbon Intensity (SCI) math with explicit provenance: every
+- Software Carbon Intensity (SCI) math with explicit provenance: every
   number is tagged hardware-measured vs modelled, and grid data names its
   source and age.
-- Live grid intensity + region comparison for placement decisions.
+- Live grid intensity + 11-region AWS comparison and AWS custom silicon (`Graviton4`, `Inferentia2`, `Trainium1`) placement advisor.
 
 ## How it works
 
 1. `app/mcp_server.py` — Python MCP server (Streamable HTTP, protocol
-   ≥ 2025-11-25) exposing 8 tools and 2 resources (`greencode://health`,
+   ≥ 2025-11-25) exposing 9 tools and 2 resources (`greencode://health`,
    `greencode://standards/gsf-sci`).
 2. Auth per the Alexa+ checklist: unauthenticated `/mcp` → bare 401 (no
    `WWW-Authenticate`), RFC 9728 Protected Resource Metadata, RFC 8414
@@ -50,15 +50,15 @@ local fallback) for the AI refactor suggestions.
    quickstart names), DNS-rebinding host allowlist, and automatic rewrite of
    every URL in `alexa/addon.json` when the tunnel domain rotates.
 4. Verification: `check_mcp_live.py` (in-process end-to-end MCP session),
-   `check_mcp_alexa.py` (live checklist incl. latency budget), 68 pytest
-   cases across `tests/test_alexa_compliance.py` and
-   `tests/test_amazon_integrations.py`.
+   `check_mcp_alexa.py` (live checklist incl. latency budget), 438 pytest
+   cases across `tests/` (including `tests/test_alexa_compliance.py` and
+   `tests/test_amazon_integrations.py`).
 
 ## What changed during the hackathon window
 
-- Self-hosted MCP server with the full Alexa+ auth/discovery checklist.
-- Alexa add-on package: manifest, privacy/terms pages, generated icon set.
-- Bedrock Converse client with graceful local fallback.
+- Self-hosted MCP server with the full Alexa+ auth/discovery checklist (9 tools, 2 resources).
+- Alexa add-on package: manifest, privacy/terms pages, generated icon set, and interactive Alexa+ Voice Cockpit UI wired to live MCP tools.
+- Bedrock Converse client with 4-gate behaviour verification and deterministic local fallback + AWS Custom Silicon (`Graviton4`, `Inferentia2`, `Trainium1`) profiler.
 - Tunnel automation (manifest URL rewrite + host allowlist) and two live
   verification harnesses; the friction log at `FRICTION_LOG.md`.
 
@@ -67,7 +67,7 @@ local fallback) for the AI refactor suggestions.
 ```powershell
 pip install -r requirements.txt
 python check_mcp_live.py                 # in-process E2E: ALL LIVE MCP CHECKS PASSED
-python -m pytest tests/ -q               # 68 passed
+python -m pytest tests/ -q               # 438 passed
 $env:GREENCODE_MCP_TOKEN = "<random>"
 .\scripts\start_mcp_remote.ps1           # prints https://<tunnel>/mcp, updates addon.json
 python check_mcp_alexa.py --url https://<tunnel> --token $env:GREENCODE_MCP_TOKEN

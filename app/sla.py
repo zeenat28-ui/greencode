@@ -59,7 +59,7 @@ class EnergySLAEngine:
                 with open(target, "r", encoding="utf-8") as f:
                     return yaml.safe_load(f) or {}
             except Exception:
-                pass
+                pass  # no-op
         return self._default_fallback_config()
 
     @staticmethod

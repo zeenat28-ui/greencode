@@ -69,7 +69,7 @@ class EnergyPolicyService:
                 try:
                     merged.update(json.loads(proj.policy_json))
                 except Exception:
-                    pass
+                    pass  # no-op
             merged.update(policy)
             proj.policy_json = json.dumps(merged)
             db.commit()

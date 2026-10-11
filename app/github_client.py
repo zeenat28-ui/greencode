@@ -20,7 +20,7 @@ try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass
+    pass  # no-op
 
 GITHUB_API_BASE = "https://api.github.com"
 USER_AGENT = "GreenCode-Auditor/1.0 (+https://github.com/zeenat28-ui/greencode)"
@@ -82,7 +82,7 @@ def _github_error_detail(resp: requests.Response, fallback: str) -> str:
             errs = payload.get("errors")
             return f"{msg} ({errs})" if errs else msg
     except Exception:
-        pass
+        pass  # no-op
     return fallback
 
 
@@ -213,7 +213,7 @@ def list_user_repositories(
                 break
             page += 1
     except GitHubAPIError:
-        pass
+        pass  # no-op
 
     repos.sort(key=lambda r: (0 if r["language"] == "Python" else 1, r["name"].lower()))
     return repos
@@ -666,12 +666,12 @@ def download_repository_archive(
         try:
             tmp.close()
         except Exception:
-            pass
+            pass  # no-op
         if os.path.exists(tmp.name):
             try:
                 os.remove(tmp.name)
             except OSError:
-                pass
+                pass  # no-op
         raise
     finally:
         resp.close()

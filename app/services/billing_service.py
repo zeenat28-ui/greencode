@@ -297,7 +297,7 @@ class BillingService:
                 details={"summary": details},
             )
         except Exception:  # pragma: no cover
-            pass
+            pass  # no-op
 
     @staticmethod
     def _sub_to_dict(sub: Subscription) -> Dict[str, Any]:

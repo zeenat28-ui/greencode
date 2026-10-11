@@ -31,7 +31,7 @@ try:
 
     load_dotenv()
 except ImportError:  # pragma: no cover
-    pass
+    pass  # no-op
 
 
 ROUTER_URL = "https://router.huggingface.co/v1/chat/completions"

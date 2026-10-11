@@ -24,7 +24,7 @@ DEFAULT_CUSTOM_RULES: List[Dict[str, Any]] = [
             "Polling with time.sleep() inside a loop holds worker threads and prevents "
             "CPU package C-state residency. Prefer event-driven callbacks or asyncio.Event."
         ),
-        "pattern_regex": r"(?:for|while)\s+[^\n]+:\s*(?:\n[ \t]+[^\n]+)*?\n[ \t]+time\.sleep\s*\(",
+        "pattern_regex": r"(?:for|while)[ \t]+[^\n:]+:[ \t]*(?:\n[ \t]+[^\s\n][^\n]*){0,6}\n[ \t]+time\.sleep\s*\(",
         "languages": ["python"],
         "severity": "MEDIUM",
         "deduction": 6.0,
@@ -38,7 +38,7 @@ DEFAULT_CUSTOM_RULES: List[Dict[str, Any]] = [
             "Loading full CSV frames repeatedly inside a loop spikes DRAM allocation "
             "and memory controller power draw."
         ),
-        "pattern_regex": r"(?:for|while)\s+[^\n]+:\s*(?:\n[ \t]+[^\n]+)*?\n[ \t]+[^\n]*\bpd\.read_csv\s*\(",
+        "pattern_regex": r"(?:for|while)[ \t]+[^\n:]+:[ \t]*(?:\n[ \t]+[^\s\n][^\n]*){0,6}\n[ \t]+[^\s\n][^\n]*\bpd\.read_csv\s*\(",
         "languages": ["python"],
         "severity": "HIGH",
         "deduction": 10.0,
@@ -52,7 +52,7 @@ DEFAULT_CUSTOM_RULES: List[Dict[str, Any]] = [
             "Calling console.log() inside a tight loop forces synchronous string formatting "
             "and I/O buffer flushes on every iteration."
         ),
-        "pattern_regex": r"for\s*\([^)]+\)\s*\{[^}]*\bconsole\.log\s*\(",
+        "pattern_regex": r"for\s*\([^)]+\)\s*\{[^}]{0,400}\bconsole\.log\s*\(",
         "languages": ["javascript", "typescript"],
         "severity": "LOW",
         "deduction": 3.5,
@@ -66,7 +66,7 @@ DEFAULT_CUSTOM_RULES: List[Dict[str, Any]] = [
             "Serializing full dictionaries with json.dumps() on every iteration wastes CPU "
             "cycles on redundant string encoding."
         ),
-        "pattern_regex": r"(?:for|while)\s+[^\n]+:\s*(?:\n[ \t]+[^\n]+)*?\n[ \t]+[^\n]*\bjson\.dumps\s*\(",
+        "pattern_regex": r"(?:for|while)[ \t]+[^\n:]+:[ \t]*(?:\n[ \t]+[^\s\n][^\n]*){0,6}\n[ \t]+[^\s\n][^\n]*\bjson\.dumps\s*\(",
         "languages": ["python"],
         "severity": "MEDIUM",
         "deduction": 5.5,

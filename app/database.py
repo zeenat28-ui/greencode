@@ -690,6 +690,24 @@ class RefreshToken(Base):  # refresh tokens for short-lived access JWTs
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
+class AWSLinkedAccount(Base):
+    """Cross-account AWS IAM role linkage for STS AssumeRole, Budgets, and CloudWatch telemetry."""
+
+    __tablename__ = "aws_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, default=1, index=True)
+    account_id = Column(String(12), unique=True, index=True, nullable=False)
+    account_name = Column(String(255), nullable=False, default="AWS Account")
+    role_arn = Column(String(512), nullable=False)
+    region = Column(String(64), nullable=False, default="us-east-1")
+    external_id = Column(String(255), nullable=True)
+    status = Column(String(32), nullable=False, default="ACTIVE")
+    access_level = Column(String(32), nullable=False, default="read-only")
+    linked_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+
 # Additive, idempotent SQLite migrations for the repositories table.
 # Kept declarative so every new provenance column follows the same pattern.
 _REPOSITORY_ADDITIVE_COLUMNS: List[Any] = [
@@ -2154,4 +2172,108 @@ def record_carbon_consumption(org_id: int, team_id: str, consumed_kg: float, per
         raise
     finally:
         db.close()
+
+
+def _ensure_aws_accounts_table() -> None:
+    """Ensure the aws_accounts table exists on the active SQLite/Postgres engine."""
+    AWSLinkedAccount.__table__.create(bind=sync_engine, checkfirst=True)
+
+
+def create_aws_account(
+    account_id: str,
+    role_arn: str,
+    region: str = "us-east-1",
+    account_name: str = "AWS Account",
+    external_id: Optional[str] = None,
+    status: str = "ACTIVE",
+    access_level: str = "read-only",
+    org_id: int = 1,
+) -> AWSLinkedAccount:
+    """Create or update a linked AWS account record (never stores STS secret/session keys)."""
+    _ensure_aws_accounts_table()
+    db = SessionLocal()
+    try:
+        existing = (
+            db.query(AWSLinkedAccount)
+            .filter(AWSLinkedAccount.account_id == account_id)
+            .first()
+        )
+        if existing:
+            existing.role_arn = role_arn
+            existing.region = region
+            existing.account_name = account_name
+            existing.external_id = external_id
+            existing.status = status
+            existing.access_level = access_level
+            existing.org_id = org_id
+            existing.linked_at = datetime.now(timezone.utc)
+            record = existing
+        else:
+            record = AWSLinkedAccount(
+                org_id=org_id,
+                account_id=account_id,
+                account_name=account_name,
+                role_arn=role_arn,
+                region=region,
+                external_id=external_id,
+                status=status,
+                access_level=access_level,
+            )
+            db.add(record)
+        db.commit()
+        db.refresh(record)
+        return record
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def get_aws_account(account_id: str, org_id: Optional[int] = None) -> Optional[AWSLinkedAccount]:
+    """Retrieve a single linked AWS account by its 12-digit account ID."""
+    _ensure_aws_accounts_table()
+    db = SessionLocal()
+    try:
+        q = db.query(AWSLinkedAccount).filter(AWSLinkedAccount.account_id == account_id)
+        if org_id is not None:
+            q = q.filter(AWSLinkedAccount.org_id == org_id)
+        return q.first()
+    finally:
+        db.close()
+
+
+def get_all_aws_accounts(org_id: Optional[int] = None) -> List[AWSLinkedAccount]:
+    """List all linked AWS accounts, optionally scoped to an organization."""
+    _ensure_aws_accounts_table()
+    db = SessionLocal()
+    try:
+        q = db.query(AWSLinkedAccount).order_by(AWSLinkedAccount.linked_at.desc())
+        if org_id is not None:
+            q = q.filter(AWSLinkedAccount.org_id == org_id)
+        return list(q.all())
+    finally:
+        db.close()
+
+
+def delete_aws_account_record(account_id: str, org_id: Optional[int] = None) -> bool:
+    """Remove a linked AWS account record by its 12-digit account ID."""
+    _ensure_aws_accounts_table()
+    db = SessionLocal()
+    try:
+        q = db.query(AWSLinkedAccount).filter(AWSLinkedAccount.account_id == account_id)
+        if org_id is not None:
+            q = q.filter(AWSLinkedAccount.org_id == org_id)
+        record = q.first()
+        if not record:
+            return False
+        db.delete(record)
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
 

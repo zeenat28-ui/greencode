@@ -290,9 +290,9 @@ For a mid-sized enterprise running **50 microservices on AWS** (~$50,000/month A
 ### 9.1 Technical Metrics
 | Metric | Current | Target (Q1 2027) |
 |---|---|---|
-| Test suite coverage | 443+57 passed | 500+ tests |
-| AWS CLI test coverage | 0 | 15+ tests |
-| ESG exporter test coverage | 0 | 8+ tests |
+| Test suite coverage | 505+57 passed | 500+ tests |
+| AWS CLI & STS test coverage | 15+ tests | 15+ tests |
+| ESG exporter test coverage | 8+ tests | 8+ tests |
 | p95 API latency | ~500ms | <300ms |
 | MCP voice latency | <500ms | <400ms |
 | Availability | 99.5% | 99.9% |
@@ -324,19 +324,21 @@ For a mid-sized enterprise running **50 microservices on AWS** (~$50,000/month A
 | File | Role |
 |---|---|
 | `app/main.py` | FastAPI application + health endpoints |
-| `app/amazon_service.py` | NEW — AWS account linking + STS |
+| `app/amazon_service.py` | AWS account linking + STS AssumeRole + Ember 2024 region carbon + Budgets cost-carbon |
+| `app/routers/amazon.py` | FastAPI `/api/aws/*` router with RBAC & tenant isolation |
 | `app/aws_cli.py` | AWS CLI subcommands |
-| `app/bedrock_client.py` | AWS Bedrock integration |
+| `app/bedrock_client.py` | AWS Bedrock integration + SCI-for-AI token metering |
 | `app/pricing.py` | Commercial tier engine |
 | `app/scanner.py` | GitHub + cloud-native scanning |
 | `app/energy_sensors.py` | Hardware energy measurement |
 | `app/sci.py` | GSF SCI calculator + ESG exporters |
-| `app/cloud_cost_mapper.py` | Multi-cloud cost mapper |
+| `app/cloud_cost_mapper.py` | Multi-cloud cost mapper + Graviton migration ROI |
 | `app/optimizer.py` | Grid carbon + AI optimization |
+| `app/energy_predictor.py` | `GreenDeployPredictor` pre-production PR energy/cost regression gate |
 | `app/services/energy_policy_service.py` | Enterprise policy engine |
 | `app/services/budget_service.py` | Carbon budget services |
-| `app/services/enterprise_governance.py` | SSO, SCIM, data residency |
-| `tests/test_amazon_...py` | NEW — Amazon integration tests |
+| `app/enterprise_governance.py` | SSO (SAML 2.0 XML verifier), SCIM 2.0, data residency |
+| `tests/test_amazon_service.py` | AWS STS AssumeRole, Ember 2024 fallback, Budgets cost-carbon & router tests |
 
 ### 11.2 Source URLs (Verified)
 - GSF SCI — https://greensoftware.foundation/standards/sci/
@@ -359,7 +361,7 @@ For a mid-sized enterprise running **50 microservices on AWS** (~$50,000/month A
 
 ```mermaid
 flowchart LR
-    P1["Phase 1: Verified Core (COMPLETED)\n• ISO 21031 SCI Math Fixed\n• CalibratedEnergyModel Wiring\n• SQLite Governance & Residency\n• 443 Passing Tests"] --> P2["Phase 2: AWS Telemetry & AI FinOps\n• CloudWatch Utilization Ingestion\n• Bedrock Token/Energy Metering\n• US EIA-930 Free Live Grid API"]
+    P1["Phase 1: Verified Core (COMPLETED)\n• ISO 21031 SCI Math Fixed\n• CalibratedEnergyModel Wiring\n• SQLite Governance & Residency\n• 505 Passing Tests"] --> P2["Phase 2: AWS Telemetry & AI FinOps\n• CloudWatch Utilization Ingestion\n• Bedrock Token/Energy Metering\n• US EIA-930 Free Live Grid API"]
     P2 --> P3["Phase 3: Shift-Left CI/CD & K8s\n• GitHub Check Runs & PR Bot\n• AWS CodePipeline Native Gate\n• EKS Kepler Prometheus Scraper"]
     P3 --> P4["Phase 4: Commercial Scale\n• AWS Marketplace Metering API\n• SAML 2.0 XML Signature Auth\n• Signed CSRD/SEC Audit ZIP Export"]
 ```
@@ -374,10 +376,10 @@ flowchart LR
 ### Step 2 — Live AWS Telemetry & AI FinOps Attribution (Completed)
 - [x] Add `boto3.client("cloudwatch")` utilization fetcher to feed real EC2/ECS/Lambda CPU & memory curves into `CalibratedEnergyModel`.
 - [x] Add Bedrock token & inference energy metering (`SCI for AI`) per refactoring request in `app/bedrock_client.py`.
-- [x] Add US EIA-930 hourly grid intensity provider in `app/carbon_intensity.py` for live US AWS region coverage.
+- [x] Add US EIA-930 hourly grid intensity provider in `app/carbon_intensity.py` and wire `app/amazon_service.py` + `app/routers/amazon.py` with Ember-2024 cited fallback data and cross-account STS `AssumeRole`.
 
 ### Step 3 — Shift-Left CI/CD Automation & EKS Live Observability (Completed)
-- [x] Add incremental unified Git Diff / PR hunk auditor (`audit_git_diff`) and cross-function call-graph loop detection in `app/parser.py` alongside `GreenDeployPredictor`.
+- [x] Add incremental unified Git Diff / PR hunk auditor (`audit_git_diff`) and cross-function call-graph loop detection in `app/parser.py`, paired with `GreenDeployPredictor` in `app/energy_predictor.py`.
 - [x] Add Prometheus / CNCF Kepler metric parser and live scraper in `app/kubernetes_profiler.py` for continuous EKS pod power monitoring.
 
 ### Step 4 — Enterprise Commercialization & AWS Marketplace Launch (Completed)

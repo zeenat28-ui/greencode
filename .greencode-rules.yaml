@@ -1,0 +1,43 @@
+# GreenCode Declarative Custom Carbon & FinOps Rule Pack (.greencode-rules.yaml)
+# Teams can add organization-specific AST/pattern rules here without modifying Python code.
+version: "2.0"
+rules:
+  - id: CUSTOM_SLEEP_POLLING_IN_LOOP
+    title: "Busy-Wait time.sleep() Polling Inside Loop"
+    description: "Polling with time.sleep() inside a loop holds worker threads and prevents CPU package C-state residency. Prefer event-driven callbacks, asyncio.Event, or OS epoll."
+    pattern_regex: '(?:for|while)\s+[^\n]+:\s*(?:\n[ \t]+[^\n]+)*?\n[ \t]+time\.sleep\s*\('
+    languages: ["python"]
+    severity: "MEDIUM"
+    deduction: 6.0
+    gsf_pattern: "GSF-custom-01: Event-Driven Scheduling Over Polling"
+    fix_guidance: "Replace busy-wait sleep loops with asyncio.Event.wait(), queue blocking reads, or webhook triggers."
+
+  - id: CUSTOM_PANDAS_CSV_NO_CHUNKSIZE
+    title: "Unbounded pandas.read_csv() Inside Iteration"
+    description: "Loading full CSV frames repeatedly inside a loop spikes DRAM allocation and memory controller power draw."
+    pattern_regex: '(?:for|while)\s+[^\n]+:\s*(?:\n[ \t]+[^\n]+)*?\n[ \t]+[^\n]*\bpd\.read_csv\s*\('
+    languages: ["python"]
+    severity: "HIGH"
+    deduction: 10.0
+    gsf_pattern: "GSF-custom-02: Streaming Data Ingestion"
+    fix_guidance: "Hoist pd.read_csv() outside the loop or stream large datasets with chunksize=10000 and usecols=[...]."
+
+  - id: CUSTOM_CONSOLE_LOG_IN_HOT_LOOP
+    title: "Synchronous Console/Stdout Serialization in Loop"
+    description: "Calling console.log() inside a tight loop forces synchronous string formatting and I/O buffer flushes on every iteration."
+    pattern_regex: 'for\s*\([^)]+\)\s*\{[^}]*\bconsole\.log\s*\('
+    languages: ["javascript", "typescript"]
+    severity: "LOW"
+    deduction: 3.5
+    gsf_pattern: "GSF-custom-03: Batched Structured Logging"
+    fix_guidance: "Aggregate diagnostics in memory or sample logs outside the hot loop."
+
+  - id: CUSTOM_JSON_DUMPS_IN_LOOP
+    title: "Repeated JSON Full-Object Serialization in Loop"
+    description: "Serializing full dictionaries with json.dumps() on every iteration wastes CPU cycles on redundant string encoding."
+    pattern_regex: '(?:for|while)\s+[^\n]+:\s*(?:\n[ \t]+[^\n]+)*?\n[ \t]+[^\n]*\bjson\.dumps\s*\('
+    languages: ["python"]
+    severity: "MEDIUM"
+    deduction: 5.5
+    gsf_pattern: "GSF-custom-04: Hoisted Payload Serialization"
+    fix_guidance: "Pre-serialize invariant payloads outside the loop or stream newline-delimited JSON."

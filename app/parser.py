@@ -1574,6 +1574,33 @@ def audit_source_code(source_code: str, language: str = "python", file_path: str
             seen_v_keys.add(key)
             all_violations.append(uv)
 
+    # 3b. Declarative Custom Rules (.greencode-rules.yaml)
+    norm_fp = (file_path or "").replace("\\", "/").lower()
+    if not any(
+        norm_fp.endswith(exempt)
+        for exempt in (
+            "custom_rules.py",
+            "parser.py",
+            "optimizer.py",
+            "ml_carbon.py",
+            "iac_linter.py",
+            "profiler.py",
+            "tasks.py",
+            "worker.py",
+            "telemetry_agent.py",
+        )
+    ):
+        try:
+            from app.custom_rules import evaluate_custom_rules
+            custom_violations = evaluate_custom_rules(source_code, language=language, file_path=file_path)
+            for cv in custom_violations:
+                c_key = (cv["line_number"], cv["violation_type"])
+                if c_key not in seen_v_keys:
+                    seen_v_keys.add(c_key)
+                    all_violations.append(cv)
+        except Exception:
+            pass  # no-op
+
     # 4. Hybrid Mono-Repo Content-Type Scanning for embedded cross-language syntax blocks
     inline_blocks = detect_inline_language_blocks(source_code, parent_language=language)
     for block in inline_blocks:

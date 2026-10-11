@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+title: "GreenCode: Multi-Language AST Energy Auditor, SCI Calculator, and Reality Verification Pipeline"
+message: "If you use GreenCode in your software engineering research, sustainability audits, or CI/CD pipelines, please cite it using the metadata below."
+type: software
+authors:
+  - alias: "zeenat28-ui"
+    name: "Zeenat"
+repository-code: "https://github.com/zeenat28-ui/greencode"
+url: "https://github.com/zeenat28-ui/greencode"
+license: Apache-2.0
+version: "2.0.0"
+date-released: "2026-10-12"
+keywords:
+  - green-software
+  - software-carbon-intensity
+  - static-analysis
+  - finops
+  - energy-measurement
+  - rapl
+  - mcp-server
+  - amazon-bedrock

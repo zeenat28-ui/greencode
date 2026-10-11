@@ -1,0 +1,27 @@
+# GreenCode Auditor GitLab CI/CD Merge Request Carbon & FinOps Gate Template
+# Include in your .gitlab-ci.yml:
+#   include:
+#     - local: 'deploy/gitlab-ci-greencode.yml'
+
+stages:
+  - green-audit
+
+greencode_mr_carbon_gate:
+  stage: green-audit
+  image: python:3.11-slim
+  variables:
+    GREENCODE_THRESHOLD: "75.0"
+    GREENCODE_ZONE: "US-CAL-CISO"
+  script:
+    - pip install --no-cache-dir -r requirements.txt
+    - python -m app.main --path . --threshold "$GREENCODE_THRESHOLD" --zone "$GREENCODE_ZONE" --sarif greencode.sarif --sonar greencode-sonar.json --ci
+  artifacts:
+    when: always
+    paths:
+      - greencode.sarif
+      - greencode-sonar.json
+    reports:
+      sast: greencode.sarif
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

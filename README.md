@@ -5,6 +5,7 @@
 [![SCI Standard](https://img.shields.io/badge/Specification-SCI%20v1.0-blue)](https://greensoftware.foundation)
 [![Tests](https://img.shields.io/badge/tests-438%20passing-success)](tests/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/zeenat28-ui)
 
 ## 🏆 Amazon Developer Hackathon 2026 ("Build, Ship, Shape")
 

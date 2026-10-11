@@ -32,7 +32,29 @@ async def export_esg_csv(org_id: int, period: Optional[str] = Query(None)):
     return Response(
         content=ReportExporter.export_csv(org_id=org_id, period=period),
         media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="greencode-esg-{org_id}.csv"'},
     )
+
+
+@router.get("/esg/{org_id}/evidence-bundle")
+async def export_esg_evidence_bundle(org_id: int, period: Optional[str] = Query(None)):
+    """Download cryptographically signed CSRD/SEC Audit Evidence ZIP archive."""
+    zip_bytes, manifest = ESGReportGenerator.generate_evidence_bundle(org_id=org_id, period=period)
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="greencode-csrd-evidence-org-{org_id}.zip"',
+            "X-Bundle-Root-SHA256": str(manifest.get("bundle_root_sha256", "")),
+        },
+    )
+
+
+@router.get("/esg/{org_id}/evidence-manifest")
+async def get_esg_evidence_manifest(org_id: int, period: Optional[str] = Query(None)):
+    """Return SHA-256 cryptographic digest manifest for the CSRD/SEC Audit Evidence bundle."""
+    _, manifest = ESGReportGenerator.generate_evidence_bundle(org_id=org_id, period=period)
+    return manifest
 
 
 @router.get("/audit-logs/{org_id}")
@@ -61,4 +83,5 @@ async def verify_audit_chain_integrity(org_id: int):
 async def get_compliance_posture(org_id: int):
     """Audit platform security posture, SOC2 readiness, and data retention rules."""
     return ComplianceManager.evaluate_security_posture(org_id=org_id)
+
 

@@ -1204,4 +1204,46 @@ def test_purza3_commercial_license_keys_opencollective_webhook_and_cli_diff_gate
     assert "[PASSED]" in proc.stdout
 
 
+def test_purza4_csrd_evidence_bundle_endpoints_and_action_manifest():
+    """Verify Purza 4: CSRD evidence ZIP bundle & SHA-256 manifest API endpoints and GitHub Action diff_range/license_key inputs."""
+    import io
+    import json
+    import zipfile
+    from pathlib import Path
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+
+    # 1. Verify /api/reports/esg/1/evidence-manifest returns SHA-256 digest map
+    man_resp = client.get("/api/reports/esg/1/evidence-manifest")
+    assert man_resp.status_code == 200
+    man_data = man_resp.json()
+    assert len(man_data.get("bundle_root_sha256", "")) == 64
+    assert "esg_disclosure.json" in man_data.get("file_digests", {})
+    assert "audit_chain_certificate.json" in man_data.get("file_digests", {})
+
+    # 2. Verify /api/reports/esg/1/evidence-bundle returns a valid ZIP archive with matching root hash
+    zip_resp = client.get("/api/reports/esg/1/evidence-bundle")
+    assert zip_resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(zip_resp.content), "r") as zf:
+        names = set(zf.namelist())
+        assert "manifest.sha256.json" in names
+        assert "esg_disclosure.json" in names
+        assert "esg_disclosure.html" in names
+        assert "underlying_telemetry.csv" in names
+        assert "audit_chain_certificate.json" in names
+        embedded_manifest = json.loads(zf.read("manifest.sha256.json").decode("utf-8"))
+        assert zip_resp.headers.get("X-Bundle-Root-SHA256") == embedded_manifest["bundle_root_sha256"]
+
+    # 3. Verify action.yml exposes diff_range and license_key inputs
+    action_text = Path("action.yml").read_text(encoding="utf-8")
+    assert "diff_range:" in action_text
+    assert "license_key:" in action_text
+    assert "--diff ${{ inputs.diff_range }}" in action_text
+    assert "GREENCODE_LICENSE_KEY" in action_text
+
+
+
+
 

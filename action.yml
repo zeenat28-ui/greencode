@@ -38,6 +38,14 @@ inputs:
     description: 'GitHub Personal Access Token or GITHUB_TOKEN for PR commenting and SARIF upload'
     required: false
     default: ${{ github.token }}
+  diff_range:
+    description: 'Optional git diff range (e.g. origin/main...HEAD) to audit only modified PR hunks'
+    required: false
+    default: ''
+  license_key:
+    description: 'Optional GC-LIC commercial license key for Pro or Enterprise tier features'
+    required: false
+    default: ''
 
 outputs:
   green_score:
@@ -72,10 +80,14 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
+        GREENCODE_LICENSE_KEY: ${{ inputs.license_key }}
       run: |
         EXTRA_FLAGS=""
         if [ -n "${{ inputs.sonar_file }}" ]; then
           EXTRA_FLAGS="$EXTRA_FLAGS --sonar ${{ inputs.sonar_file }}"
+        fi
+        if [ -n "${{ inputs.diff_range }}" ]; then
+          EXTRA_FLAGS="$EXTRA_FLAGS --diff ${{ inputs.diff_range }}"
         fi
         python -m app.main \
           --path "${{ inputs.path }}" \
@@ -89,3 +101,4 @@ runs:
       uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: ${{ inputs.sarif_file }}
+

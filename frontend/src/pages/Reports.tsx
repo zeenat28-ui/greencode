@@ -8,16 +8,18 @@ export default function Reports() {
   const [manifestData, setManifestData] = useState<any>(null);
   const [complianceData, setComplianceData] = useState<any>(null);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [ifManifest, setIfManifest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const loadReportsData = async () => {
     setLoading(true);
     try {
-      const [esgRes, manRes, compRes, logsRes] = await Promise.all([
+      const [esgRes, manRes, compRes, logsRes, ifRes] = await Promise.all([
         fetch('/api/reports/esg/1'),
         fetch('/api/reports/esg/1/evidence-manifest'),
         fetch('/api/reports/compliance/1'),
         fetch('/api/reports/audit-logs/1?limit=8'),
+        fetch('/api/reports/impact-framework-manifest'),
       ]);
       if (esgRes.ok) setEsgData(await esgRes.json());
       if (manRes.ok) setManifestData(await manRes.json());
@@ -26,6 +28,7 @@ export default function Reports() {
         const lJson = await logsRes.json();
         setAuditLogs(Array.isArray(lJson?.entries) ? lJson.entries : []);
       }
+      if (ifRes.ok) setIfManifest(await ifRes.json());
     } catch {
       // Non-blocking
     } finally {
@@ -242,8 +245,36 @@ export default function Reports() {
           )}
         </div>
       </div>
+
+      {/* Green Software Foundation Impact Framework (.imp.yaml) Manifest */}
+      {ifManifest && (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="font-semibold text-slate-900 text-sm">
+                Green Software Foundation Impact Framework (.imp.yaml) Manifest
+              </h3>
+              <p className="text-xs text-slate-500">
+                Standardized @grnsft/if-plugins pipeline (SciE, SciO, SciM, Sci) conforming to ISO/IEC 21031:2024
+              </p>
+            </div>
+            <a
+              href="/api/reports/impact-framework-manifest"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors"
+            >
+              Open IF Manifest JSON
+            </a>
+          </div>
+          <pre className="bg-slate-900 text-emerald-300 font-mono text-xs p-4 rounded-lg overflow-x-auto max-h-56">
+            {ifManifest.yaml_manifest}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
+
 
 

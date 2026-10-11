@@ -49,6 +49,48 @@ class EvaluateRulesRequest(BaseModel):
     project_id: Optional[int] = None
 
 
+class CustomRuleEvaluationRequest(BaseModel):
+    source_code: str = Field(..., min_length=1, max_length=200000, description="Source code to evaluate against custom rules")
+    language: str = Field("python", max_length=40, description="Programming language identifier")
+    file_path: str = Field("snippet.py", max_length=300, description="Virtual file path")
+    rules_yaml: Optional[str] = Field(None, max_length=50000, description="Optional custom .greencode-rules.yaml content override")
+
+
+@router.get("/custom-rules")
+async def list_custom_yaml_rules():
+    """Return the active declarative custom energy rules loaded from .greencode-rules.yaml."""
+    from app.custom_rules import load_repo_custom_rules
+
+    rules = load_repo_custom_rules()
+    return {
+        "source": ".greencode-rules.yaml",
+        "count": len(rules),
+        "rules": rules,
+    }
+
+
+@router.post("/custom-rules/evaluate")
+async def evaluate_custom_yaml_rules(payload: CustomRuleEvaluationRequest):
+    """Evaluate source code against either the repository .greencode-rules.yaml or a custom YAML rule definition."""
+    from app.custom_rules import evaluate_custom_rules, parse_custom_rules_yaml
+
+    active_rules = parse_custom_rules_yaml(payload.rules_yaml) if payload.rules_yaml else None
+    violations = evaluate_custom_rules(
+        source_code=payload.source_code,
+        language=payload.language,
+        file_path=payload.file_path,
+        custom_rules=active_rules,
+    )
+    total_deduction = sum(float(v.get("deduction", 0.0)) for v in violations)
+    return {
+        "file_path": payload.file_path,
+        "language": payload.language,
+        "violations_count": len(violations),
+        "green_score": max(0.0, round(100.0 - total_deduction, 2)),
+        "violations": violations,
+    }
+
+
 @router.get("/{org_id}")
 async def get_enterprise_policy(
     org_id: int,

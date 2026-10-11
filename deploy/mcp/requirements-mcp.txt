@@ -13,7 +13,7 @@
 # mcp pulls its own transitives (starlette, sse-starlette, anyio, httpx,
 # pydantic, opentelemetry) with compatible ranges; the direct deps are pinned.
 mcp==2.3.0
-uvicorn==0.52.4
+uvicorn==0.54.0
 tree-sitter==0.21.3
 tree-sitter-languages==1.10.2
 requests==2.34.2

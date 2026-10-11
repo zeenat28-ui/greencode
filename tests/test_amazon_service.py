@@ -9,8 +9,9 @@ from app.main import app
 
 
 class FakeSTSClient:
-    def __init__(self, account_id: str = "123456789012"):
+    def __init__(self, account_id: str = "123456789012", caller_account_id: str | None = None):
         self.account_id = account_id
+        self.caller_account_id = caller_account_id or account_id
         self.calls = []
 
     def assume_role(self, **kwargs):
@@ -26,6 +27,13 @@ class FakeSTSClient:
                 "AssumedRoleId": "AROAEXAMPLEID:greencode",
                 "Arn": f"arn:aws:sts::{self.account_id}:assumed-role/GreenCodeAuditor/session",
             },
+        }
+
+    def get_caller_identity(self):
+        return {
+            "UserId": "AROAEXAMPLEID:greencode",
+            "Account": self.caller_account_id,
+            "Arn": f"arn:aws:sts::{self.caller_account_id}:assumed-role/GreenCodeAuditor/session",
         }
 
 
@@ -117,6 +125,16 @@ def test_account_id_and_role_arn_validation():
             "123456789012",
             "arn:aws:iam::999999999999:role/GreenCodeAuditor",
         )
+
+    # STS get_caller_identity mismatch raises AWSSTSError
+    bad_sts = FakeSTSClient(account_id="123456789012", caller_account_id="999999999999")
+    with pytest.raises(amazon_service.AWSSTSError) as exc_info:
+        amazon_service.assume_role(
+            account_id="123456789012",
+            role_arn="arn:aws:iam::123456789012:role/GreenCodeAuditor",
+            sts_client=bad_sts,
+        )
+    assert exc_info.value.error_code == "CALLER_IDENTITY_MISMATCH"
 
 
 def test_link_list_and_delete_aws_account_no_credential_leak():

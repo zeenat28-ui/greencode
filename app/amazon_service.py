@@ -183,6 +183,36 @@ def assume_role(
                 account_id=account_id,
             )
 
+        # Verify caller identity of the assumed session matches the target 12-digit account ID
+        verified_caller_account = account_id.strip()
+        if sts_client is not None:
+            if hasattr(sts_client, "get_caller_identity"):
+                identity = sts_client.get_caller_identity() or {}
+                caller_acct = str(identity.get("Account") or "").strip()
+                if caller_acct and caller_acct != account_id.strip():
+                    raise AWSSTSError(
+                        f"STS get_caller_identity Account '{caller_acct}' does not match '{account_id}'.",
+                        error_code="CALLER_IDENTITY_MISMATCH",
+                        account_id=account_id,
+                    )
+        else:
+            assumed_sts = boto3.client(
+                "sts",
+                aws_access_key_id=creds["AccessKeyId"],
+                aws_secret_access_key=creds["SecretAccessKey"],
+                aws_session_token=creds.get("SessionToken", ""),
+                region_name=region,
+            )
+            identity = assumed_sts.get_caller_identity() or {}
+            caller_acct = str(identity.get("Account") or "").strip()
+            if caller_acct and caller_acct != account_id.strip():
+                raise AWSSTSError(
+                    f"STS get_caller_identity Account '{caller_acct}' does not match '{account_id}'.",
+                    error_code="CALLER_IDENTITY_MISMATCH",
+                    account_id=account_id,
+                )
+            verified_caller_account = caller_acct or verified_caller_account
+
         expiration = creds.get("Expiration")
         exp_iso = expiration.isoformat() if hasattr(expiration, "isoformat") else str(expiration or "")
 
@@ -193,7 +223,7 @@ def assume_role(
             "session_token": creds.get("SessionToken", ""),
             "expiration": exp_iso,
             "session_name": unique_session[:64],
-            "account_id": account_id,
+            "account_id": verified_caller_account,
             "role_arn": role_arn.strip(),
             "source": "aws_sts_assume_role",
             "method": "sts_assume_role",

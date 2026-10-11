@@ -58,19 +58,8 @@ class OrgService:
             db.commit()
             db.refresh(org)
 
-            # Record audit event
-            audit = AuditLog(
-                org_id=org.id,
-                action="org:create",
-                resource_type="organization",
-                resource_id=str(org.id),
-                status="SUCCESS",
-                details=json.dumps({"name": name, "tier": tier}),
-            )
-            db.add(audit)
-            db.commit()
-
-            return {
+            org_id_val = org.id
+            org_dict = {
                 "id": org.id,
                 "name": org.name,
                 "slug": org.slug,
@@ -80,6 +69,17 @@ class OrgService:
             }
         finally:
             db.close()
+
+        from app.audit_logs import AuditLogManager
+        AuditLogManager.record_event(
+            org_id=org_id_val,
+            action="org:create",
+            resource_type="organization",
+            resource_id=str(org_id_val),
+            status="SUCCESS",
+            details={"name": name, "tier": tier},
+        )
+        return org_dict
 
     @staticmethod
     def get_organization(org_id: int) -> Optional[Dict[str, Any]]:

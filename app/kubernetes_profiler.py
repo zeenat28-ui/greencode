@@ -57,6 +57,8 @@ class RollbackVerdict:
     timestamp: str
     rollback_triggered: bool = False
     rollback_status: Optional[str] = None
+    is_live_cluster: bool = False
+    execution_mode: str = "none"
 
 
 class KubernetesEnergyMonitor:
@@ -166,8 +168,10 @@ class KubernetesEnergyMonitor:
 
         if delta_pct >= spike_threshold_pct:
             rollback_status = None
+            is_live = False
+            mode = "none"
             if auto_trigger_rollback:
-                rollback_status = self.trigger_kubernetes_rollback(namespace, deployment_name)
+                rollback_status, is_live, mode = self._execute_cluster_rollback(namespace, deployment_name)
 
             return RollbackVerdict(
                 deployment_name=deployment_name,
@@ -184,6 +188,8 @@ class KubernetesEnergyMonitor:
                 timestamp=now_ts,
                 rollback_triggered=bool(auto_trigger_rollback),
                 rollback_status=rollback_status,
+                is_live_cluster=is_live,
+                execution_mode=mode,
             )
 
         return RollbackVerdict(
@@ -197,14 +203,16 @@ class KubernetesEnergyMonitor:
             timestamp=now_ts,
             rollback_triggered=False,
             rollback_status=None,
+            is_live_cluster=False,
+            execution_mode="none",
         )
 
-    def trigger_kubernetes_rollback(self, namespace: str, deployment_name: str) -> str:
-        """Execute automated Kubernetes rollback via Kube API rollout undo."""
+    def _execute_cluster_rollback(self, namespace: str, deployment_name: str) -> Tuple[str, bool, str]:
+        """Execute Kubernetes rollback via Kube API or kubectl when configured, or return simulated dry-run provenance."""
         kube_host = os.environ.get("KUBERNETES_SERVICE_HOST")
         kube_token = os.environ.get("KUBERNETES_SERVICE_ACCOUNT_TOKEN")
 
-        # In production clusters, issue kubectl rollout undo or PATCH deployments/rollback
+        # 1. In-cluster Kubernetes AppsV1 API rollback
         if kube_host and kube_token:
             try:
                 import urllib.request
@@ -221,13 +229,43 @@ class KubernetesEnergyMonitor:
                 )
                 with urllib.request.urlopen(req, context=ctx, timeout=5.0) as resp:
                     logger.info("Kubernetes API rollback dispatched for %s/%s (HTTP %s)", namespace, deployment_name, resp.status)
-                    return f"KUBERNETES_API_ROLLED_BACK_HTTP_{resp.status}"
+                    return (f"KUBERNETES_API_ROLLED_BACK_HTTP_{resp.status}", True, "k8s_api")
             except Exception as exc:
-                logger.warning("Live K8s API call failed (falling back to CLI patch signal): %s", exc)
+                logger.warning("Live K8s API call failed (checking kubectl fallback): %s", exc)
 
-        # Standalone or CI fallback: emit auditable cluster rollback directive
-        logger.info("Emitted Kubernetes automated rollback signal for %s in namespace %s", deployment_name, namespace)
-        return f"ROLLED_BACK_{deployment_name}_TO_PREVIOUS_REVISION_DUE_TO_ENERGY_SPIKE"
+        # 2. External KUBECONFIG + kubectl CLI rollback
+        if os.environ.get("KUBECONFIG"):
+            import shutil
+            import subprocess
+            kubectl_bin = shutil.which("kubectl")
+            if kubectl_bin:
+                try:
+                    proc = subprocess.run(
+                        [kubectl_bin, "rollout", "undo", f"deployment/{deployment_name}", "-n", namespace],
+                        capture_output=True,
+                        text=True,
+                        timeout=10.0,
+                        check=False,
+                    )
+                    if proc.returncode == 0:
+                        logger.info("kubectl rollout undo succeeded for %s/%s", namespace, deployment_name)
+                        return (f"KUBECTL_ROLLED_BACK_{deployment_name}_TO_PREVIOUS_REVISION", True, "kubectl")
+                    logger.warning("kubectl rollout undo exited %s: %s", proc.returncode, proc.stderr.strip())
+                except Exception as exc:
+                    logger.warning("kubectl execution failed: %s", exc)
+
+        # 3. Standalone / CI simulation mode (no live cluster credentials configured)
+        logger.info("Simulated Kubernetes rollback directive for %s in namespace %s (no live cluster configured)", deployment_name, namespace)
+        return (
+            f"ROLLED_BACK_{deployment_name}_TO_PREVIOUS_REVISION_DUE_TO_ENERGY_SPIKE",
+            False,
+            "simulated_dry_run",
+        )
+
+    def trigger_kubernetes_rollback(self, namespace: str, deployment_name: str) -> str:
+        """Execute automated Kubernetes rollback and return status detail string."""
+        detail, _, _ = self._execute_cluster_rollback(namespace, deployment_name)
+        return detail
 
 
 # Global singleton instance for operational telemetry
@@ -235,13 +273,15 @@ kubernetes_monitor = KubernetesEnergyMonitor()
 
 
 def trigger_kubernetes_rollback(namespace: str, deployment_name: str) -> Dict[str, Any]:
-    """Module-level helper to trigger Kubernetes rollback on the singleton monitor."""
-    detail = kubernetes_monitor.trigger_kubernetes_rollback(namespace, deployment_name)
+    """Module-level helper to trigger Kubernetes rollback on the singleton monitor with explicit cluster provenance."""
+    detail, is_live_cluster, execution_mode = kubernetes_monitor._execute_cluster_rollback(namespace, deployment_name)
     return {
         "status": "SUCCESS",
         "details": detail,
         "namespace": namespace,
         "deployment": deployment_name,
+        "is_live_cluster": is_live_cluster,
+        "execution_mode": execution_mode,
     }
 
 

@@ -1,29 +1,45 @@
-# Enterprise Disaster Recovery & Business Continuity Plan
+# Self-Hosted Backup & Recovery Runbook
 
-## 1. RPO & RTO Objectives
-- **Recovery Point Objective (RPO):** **< 15 minutes** (maximum tolerable data loss window)
-- **Recovery Time Objective (RTO):** **< 30 minutes** (maximum tolerable time to restore full service)
+> **Scope Note:** This document provides a reference backup and recovery runbook for teams self-hosting GreenCode with Docker Compose (`docker-compose.yml`), PostgreSQL (`DATABASE_URL`), or SQLite (`greencode.db`).
 
----
-
-## 2. High Availability Architecture
-1. **Multi-AZ Kubernetes Clusters:** Gatekeeper pods are distributed across 3 distinct Availability Zones with pod anti-affinity.
-2. **PostgreSQL High Availability:** Primary database replicated asynchronously to a hot standby in an alternate zone with automated failover via Patroni/RDS Multi-AZ.
-3. **Stateless Workloads:** All core API services are stateless. Session tokens and rate limit tracking are backed by Redis with persistence.
+## 1. Stateless & Stateful Components
+1. **Stateless API & MCP Services (`app/main.py`, `app/mcp_server.py`):** Can be restarted or redeployed from container images at any time without local state loss.
+2. **Database (`SQLite` or `PostgreSQL`):** Stores historical scan metrics, carbon budgets, and hash-chained `AuditLog` entries (`app/database.py`).
+3. **Pipeline Ledger (`app/pipeline/ledger.py`):** Append-only JSONL ledger file (configurable via `GREENCODE_LEDGER_PATH`).
 
 ---
 
-## 3. Backup Schedule & Verification
-- **Continuous WAL Archival:** PostgreSQL write-ahead logs streamed continuously to immutable cloud storage.
-- **Daily Full Snapshots:** Automated nightly snapshots encrypted at rest with AES-256 and stored with WORM protection.
-- **Bi-Weekly Recovery Drills:** SRE team performs automated sandbox restoration drills bi-weekly to ensure backup viability.
+## 2. Backup Procedures (Self-Hosted)
+- **PostgreSQL (`docker-compose.yml`):**
+  ```bash
+  docker compose exec db pg_dump -U greencode greencode > greencode_backup_$(date +%F).sql
+  ```
+- **SQLite (Local / Single-Node):**
+  ```bash
+  sqlite3 greencode.db ".backup 'greencode_backup.db'"
+  ```
+- **S3 Evidence Upload (`app/aws_cli.py`):**
+  Signed audit reports can be archived to Amazon S3 using:
+  ```bash
+  python -m app.aws_cli s3 push report.json
+  ```
 
 ---
 
-## 4. Failover Procedure
-1. SRE on-call receives automated pager alert regarding primary zone outage.
-2. Promote secondary PostgreSQL read replica to primary.
-3. Update Kubernetes ConfigMap `DATABASE_URL` via GitOps / ArgoCD.
-4. Execute `kubectl rollout restart deployment/greencode-gatekeeper -n greencode-system`.
-5. Verify health check `GET /api/health` returns `200 OK`.
+## 3. Recovery & Integrity Verification Procedure
+1. Restore the PostgreSQL dump or SQLite backup file.
+2. Run database schema migrations:
+   ```bash
+   alembic upgrade head
+   ```
+3. Start the application stack and verify health:
+   ```bash
+   docker compose up -d
+   curl http://localhost:8000/api/health
+   ```
+4. Verify cryptographic hash-chain continuity of restored audit logs:
+   ```bash
+   curl http://localhost:8000/api/reports/audit-logs/1/verify
+   curl http://localhost:8000/api/pipeline/ledger/verify
+   ```
 

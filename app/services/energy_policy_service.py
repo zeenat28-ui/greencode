@@ -74,21 +74,21 @@ class EnergyPolicyService:
             proj.policy_json = json.dumps(merged)
             db.commit()
 
-            # Record audit trail
-            audit = AuditLog(
-                org_id=org_id or proj.org_id,
-                action="policy:update",
-                resource_type="project_policy",
-                resource_id=str(project_id),
-                status="SUCCESS",
-                details=json.dumps({"actor": actor, "policy": merged}),
-            )
-            db.add(audit)
-            db.commit()
-
-            return merged
+            target_org_id = org_id or proj.org_id
         finally:
             db.close()
+
+        from app.audit_logs import AuditLogManager
+        AuditLogManager.record_event(
+            org_id=target_org_id,
+            action="policy:update",
+            resource_type="project_policy",
+            resource_id=str(project_id),
+            status="SUCCESS",
+            details={"actor": actor, "policy": merged},
+            actor=actor,
+        )
+        return merged
 
     @classmethod
     def evaluate_deployment_gate(

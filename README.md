@@ -3,7 +3,7 @@
 [![CI Gatekeeper](https://img.shields.io/badge/CI%2FCD-Active%20Quality%20Gate-success)](action.yml)
 [![Green Computing](https://img.shields.io/badge/Standard-Green%20Software%20Foundation-brightgreen)](https://greensoftware.foundation)
 [![SCI Standard](https://img.shields.io/badge/Specification-SCI%20v1.0-blue)](https://greensoftware.foundation)
-[![Tests](https://img.shields.io/badge/tests-327%20passing-success)](tests/)
+[![Tests](https://img.shields.io/badge/tests-438%20passing-success)](tests/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
 ## 🏆 Amazon Developer Hackathon 2026 ("Build, Ship, Shape")
@@ -245,7 +245,7 @@ the `security` block names the exact configuration fault.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/          # 238 tests
+python -m pytest tests/          # 438 tests
 ENV=development python -m app.main --path . --threshold 75
 ```
 
@@ -359,24 +359,24 @@ outcome, not a bug.
 
 ---
 
-## 🌐 Universal Omni-Language Engine (500+ Languages Supported)
+## 🌐 Multi-Language Static Analysis Engine (AST / Tree-sitter + Lexical Fallback)
 
-GreenCode Auditor is built for universal, polyglot global scale. It natively audits code written in **every programming language in the world**, powered by a robust 3-Tier Multi-Paradigm Parsing Engine:
+GreenCode Auditor analyzes source files using a tiered parsing architecture ([`app/parser.py`](app/parser.py)):
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                   UNIVERSAL SOURCE CODE INPUT                          │
+│                        SOURCE CODE INPUT                               │
 └────────────────────────────────────┬───────────────────────────────────┘
                                      │
                  ┌───────────────────┴───────────────────┐
                  ▼                                       ▼
     ┌───────────────────────────┐           ┌───────────────────────────┐
-    │  TIER 1: HIGH-FIDELITY    │           │  TIER 2: UNIVERSAL LEXICAL│
-    │  TREE-SITTER CST          │           │  SCOPE & BLOCK ANALYZER   │
-    │  Python, JS/TS, C/C++,    │           │  All 500+ Languages       │
-    │  Java, Go, Rust, C#,      │           │  Solidity, Kotlin, Swift, │
-    │  Ruby, PHP, Bash, SQL...  │           │  Pascal, COBOL, Zig, R,   │
-    │  (Grammar S-Expressions)  │           │  Julia, Fortran, Lua...   │
+    │  TIER 1: AST & TREE-SITTER│           │  TIER 2: HEURISTIC LEXICAL│
+    │  CONCRETE SYNTAX TREES    │           │  SCOPE & BLOCK FALLBACK   │
+    │  Python (native ast) +    │           │  Bracket, indentation &   │
+    │  JS/TS, C/C++, Java, Go,  │           │  keyword-block depth      │
+    │  Rust, C#, Ruby, PHP,     │           │  heuristics for other     │
+    │  Bash, SQL grammars       │           │  source file extensions   │
     └────────────┬──────────────┘           └────────────┬──────────────┘
                  │                                       │
                  └───────────────────┬───────────────────┘
@@ -389,14 +389,14 @@ GreenCode Auditor is built for universal, polyglot global scale. It natively aud
                         └───────────────────────────┘
 ```
 
-1. **Tier 1: High-Fidelity Tree-sitter Concrete Syntax Trees (CST)**:
-   Pre-compiled grammars for the most popular modern enterprise languages (Python, JavaScript, TypeScript, C, C++, C#, Java, Go, Rust, Ruby, PHP, Scala, Bash, SQL, R, Julia, Haskell, Elixir, YAML, HTML, CSS). Runs S-expression queries targeting nested loops and callback-driven iteration structures.
-2. **Tier 2: Universal Lexical Scope & Block Analyzer**:
-   Universal parser with bracket, indentation, and keyword-block matching (`begin/end`, `do/done`, `loop/end`, `perform/end-perform`) covering **500+ file extensions** (Solidity `.sol`, Kotlin `.kt`, Swift `.swift`, Pascal `.pas`, COBOL `.cbl`, Zig `.zig`, D `.d`, V `.v`, Nim `.nim`, Dart `.dart`, etc.).
-3. **Dynamic Universal Fallback**:
-   Any custom, proprietary, or emerging file extension (e.g., `.sol`, `.xyz`, `.custom`) is automatically identified and analyzed without crashing or dropping coverage.
-4. **Embedded Multi-Language Blocks**:
-   Recursively detects and parses polyglot code blocks (e.g. `<script>` inside HTML, markdown code fences, embedded C++/JavaScript string blocks inside Python).
+1. **Tier 1: Native Python AST & Tree-sitter Concrete Syntax Trees (CST)**:
+   Uses Python's built-in `ast` module for full structural analysis of Python code, and `tree-sitter-language-pack` grammars for major languages (JavaScript, TypeScript, C, C++, C#, Java, Go, Rust, Ruby, PHP, Scala, Bash, SQL).
+2. **Tier 2: Heuristic Lexical Scope & Block Analyzer (Fallback)**:
+   For file extensions without an active Tree-sitter grammar (e.g., `.sol`, `.kt`, `.swift`, `.zig`, `.dart`), the parser falls back to a lexical bracket, indentation, and keyword-block (`begin/end`, `do/done`, `loop/end`) scanner to estimate loop nesting depth and flag uncached network/DB calls inside loops.
+3. **Graceful Polyglot Scanning**:
+   Unrecognized text extensions in multi-language repositories are scanned with Tier 2 lexical heuristics rather than crashing the repository audit.
+4. **Embedded Code Block Extraction**:
+   Extracts and scans embedded code blocks (such as `<script>` tags in HTML and fenced code blocks in Markdown).
 
 ---
 

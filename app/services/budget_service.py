@@ -50,24 +50,19 @@ class BudgetService:
             period=period,
         )
 
-        db: Session = SessionLocal()
-        try:
-            audit = AuditLog(
-                org_id=org_id,
-                action="budget:allocate",
-                resource_type="carbon_budget",
-                resource_id=f"{team_id}:{period}",
-                status="SUCCESS",
-                details=json.dumps({
-                    "team_id": team_id,
-                    "monthly_budget_kg": monthly_budget_kg,
-                    "period": period,
-                }),
-            )
-            db.add(audit)
-            db.commit()
-        finally:
-            db.close()
+        from app.audit_logs import AuditLogManager
+        AuditLogManager.record_event(
+            org_id=org_id,
+            action="budget:allocate",
+            resource_type="carbon_budget",
+            resource_id=f"{team_id}:{period}",
+            status="SUCCESS",
+            details={
+                "team_id": team_id,
+                "monthly_budget_kg": monthly_budget_kg,
+                "period": period,
+            },
+        )
 
         return budget
 

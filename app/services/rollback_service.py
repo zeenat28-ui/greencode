@@ -53,29 +53,25 @@ class RollbackService:
         elif spike_pct >= cls.WARNING_SPIKE_THRESHOLD_PCT:
             verdict = "WARNING_REGRESSION"
 
-        # Record audit event
-        db: Session = SessionLocal()
-        try:
-            audit = AuditLog(
-                org_id=org_id,
-                action="k8s:rollback_evaluation",
-                resource_type="k8s_deployment",
-                resource_id=f"{namespace}/{deployment_name}",
-                status="ROLLBACK_TRIGGERED" if rollback_triggered else verdict,
-                details=json.dumps({
-                    "current_power_w": current_power_w,
-                    "baseline_power_w": baseline_power_w,
-                    "spike_pct": spike_pct,
-                    "verdict": verdict,
-                    "auto_trigger": auto_trigger,
-                    "actor": actor,
-                    "rollback_status": rollback_status,
-                }),
-            )
-            db.add(audit)
-            db.commit()
-        finally:
-            db.close()
+        # Record hash-chained audit event
+        from app.audit_logs import AuditLogManager
+        AuditLogManager.record_event(
+            org_id=org_id or 1,
+            action="k8s:rollback_evaluation",
+            resource_type="k8s_deployment",
+            resource_id=f"{namespace}/{deployment_name}",
+            status="ROLLBACK_TRIGGERED" if rollback_triggered else verdict,
+            details={
+                "current_power_w": current_power_w,
+                "baseline_power_w": baseline_power_w,
+                "spike_pct": spike_pct,
+                "verdict": verdict,
+                "auto_trigger": auto_trigger,
+                "actor": actor,
+                "rollback_status": rollback_status,
+            },
+            actor=actor,
+        )
 
         return {
             "deployment": f"{namespace}/{deployment_name}",
@@ -103,24 +99,20 @@ class RollbackService:
             deployment_name=deployment_name,
         )
 
-        db: Session = SessionLocal()
-        try:
-            audit = AuditLog(
-                org_id=org_id,
-                action="k8s:manual_rollback",
-                resource_type="k8s_deployment",
-                resource_id=f"{namespace}/{deployment_name}",
-                status=status.get("status", "EXECUTED"),
-                details=json.dumps({
-                    "actor": actor,
-                    "reason": reason,
-                    "dispatch": status,
-                }),
-            )
-            db.add(audit)
-            db.commit()
-        finally:
-            db.close()
+        from app.audit_logs import AuditLogManager
+        AuditLogManager.record_event(
+            org_id=org_id or 1,
+            action="k8s:manual_rollback",
+            resource_type="k8s_deployment",
+            resource_id=f"{namespace}/{deployment_name}",
+            status=status.get("status", "EXECUTED"),
+            details={
+                "actor": actor,
+                "reason": reason,
+                "dispatch": status,
+            },
+            actor=actor,
+        )
 
         return {
             "deployment": f"{namespace}/{deployment_name}",

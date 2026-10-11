@@ -1,56 +1,58 @@
-# GreenCode Enterprise Architecture Blueprint
+# GreenCode Architecture Specification
 
 ## 1. System Overview
-GreenCode is a high-assurance, multi-tenant software energy and carbon gatekeeper designed for enterprise CI/CD and production Kubernetes clusters. It implements the Green Software Foundation Software Carbon Intensity (SCI) v1.0 specification and provides binding pre-deployment gate decisions to eliminate software carbon regressions before code reaches production.
+GreenCode is a self-hosted software energy and carbon analysis platform for CI/CD pipelines, developer workflows, and MCP agents. It implements the Green Software Foundation Software Carbon Intensity (SCI) v1.0 formula (`SCI = (E * I + M) / R`) and provides pre-deployment gate evaluations to catch algorithmic energy regressions before code merges.
 
 ```
-                         [ GitHub / GitLab / Bitbucket CI/CD ]
+                         [ GitHub Actions / CI Runner / Alexa+ MCP ]
                                          │
-                                   Webhook / PR Gate
+                                  REST / MCP HTTP
                                          ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │                       GreenCode API Control Plane                      │
+   │                       GreenCode FastAPI Service                        │
    │                                                                        │
    │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────┐ │
-   │  │ app.auth     │   │ app.tenants  │   │ app.policies │   │ app.audit│ │
-   │  │ JWT/SSO/RBAC │   │ Org/Team/Proj│   │ Rules Engine │   │ AST/CST  │ │
+   │  │ app.auth     │   │ app.services │   │ app.policies │   │app.parser│ │
+   │  │ JWT / RBAC   │   │ Org/Team/Proj│   │ Rules Engine │   │ AST/CST  │ │
    │  └──────────────┘   └──────────────┘   └──────────────┘   └──────────┘ │
    │                                                                        │
    │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────┐ │
-   │  │ app.energy   │   │ app.k8s      │   │ app.reports  │   │app.admin │ │
-   │  │ RAPL/Cloud   │   │ Auto-Rollback│   │ CSRD / SEC   │   │ AuditLog │ │
+   │  │ app.energy   │   │ app.k8s      │   │ app.reports  │   │app.audit │ │
+   │  │ Sensors/Model│   │ Rollback Svc │   │ ESG / SCI    │   │Hash Chain│ │
    │  └──────────────┘   └──────────────┘   └──────────────┘   └──────────┘ │
    └────────────────────────────────────────────────────────────────────────┘
                     │                                      │
-         PostgreSQL (Tenant-Isolated)             Redis (Token Revocation)
+         SQLite / PostgreSQL (SQLAlchemy)       Redis (Optional Cache/Revocation)
                     ▲                                      ▲
                     │                                      │
-           Live Kubernetes Clusters               Electricity Maps API
-         (Pod Telemetry & Rollback)             (Marginal Grid Emissions)
+           Optional K8s API / kubectl             4-Tier Grid Carbon Chain
+        (KUBERNETES_SERVICE_HOST / KUBECONFIG)  (UK ESO / ENTSO-E / EM / Static)
 ```
 
-## 2. Core Pillars & Design Principles
+## 2. Core Subsystems & Provenance Guarantees
 
-### Multi-Tenancy & Data Isolation
-- **Hierarchical Tenancy**: `Organization` -> `Team` -> `Project` -> `Repository`.
-- **RBAC**: Strict role enforcement (`org_admin`, `team_lead`, `developer`, `auditor`, `viewer`).
-- **Data Governance**: All metrics, budgets, and policies are strictly isolated by `org_id`.
+### Multi-Tenancy & RBAC (`app/services/org_service.py`, `app/auth/roles.py`)
+- **Tenant Hierarchy**: `Organization` -> `Team` -> `Project` -> `Repository` stored via SQLAlchemy (SQLite by default for local/single-node runs; PostgreSQL supported via `DATABASE_URL`).
+- **RBAC**: Application-level role checks (`superadmin`, `org_admin`, `team_lead`, `developer`, `auditor`, `viewer`) enforced via FastAPI dependencies (`require_permission`, `get_tenant_actor`).
 
-### Calibrated Energy & Hardware Agnostic Modeling
-- **Bare-Metal Linux**: Direct Intel/AMD RAPL hardware counters (`/sys/class/powercap`).
-- **Cloud Hypervisors (AWS Graviton, Azure, GCP, K8s Pods)**: SPECpower_ssj2008 & Cloud Carbon Footprint (CCF) non-linear quadratic curve derivation based on active CPU utilization, memory residency, and datacenter PUE (1.15).
-- **Statistical Confidence Scoring**: Provenance tracking tagging every calculation as `0.98` (RAPL direct) or `0.88` (calibrated cloud model) for auditor defense.
+### Energy Measurement & Calibrated Modeling (`app/energy_sensors.py`, `app/calibrated_energy.py`)
+- **Bare-Metal Linux (`measurement_is_hardware: true`)**: Reads Intel/AMD RAPL counters (`/sys/class/powercap`), Scaphandre Prometheus metrics, `perf stat` PMU events, or `/sys/class/power_supply` discharge rates when available on the host.
+- **Cloud & Hypervisor Estimation (`measurement_is_hardware: false`)**: When hardware counters are unavailable (such as on Windows, macOS, WSL2, or unprivileged cloud VMs), derives estimated energy using SPECpower and Cloud Carbon Footprint (CCF) power curves across AWS Graviton4 (`c8g`), AWS Inferentia2 (`inf2`), AWS Trainium1 (`trn1`), x86, and GPU profiles.
+- **Strict Provenance**: Every response includes `measurement_method` and `measurement_is_hardware` so estimates are never misrepresented as physical hardware readings.
 
-### Declarative Policy Engine
-- **Pre-Deploy PR Gate**: Blocks pull requests if energy regressions exceed threshold (default 15-25%) or green score drops below 80.
-- **Budget Thresholds**: Automated warnings at 70%, critical alerts at 90%, and hard merge blockers at 100% quota consumption.
-- **Dirty Grid Awareness**: Postpones non-essential batch workloads during peak regional carbon intensity windows (>450 gCO2e/kWh).
+### Declarative Policy Engine (`app/services/energy_policy_service.py`, `app/services/budget_service.py`)
+- **Pre-Deploy PR Gate**: Flags or blocks pull requests when estimated energy regressions exceed configured thresholds (default 15–25%) or when the static Green Score drops below threshold.
+- **Team Carbon Budgets**: Tracks monthly team carbon allocations with configurable alert thresholds at 70% (`WARNING`), 90% (`CRITICAL`), and 100% (`BREACHED`).
+- **Grid Carbon Awareness**: Evaluates regional grid carbon intensity (`gCO2e/kWh`) to advise delaying batch jobs when grid intensity exceeds configured thresholds.
 
-### Production Kubernetes Auto-Rollback
-- Monitors live pod Wattage against baseline deployment profiles.
-- When an active deployment spikes power by >35% above baseline, the sentinel initiates an automated rollback via Kubernetes REST API and logs the event to the cryptographic audit trail.
+### Kubernetes Energy Profiler & Rollback Controller (`app/kubernetes_profiler.py`, `app/services/rollback_service.py`)
+- Compares pod wattage against registered baseline deployment profiles.
+- When power spikes >35% above baseline:
+  - If `KUBERNETES_SERVICE_HOST` and `KUBERNETES_SERVICE_ACCOUNT_TOKEN` are set, dispatches a live Kubernetes AppsV1 rollback (`is_live_cluster=True, execution_mode="k8s_api"`).
+  - If `KUBECONFIG` is set and `kubectl` is installed, executes `kubectl rollout undo deployment/<name> -n <namespace>` (`is_live_cluster=True, execution_mode="kubectl"`).
+  - Otherwise, records a simulated dry-run rollback decision (`is_live_cluster=False, execution_mode="simulated_dry_run"`) so local/CI tests never claim to have mutated a live cluster.
 
-### Cryptographic Audit Ledger & Compliance
-- **SHA-256 Hash Chaining**: Every policy change, deployment gate decision, and rollback is cryptographically linked to the previous entry via hash chaining (`prev_hash` -> `record_hash`), ensuring tamper evidence for SOC 2 Type II and ISO 14064 audits.
-- **Regulatory Disclosures**: Automated export of Scope 2 (operational) and Scope 3 Category 1/2 (embodied infrastructure) emissions formatted for CSRD ESRS E1 and SEC Climate Disclosures.
+### Tamper-Evident Audit Trail & ESG Reporting (`app/audit_logs.py`, `app/reports/esg_report.py`)
+- **SHA-256 Hash Chaining**: Every policy update, budget allocation, and rollback evaluation recorded via `AuditLogManager.record_event` commits to the previous record's SHA-256 digest (`prev_hash` -> `record_hash`), verified by `AuditLogManager.verify_integrity`.
+- **SCI & GHG Disclosures**: Exports JSON, CSV, and printable HTML reports implementing the GSF SCI v1.0 formula and Scope 2 / Scope 3 calculation breakdowns. GreenCode is an engineering calculation tool and does not constitute an independent SOC 2 Type II or ISO 14064-1 certification audit.
 

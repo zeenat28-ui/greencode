@@ -151,26 +151,26 @@ class UsageService:
 
     @staticmethod
     def _audit_rejection(org_id: int, event_type: str, status: Dict[str, Any]) -> None:
-        db: Session = SessionLocal()
         try:
-            db.add(
-                AuditLog(
-                    org_id=org_id,
-                    action="quota:rejected",
-                    resource_type="usage",
-                    resource_id=event_type,
-                    status="REJECTED",
-                    details=(
+            from app.audit_logs import AuditLogManager
+            AuditLogManager.record_event(
+                org_id=org_id,
+                action="quota:rejected",
+                resource_type="usage",
+                resource_id=event_type,
+                status="REJECTED",
+                details={
+                    "message": (
                         f"Monthly quota exceeded for {status['tier']} tier "
                         f"({status['usage']}/{status['limit']}) on event '{event_type}'"
                     ),
-                )
+                    "tier": status["tier"],
+                    "usage": status["usage"],
+                    "limit": status["limit"],
+                },
             )
-            db.commit()
         except Exception:  # pragma: no cover - audit must never break the caller
-            db.rollback()
-        finally:
-            db.close()
+            pass
 
     # ------------------------------------------------------------------
     # Usage breakdown for the customer dashboard

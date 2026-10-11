@@ -286,23 +286,18 @@ class BillingService:
 
     @staticmethod
     def _audit(org_id: int, action: str, resource_id: str, details: str) -> None:
-        db: Session = SessionLocal()
         try:
-            db.add(
-                AuditLog(
-                    org_id=org_id,
-                    action=action,
-                    resource_type="billing",
-                    resource_id=resource_id,
-                    status="SUCCESS",
-                    details=details,
-                )
+            from app.audit_logs import AuditLogManager
+            AuditLogManager.record_event(
+                org_id=org_id,
+                action=action,
+                resource_type="billing",
+                resource_id=resource_id,
+                status="SUCCESS",
+                details={"summary": details},
             )
-            db.commit()
         except Exception:  # pragma: no cover
-            db.rollback()
-        finally:
-            db.close()
+            pass
 
     @staticmethod
     def _sub_to_dict(sub: Subscription) -> Dict[str, Any]:

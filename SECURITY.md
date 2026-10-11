@@ -1,43 +1,38 @@
 # 🔒 GreenCode Security Policy & Controls
 
-## Security Governance & Disclosure
-GreenCode Auditor treats security as a foundational requirement. Because our platform executes static parsing, dynamic container sandboxing, and evidence verification for enterprise software systems, we enforce strict zero-trust principles across all code paths.
+## Security Governance & Vulnerability Reporting
+GreenCode Auditor executes static parsing, optional Docker-sandboxed dynamic analysis, and HMAC-authenticated evidence verification.
 
 ### Reporting a Vulnerability
-If you discover a security vulnerability within GreenCode Auditor, please report it immediately:
-- **Email:** `security@greencode.io`
-- **PGP Key / Response Window:** Initial response within **24 hours**, triage and patch timeline within **72 hours**.
-- **Coordinated Disclosure:** We request that vulnerabilities are not disclosed publicly until a formal remediation patch has been verified and released.
+If you discover a security vulnerability in this repository, please open a private GitHub Security Advisory on [`zeenat28-ui/greencode`](https://github.com/zeenat28-ui/greencode/security/advisories) so a fix can be verified before public disclosure.
 
 ---
 
-## 🛡️ Production Security Architecture
+## 🛡️ Implemented Security Controls in Code
 
-### 1. Zero-Trust Dynamic Sandboxing (RCE Mitigation)
-- Dynamic code profiling executes strictly within isolated Docker containers.
-- **Rootless execution:** All workloads run as an unprivileged user (`nobody` / non-root).
-- **Capability dropping:** `cap_drop: ["ALL"]` and `no-new-privileges` enforced.
-- **Read-Only Root Filesystem:** Target repositories are mounted read-only with a transient tmpfs for scratch operations.
-- **Network Isolation:** Sandbox containers have external network egress disabled (`network_mode: none`).
-- **No Host Fallback:** Untrusted execution on the host OS is blocked fail-closed; if the Docker engine is unreachable, the system reports `sandbox_unavailable` instead of risking host code execution.
+### 1. Docker-Sandboxed Dynamic Analysis (`app/dynamic_analysis.py`)
+- Dynamic code profiling (`POST /api/dynamic/analyze`) executes inside isolated Docker containers.
+- **Rootless execution:** Workloads run as an unprivileged user (`65534:65534` / non-root).
+- **Capability dropping:** `cap_drop=["ALL"]` and `security_opt=["no-new-privileges"]` enforced.
+- **Read-Only Root Filesystem:** Target repositories are mounted read-only with a transient `tmpfs` (`/tmp`) for scratch operations.
+- **Network Isolation:** Sandbox containers run with external network egress disabled (`network_mode="none"`).
+- **Fail-Closed Without Docker:** Host-level execution of untrusted code is never used as a fallback; if the Docker daemon is unreachable, the endpoint returns `sandbox_unavailable`.
 
-### 2. Cryptographic Reality Verification & Tamper-Evident Ledger
-- Energy claims and hardware evidence intake are authenticated using **HMAC-SHA256** machine signatures (`X-GreenCode-Signature`).
-- Timestamps are validated against strict replay windows to reject duplicate or delayed telemetry.
-- Decision records are appended to an immutable, hash-chained cryptographic ledger (`SHA256(seq | prev_hash | canonical_payload)`).
-- Any attempt to alter historical audit records breaks the chain from genesis and is flagged via `/api/pipeline/ledger/verify`.
+### 2. HMAC Evidence Signing & Hash-Chained Ledger (`app/pipeline/signing.py`, `app/pipeline/ledger.py`, `app/audit_logs.py`)
+- Hardware evidence intake (`POST /api/pipeline/evidence`) supports **HMAC-SHA256** verification (`X-GreenCode-Signature`) over `<timestamp>.<raw_body>`.
+- Timestamps outside the configured skew window are rejected with classified error codes (`missing_timestamp`, `signature_mismatch`, `stale_timestamp`).
+- Pipeline decisions (`app/pipeline/ledger.py`) and organizational audit events (`app/audit_logs.py`) are linked in a SHA-256 hash chain (`prev_hash` $\rightarrow$ `record_hash`) and verified via `/api/pipeline/ledger/verify` and `/api/reports/audit-logs/{org_id}/verify`.
 
-### 3. Credential & Secrets Hygiene
-- Secrets are encrypted at rest using **Fernet (AES-128-CBC with HMAC-SHA256)** encryption.
-- In production (`ENV=production`), the backend enforces fail-closed startup guards (`test_production_readiness.py`) that refuse to boot if default or insecure keys are detected.
-- All published ports bind to `127.0.0.1` (loopback only) by default in `docker-compose.yml`.
+### 3. Credential Encryption & Startup Guards (`app/database.py`, `app/core/config.py`)
+- Stored credentials (such as GitHub Personal Access Tokens) are encrypted at rest using **Fernet (AES-128-CBC with HMAC-SHA256)** when `SECRETS_ENCRYPTION_KEY` is configured (`app/database.py`).
+- In production mode (`ENV=production`), startup validation refuses insecure default secrets (`tests/test_production_readiness.py`).
+- Published ports in `docker-compose.yml` bind to `127.0.0.1` (loopback only) by default.
 
 ---
 
-## 🔍 Automated Continuous Security Pipeline
-The codebase is audited continuously across every Pull Request and release:
-- **SAST (Static Analysis):** GitHub CodeQL + Bandit Python security scanner.
-- **Dependency Auditing:** Snyk + pip-audit + Dependabot alerts.
-- **Container Vulnerability Scanning:** Trivy image and SBOM vulnerability scanning.
-- **API Security:** OWASP ZAP baseline dynamic application security testing (DAST).
+## 🔍 Security & Compliance Verification Tests
+All security controls above are verified by the automated `pytest` suite included in this repository:
+```bash
+python -m pytest tests/test_dynamic_analysis.py tests/test_pipeline.py tests/test_production_readiness.py tests/test_alexa_compliance.py -q
+```
 

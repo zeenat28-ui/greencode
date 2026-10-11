@@ -1,10 +1,10 @@
-# GreenCode Enterprise Operations, SLA & Runbook
+# GreenCode Operations & Observability Overview
 
-See full operational specifications and disaster recovery runbooks in [docs/OPERATIONS.md](docs/OPERATIONS.md) and [docs/ops/](docs/ops/).
+See full operational details in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
-## Operations Summary
-- **Target SLA**: 99.95% Availability.
-- **Fail-Open Strategy**: Safeguards CI/CD from false-negative pipeline blocks.
-- **Observability**: Real-time Prometheus metrics at `/metrics` and health checks at `/health` and `/api/admin/health`.
-- **RTO & RPO**: <15 minutes RTO, <5 minutes RPO via automated multi-AZ database replication.
+## Operational Summary
+- **Health & Security Probes**: `GET /api/health` (full security & carbon provider provenance status), `GET /health`, and `GET /api/admin/health`.
+- **Prometheus Metrics**: Exported at `GET /metrics` for scraping by Prometheus/Grafana (`deploy/prometheus.yml`).
+- **CI/CD Gate Execution**: Runs standalone via `python -m app.main --path . --threshold 75 --ci` or via GitHub Actions (`action.yml`).
+- **AWS Operations CLI**: `python -m app.aws_cli` integrates with AWS SSM Parameter Store, CloudWatch Logs, EventBridge, S3, and X-Ray when AWS credentials are configured.
 

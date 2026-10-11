@@ -313,6 +313,7 @@ export const VIOLATION_RULE_MAP: Record<string, string> = {
   RECURSION_WITHOUT_MEMOIZATION: 'GSF-C613',
   LINEAR_LOOKUP_IN_LOOP: 'GSF-D614',
   EXCESSIVE_LOGGING_IN_LOOP: 'GSF-I615',
+  HEAVY_CLIENT_INSTANTIATION_IN_LOOP: 'GSF-R616',
 };
 
 export const VIOLATION_LABEL_MAP: Record<ViolationType, string> = {
@@ -331,6 +332,7 @@ export const VIOLATION_LABEL_MAP: Record<ViolationType, string> = {
   RECURSION_WITHOUT_MEMOIZATION: 'Recursion Without Memoization',
   LINEAR_LOOKUP_IN_LOOP: 'Linear Search In Loop',
   EXCESSIVE_LOGGING_IN_LOOP: 'Logging Inside Iteration',
+  HEAVY_CLIENT_INSTANTIATION_IN_LOOP: 'Heavy Client Instantiated In Loop',
 };
 
 export const VIOLATION_SEVERITY_COLOR: Record<Severity, string> = {

@@ -1,0 +1,24 @@
+# Official pre-commit hook definitions for GreenCode Auditor
+# External repositories can adopt GreenCode in .pre-commit-config.yaml:
+#   - repo: https://github.com/zeenat28-ui/greencode
+#     rev: v2.0.0
+#     hooks:
+#       - id: greencode-audit
+#       - id: greencode-iac
+
+- id: greencode-audit
+  name: GreenCode Static Carbon & Complexity Gate
+  description: Audit modified files for algorithmic energy anti-patterns and GSF SCI regressions
+  entry: python -m app.main --path . --threshold 75.0 --ci
+  language: python
+  pass_filenames: false
+  always_run: false
+
+- id: greencode-iac
+  name: GreenCode IaC FinOps & GreenOps Linter
+  description: Audit Terraform (.tf), Kubernetes (.yaml), and Dockerfile manifests for Graviton and storage waste
+  entry: python -m app.main --iac
+  language: python
+  files: (\.tf$|Dockerfile$|deployment.*\.ya?ml$)
+  pass_filenames: true
+

@@ -1,0 +1,51 @@
+name: Build Release Package, Checksums & CycloneDX SBOM
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-artifacts:
+    name: Build Wheel, SBOM & SHA-256 Provenance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install build and SBOM tools
+        run: |
+          python -m pip install --upgrade pip build cyclonedx-bom
+          pip install -r requirements.txt
+
+      - name: Build Python Wheel and Source Distribution
+        run: |
+          python -m build --outdir dist/
+
+      - name: Generate CycloneDX Software Bill of Materials (SBOM)
+        run: |
+          cyclonedx-py requirements requirements.txt --of JSON -o dist/greencode-sbom.cdx.json
+
+      - name: Generate SHA-256 Checksum Manifest
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload Release Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: greencode-release-bundle
+          path: dist/*
+          retention-days: 30

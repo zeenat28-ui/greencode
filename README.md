@@ -1,6 +1,3 @@
-<p align="left">
-  <img src="assets/brand/greencode-logo-512x512.png" alt="GreenCode Logo" width="76" />
-</p>
 
 # GreenCode Auditor
 

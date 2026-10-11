@@ -86,6 +86,6 @@ runs:
 
     - name: Upload SARIF to GitHub Code Scanning Alerts
       if: ${{ inputs.upload_sarif == 'true' && (success() || failure()) }}
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: ${{ inputs.sarif_file }}

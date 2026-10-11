@@ -10,13 +10,14 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
 from app.ml_carbon import ML_VIOLATIONS_CATALOG
+from app.optimizer import _synthesize_green_code
 from app.parser import VIOLATION_METADATA, ViolationType
 
 SARIF_SCHEMA_URI = (
     "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"
 )
 SARIF_VERSION = "2.1.0"
-GREENCODE_VERSION = "1.0.0"
+GREENCODE_VERSION = "2.0.0"
 
 # Map GSF severity to SARIF level
 SEVERITY_TO_SARIF_LEVEL = {
@@ -136,6 +137,15 @@ def generate_sarif_report(
         if snippet:
             region["snippet"] = {"text": snippet[:300]}
 
+        language = str(v.get("language", "python"))
+        synthesized = _synthesize_green_code(
+            snippet or str(v.get("title", vtype)),
+            vtype,
+            language_id=language,
+        )
+        raw_refactored = str(synthesized.get("refactored_code") or "").rstrip()
+        refactored_text = f"{raw_refactored}\n" if raw_refactored else ""
+
         result_item: Dict[str, Any] = {
             "ruleId": vtype,
             "level": sarif_level,
@@ -156,17 +166,39 @@ def generate_sarif_report(
             ],
             "properties": {
                 "deduction": v.get("deduction", 0.0),
-                "language": v.get("language", "unknown"),
+                "language": language,
                 "gsf_pattern": v.get("gsf_pattern", ""),
+                "estimated_energy_reduction_pct": synthesized.get("energy_reduction_pct", 0.0),
+                "unified_diff": synthesized.get("unified_diff", ""),
             },
         }
 
-        # If fix guidance is provided, attach a proposed fix
-        fix_guidance = v.get("suggested_fix")
-        if fix_guidance:
+        fix_guidance = v.get("suggested_fix") or synthesized.get("explanation")
+        if fix_guidance or refactored_text:
             result_item["fixes"] = [
                 {
-                    "description": {"text": fix_guidance},
+                    "description": {
+                        "text": str(fix_guidance or "Apply deterministic energy optimization"),
+                    },
+                    "artifactChanges": [
+                        {
+                            "artifactLocation": {
+                                "uri": uri,
+                                "uriBaseId": "%SRCROOT%",
+                            },
+                            "replacements": [
+                                {
+                                    "deletedRegion": {
+                                        "startLine": line_num,
+                                        "endLine": end_line,
+                                    },
+                                    "insertedContent": {
+                                        "text": refactored_text,
+                                    },
+                                }
+                            ],
+                        }
+                    ],
                 }
             ]
 

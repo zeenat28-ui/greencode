@@ -42,3 +42,44 @@ async def get_project_audit_history(
     """Retrieve audit history and scores for a specific project."""
     return AuditService.get_project_audits(project_id=project_id)
 
+
+class SarifExportRequest(BaseModel):
+    source_code: Optional[str] = Field(None, max_length=200000, description="Source code snippet to audit and export")
+    language: str = Field("python", max_length=40, description="Programming language identifier")
+    filename: str = Field("snippet.py", max_length=300, description="Virtual file path for SARIF artifact location")
+    path: Optional[str] = Field(None, max_length=500, description="Optional local directory or file path to audit")
+
+
+def _run_scan_for_export(payload: SarifExportRequest) -> Dict[str, Any]:
+    from app.parser import audit_repository, audit_source_code
+    import os
+
+    if payload.source_code is not None:
+        return audit_source_code(
+            payload.source_code,
+            language=payload.language,
+            file_path=payload.filename,
+        )
+    target = os.path.abspath(payload.path or ".")
+    if not os.path.exists(target):
+        raise HTTPException(status_code=400, detail=f"Target path does not exist: {target}")
+    return audit_repository(target)
+
+
+@router.post("/sarif")
+async def export_sarif_report(payload: SarifExportRequest):
+    """Generate an OASIS SARIF v2.1.0 report with embedded deterministic autofix replacements."""
+    from app.sarif import generate_sarif_report
+
+    scan_res = _run_scan_for_export(payload)
+    return generate_sarif_report(scan_res, base_dir=scan_res.get("repo_path"))
+
+
+@router.post("/sonarqube")
+async def export_sonarqube_report(payload: SarifExportRequest):
+    """Generate a SonarQube Generic Issue Import JSON report."""
+    from app.sarif import generate_sonarqube_report
+
+    scan_res = _run_scan_for_export(payload)
+    return generate_sonarqube_report(scan_res, base_dir=scan_res.get("repo_path"))
+

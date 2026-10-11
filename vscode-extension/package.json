@@ -1,9 +1,14 @@
 {
   "name": "greencode-energy-linter",
-  "displayName": "GreenCode AI - Energy & Carbon Linter",
-  "description": "Real-time energy efficiency linter and carbon debt tracker for green software engineering.",
-  "version": "1.0.0",
+  "displayName": "GreenCode - Energy & Carbon Linter",
+  "description": "Real-time 13-language AST energy linter, SCI carbon tracker, and 1-click Quick Fix refactoring for VS Code.",
+  "version": "2.0.0",
   "publisher": "greencode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeenat28-ui/greencode.git"
+  },
+  "license": "Apache-2.0",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -20,7 +25,12 @@
     "onLanguage:rust",
     "onLanguage:java",
     "onLanguage:c",
-    "onLanguage:cpp"
+    "onLanguage:cpp",
+    "onLanguage:csharp",
+    "onLanguage:ruby",
+    "onLanguage:php",
+    "onLanguage:shellscript",
+    "onLanguage:sql"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -31,7 +41,11 @@
       },
       {
         "command": "greencode.showEnergyDebt",
-        "title": "GreenCode: Show Team Energy Debt & Carbon Impact"
+        "title": "GreenCode: Show Live Team Carbon Budget & Energy Debt"
+      },
+      {
+        "command": "greencode.applyQuickFix",
+        "title": "GreenCode: Refactor Flagged Block via Live AST / Bedrock Engine"
       }
     ],
     "configuration": {
@@ -40,15 +54,14 @@
         "greencode.apiUrl": {
           "type": "string",
           "default": "http://localhost:8000",
-          "description": "GreenCode API Base URL for live diagnostic telemetry"
+          "description": "GreenCode API Base URL for live diagnostic telemetry and refactoring"
         },
         "greencode.enableRealTimeLinting": {
           "type": "boolean",
           "default": true,
-          "description": "Enable instant inline energy smell diagnostics while typing"
+          "description": "Enable instant inline energy diagnostics while editing"
         }
       }
     }
   }
 }
-

@@ -1,3 +1,7 @@
+<p align="left">
+  <img src="assets/brand/greencode-logo-512x512.png" alt="GreenCode Logo" width="76" />
+</p>
+
 # GreenCode Auditor
 
 [![CI Gatekeeper](https://img.shields.io/badge/CI%2FCD-Active%20Quality%20Gate-success)](action.yml)

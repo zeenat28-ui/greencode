@@ -220,7 +220,7 @@ class DynamicAnalyzer:
                 "error": docker_error,
             },
             "energy_measurement": caps,
-            "hardware_measurement_available": bool(caps["rapl"]["supported"]),
+            "hardware_measurement_available": is_hardware_method(caps.get("best_available")),
         }
 
     # -- entry point discovery --------------------------------------------
@@ -445,12 +445,12 @@ class DynamicAnalyzer:
 
             # Truncated deliberately: a malicious repo can print unbounded output.
             try:
-                logs = container.logs(stdout=False, stderr=False, tail=2000)
+                logs = container.logs(stdout=True, stderr=False, tail=2000)
                 stdout_bytes = logs if isinstance(logs, bytes) else str(logs).encode()
             except Exception:
                 pass  # no-op
             try:
-                err_logs = container.logs(stdout=True, stderr=True, tail=2000)
+                err_logs = container.logs(stdout=False, stderr=True, tail=2000)
                 stderr_bytes = err_logs if isinstance(err_logs, bytes) else str(err_logs).encode()
             except Exception:
                 pass  # no-op

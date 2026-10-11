@@ -542,10 +542,13 @@ def create_refactoring_pull_request(
     # 6. Open the Pull Request
     pr_title = f"🌱 GreenCode: Remediate {violation_title} (-{energy_reduction_pct}% TDP)"
     
-    # Calculate estimated cloud compute cost impact
-    monthly_baseline_cost = round(120.0 * (energy_reduction_pct / 50.0), 2)
-    monthly_optimized_cost = round(monthly_baseline_cost * (1.0 - (energy_reduction_pct / 100.0)), 2)
+    # Calculate cloud compute cost impact based on AWS c6g.xlarge ($0.136/hr * 730 hrs/mo = $99.28/mo)
+    red_frac = min(0.99, max(0.01, float(energy_reduction_pct) / 100.0))
+    monthly_baseline_cost = 99.28
+    monthly_optimized_cost = round(monthly_baseline_cost * (1.0 - red_frac), 2)
     annual_savings = round((monthly_baseline_cost - monthly_optimized_cost) * 12, 2)
+    baseline_co2_10k = round(float(carbon_saved_10k) / red_frac, 2)
+    after_co2_10k = round(max(0.0, baseline_co2_10k - float(carbon_saved_10k)), 2)
 
     pr_body = (
         f"## 🌱 GreenCode Auditor — Verified Eco-Refactoring\n\n"
@@ -553,9 +556,9 @@ def create_refactoring_pull_request(
         f"| Metric | Before Optimization | After Eco-Refactor | Net Savings |\n"
         f"| :--- | :--- | :--- | :--- |\n"
         f"| **Energy Consumption** | `Baseline (100%)` | `Reduced (-{energy_reduction_pct}%)` | **`-{energy_reduction_pct}% CPU Watts`** |\n"
-        f"| **Est. Monthly Cloud Cost (100k runs)** | `${monthly_baseline_cost:.2f}` | `${monthly_optimized_cost:.2f}` | **`-${monthly_baseline_cost - monthly_optimized_cost:.2f} / month`** |\n"
+        f"| **Est. Monthly Cloud Cost (c6g.xlarge)** | `${monthly_baseline_cost:.2f}` | `${monthly_optimized_cost:.2f}` | **`-${monthly_baseline_cost - monthly_optimized_cost:.2f} / month`** |\n"
         f"| **Annual Cloud Infrastructure Savings** | - | - | **`+${annual_savings:.2f} USD / year`** |\n"
-        f"| **Carbon Saved (per 10k runs)** | `0.0 gCO₂eq` | `-{carbon_saved_10k} gCO₂eq` | **`{carbon_saved_10k} gCO₂eq abated`** |\n\n"
+        f"| **Carbon Footprint (per 10k runs)** | `{baseline_co2_10k} gCO₂eq` | `{after_co2_10k} gCO₂eq` | **`-{carbon_saved_10k} gCO₂eq abated`** |\n\n"
         f"### 🛡️ Automated Safety & Zero-False-Positive Gate\n\n"
         f"| Verification Layer | Status | Result / Evidence |\n"
         f"| :--- | :--- | :--- |\n"
@@ -740,7 +743,9 @@ def post_pr_carbon_comment(
 
     v_table = "\n".join(violation_rows) if violation_rows else "| - | - | *No energy anti-patterns detected. Clean codebase!* | - | - |"
 
+    sticky_marker = "<!-- greencode-pr-audit-sticky -->"
     comment_body = (
+        f"{sticky_marker}\n"
         f"## 🌱 GreenCode Auditor — Pull Request Carbon Quality Gate\n\n"
         f"[![GreenCode Score]({score_badge})](https://github.com/zeenat28-ui/greencode) "
         f"[![Gate Status]({status_badge})](https://github.com/zeenat28-ui/greencode)\n\n"
@@ -775,13 +780,31 @@ def post_pr_carbon_comment(
 
     url = f"{GITHUB_API_BASE}/repos/{slug}/issues/{pr_number}/comments"
     try:
-        resp = _request("POST", url, token=tok, timeout=15.0, json={"body": comment_body})
+        # Check if a sticky GreenCode comment already exists on this PR to update in-place
+        existing_comment_id = None
+        try:
+            list_resp = _request("GET", f"{url}?per_page=50", token=tok, timeout=10.0)
+            if list_resp.status_code == 200 and isinstance(list_resp.json(), list):
+                for item in list_resp.json():
+                    if isinstance(item, dict) and sticky_marker in str(item.get("body", "")):
+                        existing_comment_id = item.get("id")
+                        break
+        except Exception:
+            existing_comment_id = None
+
+        if existing_comment_id:
+            patch_url = f"{GITHUB_API_BASE}/repos/{slug}/issues/comments/{existing_comment_id}"
+            resp = _request("PATCH", patch_url, token=tok, timeout=15.0, json={"body": comment_body})
+        else:
+            resp = _request("POST", url, token=tok, timeout=15.0, json={"body": comment_body})
+
         if resp.status_code in (200, 201):
             c_data = resp.json()
             return {
                 "success": True,
                 "comment_id": c_data.get("id"),
                 "comment_url": c_data.get("html_url"),
+                "updated_existing": bool(existing_comment_id),
                 "message": f"Successfully posted GreenCode audit comment to PR #{pr_number}.",
             }
         return {

@@ -30,8 +30,19 @@ class EnergyDiffService:
         max_regression_pct: float = DEFAULT_MAX_ALLOWED_REGRESSION_PCT,
     ) -> Dict[str, Any]:
         """Compare base branch and incoming PR scan metrics to compute energy/cost deltas."""
-        base_joules = float(base_scan.get("total_energy_joules") or base_scan.get("energy_joules") or 0.05)
-        head_joules = float(head_scan.get("total_energy_joules") or head_scan.get("energy_joules") or 0.05)
+        from app.energy_predictor import GreenDeployPredictor
+
+        def _extract_joules(scan: Dict[str, Any]) -> float:
+            explicit = scan.get("total_energy_joules") or scan.get("energy_joules")
+            if explicit is not None and float(explicit) > 0:
+                return float(explicit)
+            if "violations" in scan:
+                profile = GreenDeployPredictor._audit_energy_profile(scan)
+                return max(1e-6, profile["joules_1k"] / 1000.0)
+            return 0.05
+
+        base_joules = _extract_joules(base_scan)
+        head_joules = _extract_joules(head_scan)
 
         base_safe = max(base_joules, 1e-6)
         energy_delta_joules = round(head_joules - base_joules, 6)
@@ -41,10 +52,24 @@ class EnergyDiffService:
         head_green = float(head_scan.get("green_score", 100.0))
         green_score_delta = round(head_green - base_green, 2)
 
-        # Enterprise Financial & Carbon Modeling
-        # Computes annualized infrastructure dollar delta and carbon footprint delta
-        annual_cost_delta_usd = round(energy_delta_pct * 180.0, 2)
-        annual_carbon_delta_kg = round(energy_delta_pct * 42.0, 3)
+        # Calibrated Financial & Carbon Modeling across annual invocation volume
+        annual_invocations = max(1, int(monthly_invocations)) * 12
+        abs_annual_delta_joules = abs(energy_delta_joules) * annual_invocations
+        est_delta_seconds = max(0.001, (abs(energy_delta_joules) / 18.5) * annual_invocations)
+        if abs_annual_delta_joules > 0:
+            cost_breakdown = CloudCostMapper.calculate_cost(
+                provider="aws",
+                region=grid_zone,
+                service_type=instance_type,
+                duration_seconds=est_delta_seconds,
+                energy_joules=abs_annual_delta_joules,
+            )
+            sign = 1.0 if energy_delta_joules >= 0 else -1.0
+            annual_cost_delta_usd = round(sign * cost_breakdown.total_cost_usd, 2)
+            annual_carbon_delta_kg = round(sign * cost_breakdown.total_co2_kg, 3)
+        else:
+            annual_cost_delta_usd = 0.0
+            annual_carbon_delta_kg = 0.0
 
         # Gate Verdict
         is_blocked = energy_delta_pct > max_regression_pct or head_green < 80.0

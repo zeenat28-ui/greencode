@@ -444,7 +444,7 @@ def trigger_kubernetes_rollback(namespace: str, deployment_name: str) -> Dict[st
     """Module-level helper to trigger Kubernetes rollback on the singleton monitor with explicit cluster provenance."""
     detail, is_live_cluster, execution_mode = kubernetes_monitor._execute_cluster_rollback(namespace, deployment_name)
     return {
-        "status": "SUCCESS",
+        "status": "SUCCESS" if is_live_cluster else "LOCAL_EMULATION",
         "details": detail,
         "namespace": namespace,
         "deployment": deployment_name,

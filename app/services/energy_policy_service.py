@@ -10,7 +10,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
-from app.database import AuditLog, Project, SessionLocal
+from app.database import AuditLog, Base, Project, SessionLocal, sync_engine
 
 logger = logging.getLogger("greencode.services.policy")
 
@@ -31,6 +31,7 @@ class EnergyPolicyService:
     @classmethod
     def get_policy(cls, project_id: int) -> Dict[str, Any]:
         """Fetch project-specific policy or return organizational defaults."""
+        Base.metadata.create_all(bind=sync_engine)
         db: Session = SessionLocal()
         try:
             proj = db.query(Project).filter(Project.id == project_id).first()
@@ -55,26 +56,33 @@ class EnergyPolicyService:
         actor: str = "org_admin",
     ) -> Dict[str, Any]:
         """Update and persist enterprise energy policies for a project."""
+        Base.metadata.create_all(bind=sync_engine)
         db: Session = SessionLocal()
         try:
             proj = db.query(Project).filter(Project.id == project_id).first()
-            if not proj:
-                # If project doesn't exist, create a stub record or return merged
-                merged = dict(DEFAULT_POLICY)
-                merged.update(policy)
-                return merged
-
             merged = dict(DEFAULT_POLICY)
-            if proj.policy_json:
-                try:
-                    merged.update(json.loads(proj.policy_json))
-                except Exception:
-                    pass  # no-op
-            merged.update(policy)
-            proj.policy_json = json.dumps(merged)
-            db.commit()
-
-            target_org_id = org_id or proj.org_id
+            if not proj:
+                merged.update(policy)
+                proj = Project(
+                    id=project_id,
+                    org_id=org_id or 1,
+                    name=f"Project-{project_id}",
+                    slug=f"project-{project_id}",
+                    policy_json=json.dumps(merged),
+                )
+                db.add(proj)
+                db.commit()
+                target_org_id = org_id or 1
+            else:
+                if proj.policy_json:
+                    try:
+                        merged.update(json.loads(proj.policy_json))
+                    except Exception:
+                        pass  # no-op
+                merged.update(policy)
+                proj.policy_json = json.dumps(merged)
+                db.commit()
+                target_org_id = org_id or proj.org_id
         finally:
             db.close()
 
@@ -122,6 +130,12 @@ class EnergyPolicyService:
                 f"Green score {green_score:.1f} is below compliance gate ({policy['min_green_score']})"
             )
 
+        # Check maximum SCI threshold
+        if sci_score is not None and float(sci_score) > float(policy.get("max_sci_gco2e", 100.0)):
+            violations.append(
+                f"SCI score {float(sci_score):.2f} gCO2e exceeds max allowed ceiling ({policy['max_sci_gco2e']} gCO2e)"
+            )
+
         # Check dirty grid threshold
         if policy["block_dirty_grid"] and grid_intensity > policy["dirty_grid_threshold_gco2e_kwh"]:
             violations.append(
@@ -137,6 +151,7 @@ class EnergyPolicyService:
             "project_id": project_id,
             "regression_pct": regression_pct,
             "current_green_score": green_score,
+            "current_sci_gco2e": sci_score,
             "grid_intensity": grid_intensity,
             "violations": violations,
             "policy_applied": policy,

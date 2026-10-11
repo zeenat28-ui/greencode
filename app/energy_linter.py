@@ -40,9 +40,11 @@ class EnergyLinter:
     def lint_code(cls, source_code: str, language: str = "python", file_path: str = "snippet.py") -> List[EnergyDiagnostic]:
         """Lint code buffer and return LSP diagnostics with physics-calibrated carbon and dollar impact."""
         from app.energy_debt import EnergyDebtTracker
+        from app.optimizer import _synthesize_green_code
 
         raw_audit = audit_source_code(source_code, language=language, file_path=file_path)
         violations = raw_audit.get("violations", [])
+        source_lines = source_code.splitlines()
 
         diagnostics: List[EnergyDiagnostic] = []
 
@@ -51,12 +53,24 @@ class EnergyLinter:
             impact = EnergyDebtTracker.estimate_violation_impact(v)
 
             lsp_severity = "ERROR" if sev in ("CRITICAL", "HIGH") else "WARNING" if sev == "MEDIUM" else "INFORMATION"
+            start_ln = max(1, int(v.get("line_number", 1)))
+            end_ln = max(start_ln, int(v.get("end_line_number", start_ln)))
+            vtype = v.get("violation_type", "GSF-ENERGY-VIOLATION")
+
+            snippet = v.get("code_snippet") or "\n".join(source_lines[start_ln - 1:end_ln])
+            quick_fix: Optional[str] = None
+            if snippet.strip():
+                try:
+                    synth = _synthesize_green_code(snippet, vtype, language_id=language)
+                    quick_fix = synth.get("refactored_code")
+                except Exception:
+                    quick_fix = None
 
             diag = EnergyDiagnostic(
-                line_number=v.get("line_number", 1),
-                end_line_number=v.get("end_line_number", v.get("line_number", 1)),
+                line_number=start_ln,
+                end_line_number=end_ln,
                 severity=lsp_severity,
-                code=v.get("violation_type", "GSF-ENERGY-VIOLATION"),
+                code=vtype,
                 title=v.get("title", "Energy Inefficiency"),
                 message=(
                     f"{v.get('title')}: {v.get('description')} "
@@ -66,6 +80,7 @@ class EnergyLinter:
                 annual_cost_usd=impact["cost_usd"],
                 annual_co2_kg=impact["co2_kg"],
                 suggested_fix=v.get("suggested_fix", ""),
+                quick_fix_code=quick_fix,
             )
             diagnostics.append(diag)
 
@@ -89,6 +104,7 @@ class EnergyLinter:
                     "annual_cost_usd": d.annual_cost_usd,
                     "annual_co2_kg": d.annual_co2_kg,
                     "suggested_fix": d.suggested_fix,
+                    "quick_fix_code": d.quick_fix_code,
                 },
             })
         return {"diagnostics": lsp_diags}

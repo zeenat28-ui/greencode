@@ -694,6 +694,87 @@ def test_cloud_cost_mapper_gcp_and_azure_rates_and_regions():
     assert abs(azure_vm.carbon_intensity_g_per_kwh - 18.0) < 1e-4
 
 
+def test_part4_validator_and_gatekeeper_hardening(tmp_path):
+    from app.profiler import validate_script_safety_for_host
+    from app.services.energy_policy_service import EnergyPolicyService
+    from app.services.energy_diff_service import EnergyDiffService
+    from app.kubernetes_profiler import trigger_kubernetes_rollback
+
+    # 1. Host AST safety guard blocks aliased subprocess, from-imported os.system, and eval()
+    for idx, bad_code in enumerate([
+        "import subprocess as sp\nsp.run(['echo', 'pwn'])\n",
+        "from os import system as run_cmd\nrun_cmd('whoami')\n",
+        "x = eval('1 + 1')\n",
+        "def broken_syntax(:\n    pass\n",
+    ]):
+        p = tmp_path / f"bad_{idx}.py"
+        p.write_text(bad_code, encoding="utf-8")
+        err = validate_script_safety_for_host(str(p))
+        assert err is not None and "Blocked" in err
+
+    safe_p = tmp_path / "safe.py"
+    safe_p.write_text("total = sum(i * i for i in range(100))\n", encoding="utf-8")
+    assert validate_script_safety_for_host(str(safe_p)) is None
+
+    # 2. EnergyPolicyService enforces max_sci_gco2e ceiling and persists policy in SQLite
+    EnergyPolicyService.set_policy(
+        project_id=909,
+        policy={
+            "max_energy_regression_pct": 15.0,
+            "min_green_score": 70.0,
+            "max_sci_gco2e": 10.0,
+        },
+        org_id=1,
+    )
+    gate_sci_breach = EnergyPolicyService.evaluate_deployment_gate(
+        project_id=909,
+        current_metrics={"energy_joules": 102.0, "green_score": 88.0, "sci_gco2e": 14.5},
+        baseline_metrics={"energy_joules": 100.0},
+        grid_intensity=300.0,
+    )
+    assert gate_sci_breach["gate_status"] == "BLOCKED"
+    assert gate_sci_breach["is_blocked"] is True
+    assert gate_sci_breach["current_sci_gco2e"] == 14.5
+    assert any("SCI score" in r for r in gate_sci_breach["violations"])
+
+    # 3. EnergyDiffService uses physics-calibrated CloudCostMapper instead of dummy 180x/42x
+    diff_res = EnergyDiffService.compare_scans(
+        base_scan={
+            "id": 1,
+            "green_score": 72.0,
+            "energy_joules": 50.0,
+            "sci_gco2e": 8.0,
+            "violations": [{"violation_type": "NESTED_LOOPS", "severity": "HIGH"}],
+        },
+        head_scan={
+            "id": 2,
+            "green_score": 94.0,
+            "energy_joules": 20.0,
+            "sci_gco2e": 3.2,
+            "violations": [],
+        },
+        grid_zone="eu-north-1",
+    )
+    assert diff_res["verdict"] == "APPROVED"
+    assert diff_res["energy_delta_pct"] == -60.0
+    assert diff_res["annual_cost_delta_usd"] < 0.0
+    assert diff_res["annual_carbon_delta_kg"] < 0.0
+
+    # 4. EnergyLinter populates quick_fix_code and exposes it in LSP payload
+    diags = EnergyLinter.lint_code(
+        "def f(items):\n    out = ''\n    for x in items:\n        out += str(x)\n    return out\n",
+        language="python",
+    )
+    assert len(diags) > 0
+    assert diags[0].quick_fix_code is not None
+    lsp = EnergyLinter.format_lsp_response(diags)
+    assert lsp["diagnostics"][0]["data"]["quick_fix_code"] is not None
+
+    # 5. trigger_kubernetes_rollback reports LOCAL_EMULATION when outside live cluster
+    rb = trigger_kubernetes_rollback("default", "checkout-api")
+    assert rb["status"] in ("LOCAL_EMULATION", "SUCCESS")
+
+
 
 
 

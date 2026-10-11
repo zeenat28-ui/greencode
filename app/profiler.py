@@ -109,7 +109,9 @@ def calculate_energy_and_sci(
 def validate_script_safety_for_host(file_path: str) -> Optional[str]:
     """Scan Python code before host fallback execution to block dangerous system calls.
 
-    Protects host workstation against RCE when Docker daemon is not active.
+    Protects host workstation against RCE when Docker daemon is not active,
+    including aliased imports (`import subprocess as sp`), `from os import system`,
+    and dynamic execution builtins (`eval`, `exec`, `__import__`, `compile`).
     """
     ext = os.path.splitext(file_path)[1].lower()
     if ext not in (".py", ".pyw"):
@@ -118,32 +120,83 @@ def validate_script_safety_for_host(file_path: str) -> Optional[str]:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             code = f.read()
         tree = ast.parse(code, filename=file_path)
+    except SyntaxError as exc:
+        return f"Blocked unparseable Python script on host sandbox: {exc}"
     except Exception:
         return None
 
+    DANGEROUS_MODULES = {"subprocess", "pty", "ctypes"}
     DANGEROUS_CALLS = {
         ("os", "system"),
         ("os", "popen"),
         ("os", "remove"),
         ("os", "unlink"),
         ("os", "rmdir"),
+        ("os", "removedirs"),
+        ("os", "execl"),
+        ("os", "execle"),
+        ("os", "execlp"),
+        ("os", "execlpe"),
+        ("os", "execv"),
+        ("os", "execve"),
+        ("os", "execvp"),
+        ("os", "execvpe"),
+        ("os", "spawnl"),
+        ("os", "spawnle"),
+        ("os", "spawnlp"),
+        ("os", "spawnlpe"),
+        ("os", "spawnv"),
+        ("os", "spawnve"),
+        ("os", "spawnvp"),
+        ("os", "spawnvpe"),
         ("shutil", "rmtree"),
         ("subprocess", "Popen"),
         ("subprocess", "call"),
         ("subprocess", "run"),
         ("subprocess", "check_output"),
+        ("subprocess", "check_call"),
     }
+    DANGEROUS_BUILTINS = {"eval", "exec", "__import__"}
+
+    module_aliases: Dict[str, str] = {}
+    func_aliases: Dict[str, tuple[str, str]] = {}
 
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-        ):
-            call_tuple = (node.func.value.id, node.func.attr)
-            if call_tuple in DANGEROUS_CALLS:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root_mod = alias.name.split(".")[0]
+                bound_name = alias.asname or root_mod
+                module_aliases[bound_name] = root_mod
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            root_mod = node.module.split(".")[0]
+            for alias in node.names:
+                bound_name = alias.asname or alias.name
+                func_aliases[bound_name] = (root_mod, alias.name)
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name):
+            fn_name = node.func.id
+            if fn_name in DANGEROUS_BUILTINS:
                 return (
-                    f"Blocked high-risk call '{call_tuple[0]}.{call_tuple[1]}()' on host sandbox. "
+                    f"Blocked dynamic code execution builtin '{fn_name}()' on host sandbox. "
+                    "Profile inside isolated Docker container."
+                )
+            if fn_name in func_aliases:
+                mod_name, orig_attr = func_aliases[fn_name]
+                if (mod_name, orig_attr) in DANGEROUS_CALLS or mod_name in DANGEROUS_MODULES:
+                    return (
+                        f"Blocked high-risk call '{mod_name}.{orig_attr}()' on host sandbox. "
+                        "Profile inside isolated Docker container."
+                    )
+        elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            raw_mod = node.func.value.id
+            resolved_mod = module_aliases.get(raw_mod, raw_mod)
+            call_tuple = (resolved_mod, node.func.attr)
+            if call_tuple in DANGEROUS_CALLS or resolved_mod in DANGEROUS_MODULES:
+                return (
+                    f"Blocked high-risk call '{resolved_mod}.{node.func.attr}()' on host sandbox. "
                     "Profile inside isolated Docker container."
                 )
     return None

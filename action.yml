@@ -1,6 +1,6 @@
 name: 'GreenCode Auditor'
 description: 'Automated Carbon Inefficiency Scanner, GSF SCI v1.0 Gatekeeper, SARIF & SonarQube Exporter'
-author: 'GreenCode'
+author: 'Zeenat Riaz (@zeenat28-ui)'
 branding:
   icon: 'activity'
   color: 'green'

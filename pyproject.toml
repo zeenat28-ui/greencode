@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "greencode-auditor"
 version = "1.0.0"
-description = "Universal Multi-Language Green Computing Static Analyzer, Dynamic Container Profiler, and Carbon CI/CD Quality Gatekeeper"
+description = "Static code energy analyzer, hardware power profiler, and ISO/IEC 21031 (GSF SCI v1.0) carbon gatekeeper with Amazon Alexa+ MCP and Amazon Bedrock refactoring"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [
-    { name = "GreenCode Team", email = "info@greencode.dev" },
+    { name = "Zeenat Riaz" },
 ]
 keywords = [
     "green-software",
@@ -21,7 +21,9 @@ keywords = [
     "ci-cd",
     "sustainability",
     "static-analysis",
-    "sarif"
+    "sarif",
+    "mcp-server",
+    "aws-bedrock"
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -36,6 +38,12 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 
+[project.urls]
+Homepage = "https://github.com/zeenat28-ui/greencode"
+Repository = "https://github.com/zeenat28-ui/greencode"
+Issues = "https://github.com/zeenat28-ui/greencode/issues"
+Funding = "https://opencollective.com/greencode"
+
 dependencies = [
     "fastapi>=0.110.0",
     "uvicorn>=0.28.0",
@@ -44,6 +52,7 @@ dependencies = [
     "pandas>=2.2.0",
     "plotly>=5.20.0",
     "sqlalchemy>=2.0.28",
+    "alembic>=1.13.0",
     "docker>=7.0.0",
     "requests>=2.31.0",
     "psutil>=5.9.8",
@@ -60,6 +69,9 @@ dependencies = [
     "cryptography>=42.0.0",
     "cachetools>=5.3",
     "httpx>=0.27",
+    "slowapi>=0.1.9",
+    "mcp>=2.3.0",
+    "boto3>=1.34.0",
 ]
 
 [project.optional-dependencies]
@@ -74,6 +86,8 @@ test = [
 
 [project.scripts]
 greencode = "app.main:run_cli"
+greencode-mcp = "app.mcp_server:main"
+greencode-aws = "app.aws_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

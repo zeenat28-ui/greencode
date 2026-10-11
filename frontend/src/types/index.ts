@@ -13,7 +13,8 @@ export type ViolationType =
   | 'SORTED_IN_LOOP'
   | 'RECURSION_WITHOUT_MEMOIZATION'
   | 'LINEAR_LOOKUP_IN_LOOP'
-  | 'EXCESSIVE_LOGGING_IN_LOOP';
+  | 'EXCESSIVE_LOGGING_IN_LOOP'
+  | 'HEAVY_CLIENT_INSTANTIATION_IN_LOOP';
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -47,7 +48,7 @@ export interface FileResult {
 }
 
 export interface ScanResult {
-  /** Repository slug as `owner/repo` in GitHub-only mode. */
+  /** Repository slug as `owner/repo` or `local-workspace/...`. */
   repo_path: string;
   repo_id?: number;
   full_name?: string;
@@ -55,7 +56,7 @@ export interface ScanResult {
   default_branch?: string;
   html_url?: string;
   language?: string;
-  source?: 'github';
+  source?: 'github' | 'local_workspace';
   is_github?: boolean;
   total_files: number;
   total_lines: number;

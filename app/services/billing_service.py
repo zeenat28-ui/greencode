@@ -273,18 +273,23 @@ class BillingService:
     # ------------------------------------------------------------------
     @classmethod
     def _invoice_number(cls, org_id: int, period: str) -> str:
-        # Deterministic-ish, unique per org+period; suffix keeps collisions away.
-        seq = len(cls.list_invoices(org_id, limit=1000)) + 1
-        compact = period.replace("-", "")
-        base_num = f"GC-{compact}-{seq:04d}"
+        # Deterministic-ish, unique per org+period; single batched query avoids N+1 loop round-trips.
         db: Session = SessionLocal()
         try:
-            exists = db.query(Invoice).filter(Invoice.invoice_number == base_num).first()
-            if not exists:
+            seq = int(db.query(Invoice.id).filter(Invoice.org_id == org_id).count()) + 1
+            compact = period.replace("-", "")
+            base_num = f"GC-{compact}-{seq:04d}"
+            existing_rows = (
+                db.query(Invoice.invoice_number)
+                .filter(Invoice.invoice_number.like(f"{base_num}%"))
+                .all()
+            )
+            existing_set = {row[0] for row in existing_rows}
+            if base_num not in existing_set:
                 return base_num
             candidate = f"{base_num}-O{org_id}"
             idx = 2
-            while db.query(Invoice).filter(Invoice.invoice_number == candidate).first():
+            while candidate in existing_set:
                 candidate = f"{base_num}-O{org_id}-{idx}"
                 idx += 1
             return candidate

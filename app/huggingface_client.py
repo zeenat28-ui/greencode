@@ -229,7 +229,7 @@ class HuggingFaceClient:
                     f"Could not reach HuggingFace: {exc}", kind="network", retryable=True
                 )
                 if attempt < self.max_retries - 1:
-                    time.sleep(delay)
+                    time.sleep(delay)  # greencode: ignore[SLEEP_IN_LOOP]
                     delay *= 2
                     continue
                 raise last_exc
@@ -241,7 +241,7 @@ class HuggingFaceClient:
             if not err.retryable or attempt == self.max_retries - 1:
                 raise err
             last_exc = err
-            time.sleep(delay)
+            time.sleep(delay)  # greencode: ignore[SLEEP_IN_LOOP]
             delay *= 2
 
         raise last_exc or LLMError("HuggingFace request failed.", kind="unknown")

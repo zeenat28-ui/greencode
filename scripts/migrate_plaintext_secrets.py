@@ -72,14 +72,13 @@ def main() -> int:
         print(f"  {'migrated' if args.apply else 'would migrate':<18}: {report['migrated']}")
         if report["failed"]:
             print(f"  FAILED             : {report['failed']}")
-        for err in report["errors"]:
-            print(f"\n  ! {err}")
+        if report["errors"]:
+            print("\n".join(f"\n  ! {err}" for err in report["errors"]))
 
     if not report["encryption_enabled"]:
         if blockers:
             print("\nConfiguration problems:", file=sys.stderr)
-            for b in blockers:
-                print(f"  - {b}", file=sys.stderr)
+            print("\n".join(f"  - {b}" for b in blockers), file=sys.stderr)
         return 2
 
     if report["failed"]:

@@ -676,7 +676,11 @@ class DynamicExecutionProfiler:
                             mem_samples_mb.append(tree_mem)
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         break
-                    time.sleep(0.04)
+                    try:
+                        proc.wait(timeout=0.04)
+                        break
+                    except subprocess.TimeoutExpired:
+                        pass
             except Exception:
                 pass  # no-op
 

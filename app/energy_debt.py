@@ -220,6 +220,21 @@ class EnergyDebtTracker:
 
         return debt
 
+    @staticmethod
+    def _row_to_team_debt(row: Any) -> TeamEnergyDebt:
+        patterns = json.loads(row.details_json) if row.details_json else []
+        return TeamEnergyDebt(
+            team_id=row.team_id,
+            team_name=row.team_id,
+            total_violations_count=int(row.total_violations_count or 0),
+            energy_debt_kg_co2e=float(row.energy_debt_kg_co2e or 0.0),
+            energy_debt_usd=float(row.energy_debt_usd or 0.0),
+            weekly_interest_usd=float(row.weekly_interest_usd or 0.0),
+            debt_velocity_trend=str(row.debt_velocity_trend or "STABLE"),
+            top_offending_patterns=patterns,
+            last_updated=row.last_updated_at.isoformat() if row.last_updated_at else datetime.now(timezone.utc).isoformat(),
+        )
+
     def get_team_debt(self, team_id: str) -> Optional[TeamEnergyDebt]:
         if team_id in self._team_debts:
             return self._team_debts[team_id]
@@ -230,18 +245,7 @@ class EnergyDebtTracker:
             try:
                 row = db.query(EnergyDebtLedger).filter(EnergyDebtLedger.team_id == team_id).first()
                 if row:
-                    patterns = json.loads(row.details_json) if row.details_json else []
-                    debt = TeamEnergyDebt(
-                        team_id=row.team_id,
-                        team_name=row.team_id,
-                        total_violations_count=int(row.total_violations_count or 0),
-                        energy_debt_kg_co2e=float(row.energy_debt_kg_co2e or 0.0),
-                        energy_debt_usd=float(row.energy_debt_usd or 0.0),
-                        weekly_interest_usd=float(row.weekly_interest_usd or 0.0),
-                        debt_velocity_trend=str(row.debt_velocity_trend or "STABLE"),
-                        top_offending_patterns=patterns,
-                        last_updated=row.last_updated_at.isoformat() if row.last_updated_at else datetime.now(timezone.utc).isoformat(),
-                    )
+                    debt = self._row_to_team_debt(row)
                     self._team_debts[team_id] = debt
                     return debt
             finally:
@@ -261,18 +265,7 @@ class EnergyDebtTracker:
                 rows = db.query(EnergyDebtLedger).all()
                 for row in rows:
                     if row.team_id not in self._team_debts:
-                        patterns = json.loads(row.details_json) if row.details_json else []
-                        self._team_debts[row.team_id] = TeamEnergyDebt(
-                            team_id=row.team_id,
-                            team_name=row.team_id,
-                            total_violations_count=int(row.total_violations_count or 0),
-                            energy_debt_kg_co2e=float(row.energy_debt_kg_co2e or 0.0),
-                            energy_debt_usd=float(row.energy_debt_usd or 0.0),
-                            weekly_interest_usd=float(row.weekly_interest_usd or 0.0),
-                            debt_velocity_trend=str(row.debt_velocity_trend or "STABLE"),
-                            top_offending_patterns=patterns,
-                            last_updated=row.last_updated_at.isoformat() if row.last_updated_at else datetime.now(timezone.utc).isoformat(),
-                        )
+                        self._team_debts[row.team_id] = self._row_to_team_debt(row)
             finally:
                 db.close()
         except Exception:

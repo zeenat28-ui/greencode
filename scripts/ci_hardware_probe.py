@@ -146,8 +146,7 @@ def main() -> int:
 
     if problems:
         print("\nFAILED - the sensor disagrees with the hardware:\n")
-        for p in problems:
-            print(f"  ::error::{p}")
+        print("\n".join(f"  ::error::{p}" for p in problems))
         return 1
 
     print(f"\nOK - sensor and hardware agree. best_available={best!r}")

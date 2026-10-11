@@ -538,6 +538,15 @@ def get_aws_cost_carbon_data(
     }
 
 
+import functools
+
+
+@functools.lru_cache(maxsize=64)
+def _get_cached_region_carbon_intensity(region: str) -> Dict[str, Any]:
+    """Memoized regional carbon intensity lookup for multi-region sweeps."""
+    return get_region_carbon_intensity(region)
+
+
 def recommend_optimal_aws_region(
     current_region: str = "us-east-1",
     monthly_kwh: float = 1000.0,
@@ -560,7 +569,7 @@ def recommend_optimal_aws_region(
     safe_kwh = max(0.0, float(monthly_kwh))
     residency_norm = (data_residency or "GLOBAL").strip().upper()
 
-    src_carbon = get_region_carbon_intensity(src_region)
+    src_carbon = _get_cached_region_carbon_intensity(src_region)
     src_intensity = float(src_carbon["carbon_intensity"])
     src_monthly_co2_kg = round(safe_kwh * (src_intensity / 1000.0), 3)
     src_prefix = src_region.split("-")[0]
@@ -579,7 +588,7 @@ def recommend_optimal_aws_region(
     for cand in allowed_regions:
         if cand == src_region:
             continue
-        c_info = get_region_carbon_intensity(cand)
+        c_info = _get_cached_region_carbon_intensity(cand)
         c_intensity = float(c_info["carbon_intensity"])
         c_monthly_co2_kg = round(safe_kwh * (c_intensity / 1000.0), 3)
         monthly_saved_kg = round(src_monthly_co2_kg - c_monthly_co2_kg, 3)

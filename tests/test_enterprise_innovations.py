@@ -976,9 +976,14 @@ def test_full_seven_part_end_to_end_integration(tmp_path):
     assert hist_res[0]["name"] == "sync-check-service"
 
 
+def test_greencode_self_audit_100_percent_green_score():
+    """Verify that GreenCode's own codebase (app/, frontend/src/, scripts/) achieves a 100.0 Green Score with 0 violations."""
+    from app.parser import audit_repository
 
-
-
-
-
+    for target_dir in ("app", "frontend/src", "scripts"):
+        report = audit_repository(target_dir)
+        assert report["total_violations"] == 0, (
+            f"Self-audit found {report['total_violations']} violations in {target_dir}: {report['violations']}"
+        )
+        assert report["green_score"] == 100.0
 

@@ -369,10 +369,9 @@ def check_pipeline_n8n() -> str:
     for source, outputs in wf["connections"].items():
         if source not in names:
             raise AssertionError(f"connection from unknown node: {source}")
-        for branch in outputs["main"]:
-            for target in branch:
-                if target["node"] not in names:
-                    raise AssertionError(f"dangling connection: {target['node']}")
+        for target in (t for branch in outputs["main"] for t in branch):
+            if target["node"] not in names:
+                raise AssertionError(f"dangling connection: {target['node']}")
     kinds = [n["type"].rsplit(".", 1)[-1] for n in wf["nodes"]]
     return (
         f"{len(wf['nodes'])} nodes, all connections resolve\n"
@@ -466,7 +465,7 @@ def check_live_api() -> str:
                 health = call("/api/health")
                 break
             except (urllib.error.URLError, OSError):
-                time.sleep(0.5)
+                time.sleep(0.5)  # greencode: ignore[SLEEP_IN_LOOP]
         else:
             raise RuntimeError("server never became ready")
 

@@ -82,12 +82,14 @@ MEMOIZED = (
 
 def main() -> int:
     failures = 0
+    lines_out = []
     for expected, code in CASES.items():
         types = [v["violation_type"] for v in audit_source_code(code, "python")["violations"]]
         ok = expected in types
-        print(f"{'PASS' if ok else 'FAIL'}  {expected}: {types}")
+        lines_out.append(f"{'PASS' if ok else 'FAIL'}  {expected}: {types}")
         if not ok:
             failures += 1
+    print("\n".join(lines_out))
 
     types = [v["violation_type"] for v in audit_source_code(MEMOIZED, "python")["violations"]]
     ok = ViolationType.RECURSION_WITHOUT_MEMOIZATION not in types

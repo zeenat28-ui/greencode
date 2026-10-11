@@ -401,11 +401,8 @@ class BedrockClient:
                 continue
             elapsed_s = max(0.01, time.perf_counter() - t0)
 
-            content = ""
-            for block in response.get("output", {}).get("message", {}).get("content", []):
-                text = block.get("text")
-                if text:
-                    content += text
+            blocks = response.get("output", {}).get("message", {}).get("content", [])
+            content = "".join(block.get("text", "") for block in blocks if block.get("text"))
             if not content:
                 last_error = BedrockError(
                     f"Bedrock returned no text content for {candidate}.", kind="unknown"

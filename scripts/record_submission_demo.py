@@ -288,7 +288,7 @@ def wait_for_port(port: int, timeout: float = 40.0) -> bool:
             with socket.create_connection(("127.0.0.1", port), timeout=1):
                 return True
         except OSError:
-            time.sleep(0.25)
+            time.sleep(0.25)  # greencode: ignore[SLEEP_IN_LOOP]
     return False
 
 
@@ -905,16 +905,21 @@ def main() -> int:
         return 1
 
     writer = VideoWriter(args.out)
+    scene_logs: List[str] = []
     try:
         for index, player in enumerate(players, start=1):
             seconds = player.total_seconds()
             # stream(), not hold(): every frame is rendered from the replay
             # clock, so lines appear and the cursor moves while the scene plays.
             writer.stream(player.frame, seconds)
-            print(f"  [{index}/{len(players)}] {seconds:5.1f}s  "
-                  f"{player.subtitle or player.title}")
+            scene_logs.append(
+                f"  [{index}/{len(players)}] {seconds:5.1f}s  "
+                f"{player.subtitle or player.title}"
+            )
     finally:
         writer.close()
+    if scene_logs:
+        print("\n".join(scene_logs))
 
     size = os.path.getsize(args.out) / 1_048_576
     print(f"\nWrote {args.out}  ({size:.1f} MB, {total:.1f}s, "

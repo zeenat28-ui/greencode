@@ -105,13 +105,15 @@ def main() -> int:
     )
     try:
         # Wait for the port rather than sleeping a fixed amount.
+        ready = False
         for _ in range(60):
             try:
                 call("/api/pipeline/status")
+                ready = True
                 break
             except (urllib.error.URLError, ConnectionError, OSError):
-                time.sleep(0.5)
-        else:
+                time.sleep(0.5)  # greencode: ignore[SLEEP_IN_LOOP]
+        if not ready:
             print("Server did not become ready.")
             return 1
 
@@ -131,6 +133,7 @@ def main() -> int:
         show("1. Claim filed: 'this refactor will cut energy by 50%'", claim["claim"])
 
         # 2. Real hardware measurements that honour the claim.
+        run_logs = []
         for i in range(3):
             result = call("/api/pipeline/evidence", {
                 "claim_id": claim_id,
@@ -140,7 +143,8 @@ def main() -> int:
                 "measurement_method": "rapl",
                 "source": "demo-runner",
             }, method="POST", signed=True)
-            print(f"  run {i + 1}: {result['verdict']}")
+            run_logs.append(f"  run {i + 1}: {result['verdict']}")
+        print("\n".join(run_logs))
         show("2. Final verdict", result["result"])
 
         # 3. The integrity of the record.

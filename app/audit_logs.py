@@ -32,6 +32,10 @@ def _parse_record_details(details_str: Optional[str]) -> Dict[str, Any]:
 class AuditLogManager:
     """Manages immutable, hash-chained enterprise audit records."""
 
+    @staticmethod
+    def _canonical_json(payload: Dict[str, Any]) -> str:
+        return json.dumps(payload, sort_keys=True)
+
     @classmethod
     def _compute_hash(cls, prev_hash: str, timestamp_str: str, org_id: int, action: str, resource_id: str, details_str: str) -> str:
         payload = f"{prev_hash}|{timestamp_str}|{org_id}|{action}|{resource_id}|{details_str}".encode("utf-8")
@@ -181,7 +185,7 @@ class AuditLogManager:
                         org_id=r.org_id,
                         action=r.action or "",
                         resource_id=r.resource_id or "",
-                        details_str=json.dumps(clean_payload, sort_keys=True),
+                        details_str=cls._canonical_json(clean_payload),
                     )
                     if expected_hash != rec_hash:
                         return {

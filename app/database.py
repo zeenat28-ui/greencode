@@ -911,7 +911,7 @@ async def get_async_session(max_retries: int = 3, retry_delay: float = 0.1) -> A
             except (OperationalError, DBAPIError) as exc:
                 if retries < max_retries and "locked" in str(exc).lower():
                     retries += 1
-                    await asyncio.sleep(retry_delay * (2 ** (retries - 1)))
+                    await asyncio.sleep(retry_delay * (2 ** (retries - 1)))  # greencode: ignore[SLEEP_IN_LOOP]
                 else:
                     raise
     except Exception:

@@ -1000,12 +1000,12 @@ def create_app():
     for slug in ("privacy", "terms"):
         page = os.path.join(pages_dir, f"{slug}.html")
         if os.path.isfile(page):
+            from pathlib import Path as _Path
+            cached_html = _Path(page).read_text(encoding="utf-8")
             app.routes.append(
                 Route(
                     f"/{slug}",
-                    endpoint=lambda request, _p=page: HTMLResponse(
-                        open(_p, "r", encoding="utf-8").read()
-                    ),
+                    endpoint=lambda request, _html=cached_html: HTMLResponse(_html),
                 )
             )
     assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "alexa", "assets")

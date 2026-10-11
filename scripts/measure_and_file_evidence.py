@@ -146,19 +146,27 @@ def main() -> int:
         )
 
     samples: List[Dict[str, Any]] = []
+    run_logs: List[str] = []
+    timed_out_run: Optional[int] = None
     for index in range(max(1, args.runs)):
         try:
             measured = measure_once(args.command, args.timeout)
         except subprocess.TimeoutExpired:
-            print(f"::error::Run {index + 1} timed out after {args.timeout}s.")
-            return 2
+            timed_out_run = index + 1
+            break
         samples.append(measured)
-        print(
+        run_logs.append(
             f"  run {index + 1}/{args.runs}: "
             f"{measured['energy_joules']:.2f} J via {measured['measurement_method']}"
         )
+    if run_logs:
+        print("\n".join(run_logs))
+    if timed_out_run is not None:
+        print(f"::error::Run {timed_out_run} timed out after {args.timeout}s.")
+        return 2
 
     last: Optional[Dict[str, Any]] = None
+    post_error: Optional[Exception] = None
     for index, sample in enumerate(samples):
         payload = {
             "claim_id": args.claim_id,
@@ -179,8 +187,11 @@ def main() -> int:
         try:
             last = post_evidence(args.api_url, payload)
         except Exception as exc:
-            print(f"::error::Failed to file evidence: {exc}")
-            return 1
+            post_error = exc
+            break
+    if post_error is not None:
+        print(f"::error::Failed to file evidence: {post_error}")
+        return 1
 
     if last is None:
         return 1

@@ -358,7 +358,7 @@ LOOP_START_REGEX = re.compile(
 
 UNIVERSAL_NETWORK_REGEX = re.compile(
     r"(?:https?://|requests\.(?:get|post|put|delete|patch)|fetch\(|http\.(?:Get|Post|Request)|"
-    r"HttpClient|axios\.|reqwest::|urllib\.|curl\s+|WebClient|OpenURI|file_get_contents\(|"
+    r"HttpClient|axios\.|reqwest::|urllib\.(?:request\.)?urlopen\(|curl\s+|WebClient|OpenURI|file_get_contents\(|"
     r"Net::HTTP|wget\s+|socket\.send|Invoke-WebRequest|HttpURLConnection)",
     re.IGNORECASE,
 )
@@ -530,14 +530,24 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
         resolved: Dict[str, List[Tuple[str, str]]] = {k: list(v) for k, v in direct_hazards.items()}
         for _ in range(3):
             for caller, callees in call_edges.items():
-                for callee in callees:
-                    if callee == caller or callee not in resolved:
-                        continue
-                    for vtype, chain in resolved[callee]:
-                        existing_types = {vt for vt, _ in resolved.get(caller, [])}
-                        if vtype not in existing_types:
-                            resolved.setdefault(caller, []).append((vtype, f"{caller}() -> {chain}"))
+                self._merge_callee_hazards(caller, callees, resolved)
         self._func_loop_hazards = resolved
+
+    @staticmethod
+    def _merge_callee_hazards(
+        caller: str,
+        callees: Set[str],
+        resolved: Dict[str, List[Tuple[str, str]]],
+    ) -> None:
+        caller_hazards = resolved.setdefault(caller, [])
+        existing_types = {vt for vt, _ in caller_hazards}
+        for callee in callees:
+            if callee == caller or callee not in resolved:
+                continue
+            for vtype, chain in resolved[callee]:
+                if vtype not in existing_types:
+                    caller_hazards.append((vtype, f"{caller}() -> {chain}"))
+                    existing_types.add(vtype)
 
     def visit_Module(self, node: ast.Module) -> None:
         self._index_call_graph(node)
@@ -976,13 +986,33 @@ def audit_with_tree_sitter(source_code: str, language: str, file_path: str) -> L
     violations: List[Dict[str, Any]] = []
     meta = VIOLATION_METADATA[ViolationType.NESTED_LOOPS]
 
+    def _extract_call_method_name(n) -> str:
+        func_node = n.child_by_field_name("function")
+        if func_node is not None:
+            prop_node = (
+                func_node.child_by_field_name("attribute")
+                or func_node.child_by_field_name("property")
+            )
+            target = prop_node if prop_node is not None else func_node
+            return code_bytes[target.start_byte:target.end_byte].decode("utf-8", errors="replace").lower()
+        name_node = n.child_by_field_name("name")
+        if name_node is not None:
+            return code_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="replace").lower()
+        return ""
+
     def _is_iterative_node(n) -> bool:
         if n.type in LOOP_NODE_TYPES:
             return True
         if n.type in ("call_expression", "call", "method_invocation"):
-            text_val = code_bytes[n.start_byte:n.end_byte].decode("utf-8", errors="replace").lower()
-            for m in ITERATIVE_METHOD_NAMES:
-                if f".{m}" in text_val or f"{m}(" in text_val:
+            m_name = _extract_call_method_name(n)
+            if m_name in ("iterrows", "itertuples"):
+                return True
+            if m_name in ITERATIVE_METHOD_NAMES:
+                args_node = n.child_by_field_name("arguments")
+                if args_node is None:
+                    return False
+                args_text = code_bytes[args_node.start_byte:args_node.end_byte].decode("utf-8", errors="replace")
+                if any(tok in args_text for tok in ("=>", "function", "lambda ", "->")) or m_name in ("foreach", "flatmap", "applymap"):
                     return True
         return False
 
@@ -1004,8 +1034,8 @@ def audit_with_tree_sitter(source_code: str, language: str, file_path: str) -> L
             if not _is_iterative_node(node):
                 continue
             # Check for hidden heavy DataFrame row iterations (e.g. df.iterrows(), df.itertuples())
-            lower_text = node_text.lower()
-            if "iterrows" in lower_text or "itertuples" in lower_text:
+            m_name = _extract_call_method_name(node)
+            if m_name in ("iterrows", "itertuples"):
                 line_no = node.start_point[0] + 1
                 if line_no not in seen_lines:
                     seen_lines.add(line_no)
@@ -1034,10 +1064,16 @@ def audit_with_tree_sitter(source_code: str, language: str, file_path: str) -> L
 
         # Calculate nesting depth by inspecting parent loop and callback-driven iteration nodes
         depth = 1
+        prev = node
         curr = node.parent
         while curr is not None:
-            if _is_iterative_node(curr):
+            if curr.type in LOOP_NODE_TYPES:
                 depth += 1
+            elif _is_iterative_node(curr):
+                args_node = curr.child_by_field_name("arguments")
+                if args_node is not None and prev.start_byte >= args_node.start_byte and prev.end_byte <= args_node.end_byte:
+                    depth += 1
+            prev = curr
             curr = curr.parent
 
         if depth >= 3:
@@ -1103,6 +1139,7 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
     net_strip_regex = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:[^`\\]|\\.)*`')
 
     db_context_regex = re.compile(r"\b(?:with|using|defer|try)\b", re.IGNORECASE)
+    in_multiline_delim: Optional[str] = None
 
     for idx, raw_line in enumerate(lines):
         line_no = idx + 1
@@ -1110,9 +1147,29 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
 
         if not stripped:
             continue
+
+        # Track multi-line string / template literals (""", ''', or ` in JS/TS)
+        if in_multiline_delim is not None:
+            check_target = raw_line if in_multiline_delim in ('"""', "'''") else string_strip_regex.sub("", raw_line)
+            if in_multiline_delim in check_target and check_target.count(in_multiline_delim) % 2 == 1:
+                in_multiline_delim = None
+            continue
+        else:
+            for delim in ('"""', "'''", "`"):
+                if delim == "`" and lang_clean not in ("javascript", "typescript", "go"):
+                    continue
+                check_target = raw_line if delim in ('"""', "'''") else string_strip_regex.sub("", raw_line)
+                if check_target.count(delim) % 2 == 1:
+                    in_multiline_delim = delim
+                    break
+            if in_multiline_delim is not None:
+                continue
+
         if stripped.startswith(("//", "#", ";", "/*", "*", "!", "--", "'", "%")):
             continue
 
+        code_no_strings = net_strip_regex.sub("", raw_line)
+        stripped_no_strings = code_no_strings.strip()
         curr_indent = len(raw_line) - len(raw_line.lstrip())
 
         # 1. Un-indent tracking for indentation-based languages or non-brace blocks
@@ -1121,19 +1178,17 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
                 loop_stack.pop()
 
         # 2. Check Loop Open
-        is_loop = bool(LOOP_START_REGEX.search(stripped))
+        is_loop = bool(LOOP_START_REGEX.search(stripped_no_strings))
 
         # Check loop exit before checking new statement on closing blocks
         if has_braces:
-            # Strip string literal contents before counting braces to prevent skew from strings containing '{' or '}'
-            code_no_strings = string_strip_regex.sub('', raw_line)
             open_count = code_no_strings.count("{")
             close_count = code_no_strings.count("}")
             if close_count > open_count and loop_stack:
                 for _ in range(min(len(loop_stack), close_count - open_count)):
                     loop_stack.pop()
         else:
-            if loop_end_regex.search(stripped):
+            if loop_end_regex.search(stripped_no_strings):
                 if loop_stack:
                     loop_stack.pop()
 
@@ -1164,10 +1219,7 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
 
         # 2. Check if inside loop scope
         if len(loop_stack) >= 1:
-            # Strip string literal contents before network-pattern matching to prevent
-            # false positives from URL arguments passed to pooled session calls.
-            _code_no_strings = net_strip_regex.sub('', stripped)
-            if UNIVERSAL_NETWORK_REGEX.search(_code_no_strings) and line_no not in seen_net_lines:
+            if UNIVERSAL_NETWORK_REGEX.search(stripped_no_strings) and line_no not in seen_net_lines:
                 seen_net_lines.add(line_no)
                 s_idx = max(0, line_no - 2)
                 e_idx = min(len(lines), line_no + 1)
@@ -1211,11 +1263,11 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
 
         # 3. Check for raw database cursor/connection without context manager
         if (
-            UNIVERSAL_DB_REGEX.search(stripped)
+            UNIVERSAL_DB_REGEX.search(stripped_no_strings)
             and not stripped.startswith(('"', "'", "r'", 'r"'))
             and not any(k in stripped for k in (" in stripped", " in line", "re.search", "re.match"))
         ):
-            has_context = bool(db_context_regex.search(raw_line))
+            has_context = bool(db_context_regex.search(code_no_strings))
             if not has_context:
                 s_idx = max(0, line_no - 1)
                 e_idx = min(len(lines), line_no + 2)
@@ -1237,7 +1289,7 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
                 })
 
         # 4. Check for hidden iterative row computation in non-Tree-sitter languages
-        if not stripped.startswith(('"', "'", "r'", 'r"')) and any(f".{m}(" in stripped.lower() for m in ("iterrows", "itertuples")):
+        if not stripped.startswith(('"', "'", "r'", 'r"')) and any(f".{m}(" in stripped_no_strings.lower() for m in ("iterrows", "itertuples")):
             s_idx = max(0, line_no - 1)
             e_idx = min(len(lines), line_no + 1)
             snippet = "\n".join(lines[s_idx:e_idx])
@@ -1745,6 +1797,11 @@ def _resolve_archive_root(temp_dir: str) -> str:
 _DIFF_HUNK_RE = re.compile(r"^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?\s+@@")
 
 
+def _read_text_file(path: str) -> str:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
 def audit_git_diff(
     diff_text: str,
     repo_root: Optional[str] = None,
@@ -1812,8 +1869,7 @@ def audit_git_diff(
                 candidate_path == real_repo_root
                 or candidate_path.startswith(real_repo_root + os.sep)
             ) and os.path.isfile(candidate_path):
-                with open(candidate_path, "r", encoding="utf-8", errors="replace") as f:
-                    code = f.read()
+                code = _read_text_file(candidate_path)
         if code is None:
             line_map = reconstructed_lines.get(rel_path, {})
             max_ln = max(line_map.keys()) if line_map else 0

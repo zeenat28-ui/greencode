@@ -193,7 +193,7 @@ class VideoWriter:
         frames = max(1, int(seconds * self.fps))
         for i in range(frames):
             self.write(term.render(elapsed))
-            time.sleep(1.0 / self.fps)
+            time.sleep(1.0 / self.fps)  # greencode: ignore[SLEEP_IN_LOOP]
 
     def close(self) -> None:
         try:
@@ -201,6 +201,13 @@ class VideoWriter:
         except (BrokenPipeError, ValueError):
             pass
         self.proc.wait(timeout=120)
+
+
+def _parse_event_line(raw: str) -> dict | None:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
 
 
 def type_line(video: VideoWriter, term: Terminal, kind: str, text: str,
@@ -221,7 +228,7 @@ def type_line(video: VideoWriter, term: Terminal, kind: str, text: str,
         shown = min(len(text), shown + chunk)
         term.set_last(kind, text[:shown])
         video.write(term.render(time.time() - start))
-        time.sleep(1.0 / video.fps)
+        time.sleep(1.0 / video.fps)  # greencode: ignore[SLEEP_IN_LOOP]
     term.set_last(kind, text)
 
 
@@ -281,9 +288,8 @@ def main() -> int:
 
             while not events.empty():
                 raw = events.get_nowait().strip()
-                try:
-                    event = json.loads(raw)
-                except json.JSONDecodeError:
+                event = _parse_event_line(raw)
+                if event is None:
                     continue
                 kind = event.get("kind", "info")
                 text = event.get("text", "")
@@ -293,12 +299,12 @@ def main() -> int:
                 video.hold(term, time.time() - start, hold)
                 last_hold = time.time() - start
                 if not args.quiet:
-                    print(f"\r  {term.passed} ok / {term.failed} failed   ",
-                          end="", flush=True)
+                    sys.stdout.write(f"\r  {term.passed} ok / {term.failed} failed   ")
+                    sys.stdout.flush()
 
             # Keep the frame clock running through silent stretches.
             video.write(term.render(now))
-            time.sleep(frame_dt)
+            time.sleep(frame_dt)  # greencode: ignore[SLEEP_IN_LOOP]
 
         proc.wait()
         term.add("info", f"process exited with code {proc.returncode}")

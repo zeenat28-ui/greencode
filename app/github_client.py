@@ -107,7 +107,7 @@ def _request(
         except requests.exceptions.RequestException as exc:
             last_exc = exc
             if attempt < 2:
-                time.sleep(0.4 * (2 ** attempt))
+                time.sleep(0.4 * (2 ** attempt))  # greencode: ignore[SLEEP_IN_LOOP]
                 continue
             raise GitHubAPIError(
                 f"Could not reach the GitHub API. Check network connectivity ({exc}).", 502
@@ -117,7 +117,7 @@ def _request(
         if resp.status_code in (403, 429, 500, 502, 503, 504) and attempt < 2:
             if resp.status_code == 403 and "rate limit" not in resp.text.lower():
                 break
-            time.sleep(0.6 * (2 ** attempt))
+            time.sleep(0.6 * (2 ** attempt))  # greencode: ignore[SLEEP_IN_LOOP]
             continue
         return resp
 

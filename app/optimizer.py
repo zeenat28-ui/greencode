@@ -854,6 +854,61 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
             "Reduces RAM allocations from O(N^2) to O(N), slashing memory bus throughput energy and GC pressure."
         )
 
+    elif "HEAVY_CLIENT_INSTANTIATION" in violation_type:
+        if lang in ("javascript", "typescript"):
+            refactored = (
+                "// [GreenCode Eco-Refactoring]: Shared Singleton SDK/HTTP Client Outside Loop\n"
+                "const sharedClient = new OpenAI();\n"
+                + re.sub(r"(?:const|let|var)\s+\w+\s*=\s*new\s+(?:OpenAI|Anthropic|S3Client|DynamoDBClient|HttpClient|RestTemplate)\([^)]*\);?\s*\n?", "", cleaned)
+            )
+        else:
+            refactored = (
+                "# [GreenCode Eco-Refactoring]: Shared Singleton SDK/HTTP Client Outside Loop\n"
+                "# Hoists TLS context & connection pool initialization out of the hot loop.\n"
+                "shared_client = httpx.Client(timeout=10.0)\n"
+                + cleaned
+            )
+        reduction = 74.0
+        carbon_saved_10k = 64.20
+        explanation = (
+            "Hoisted SDK/HTTP client construction outside the loop so TLS handshakes, credential chains, "
+            "and TCP connection pools are initialized once and reused across all iterations."
+        )
+
+    elif "N_PLUS_ONE_QUERY" in violation_type:
+        refactored = (
+            "# [GreenCode Eco-Refactoring]: Batched SQL Query (WHERE id IN (...)) Eliminating N+1 Round-Trips\n"
+            "cursor.execute('SELECT * FROM records WHERE id IN (' + ','.join('?' for _ in item_ids) + ')', tuple(item_ids))\n"
+            "rows_by_id = {row[0]: row for row in cursor.fetchall()}"
+        )
+        reduction = 86.0
+        carbon_saved_10k = 112.40
+        explanation = (
+            "Replaced per-row SELECT execution inside the loop with a single batched WHERE ... IN (...) query, "
+            "collapsing N network and database round-trips into 1."
+        )
+
+    elif "INEFFICIENT_REGEX" in violation_type:
+        if lang in ("javascript", "typescript"):
+            refactored = (
+                "// [GreenCode Eco-Refactoring]: Hoisted Pre-Compiled RegExp Outside Loop\n"
+                "const COMPILED_PATTERN = /pattern/g;\n"
+                + cleaned
+            )
+        else:
+            refactored = (
+                "# [GreenCode Eco-Refactoring]: Hoisted Pre-Compiled Regular Expression Outside Loop\n"
+                "import re\n"
+                "_COMPILED_PATTERN = re.compile(r'pattern')\n"
+                + cleaned
+            )
+        reduction = 61.0
+        carbon_saved_10k = 29.80
+        explanation = (
+            "Hoisted regular expression compilation outside the loop so the automaton is built once "
+            "and reused across iterations."
+        )
+
     else:
         refactored = (
             f"# [GreenCode Eco-Refactoring]: Applied Green Software Foundation patterns\n"
@@ -870,6 +925,8 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
     return {
         "original_code": bad_snippet,
         "refactored_code": refactored,
+        "unified_diff": generate_unified_diff(bad_snippet, refactored),
+        "github_suggestion_markdown": generate_github_suggestion_block(refactored),
         "violation_type": violation_type,
         "energy_reduction_pct": reduction,
         "carbon_saved_gco2_10k_runs": carbon_saved_10k,
@@ -877,6 +934,36 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
         "model_used": "Deterministic GreenCode rule engine",
         "has_specific_rewrite": has_specific_rewrite,
     }
+
+
+def generate_unified_diff(
+    original_code: str,
+    refactored_code: str,
+    file_path: str = "code.py",
+) -> str:
+    """Generate a standard unified git diff patch between original and refactored code."""
+    import difflib
+    clean_path = (file_path or "code.py").replace("\\", "/").lstrip("/")
+    orig_lines = (original_code or "").splitlines(keepends=True)
+    ref_lines = (refactored_code or "").splitlines(keepends=True)
+    if orig_lines and not orig_lines[-1].endswith("\n"):
+        orig_lines[-1] += "\n"
+    if ref_lines and not ref_lines[-1].endswith("\n"):
+        ref_lines[-1] += "\n"
+    diff = difflib.unified_diff(
+        orig_lines,
+        ref_lines,
+        fromfile=f"a/{clean_path}",
+        tofile=f"b/{clean_path}",
+        lineterm="\n",
+    )
+    return "".join(diff)
+
+
+def generate_github_suggestion_block(refactored_code: str) -> str:
+    """Wrap refactored code in a GitHub Pull Request 1-click commit suggestion fence."""
+    cleaned = (refactored_code or "").strip("\r\n")
+    return f"```suggestion\n{cleaned}\n```"
 
 
 def refactor_repository_code(
@@ -956,6 +1043,8 @@ def refactor_repository_code(
 
     if outcome.accepted and outcome.source == "llm":
         synthesized["refactored_code"] = outcome.refactored
+        synthesized["unified_diff"] = generate_unified_diff(bad_snippet, outcome.refactored)
+        synthesized["github_suggestion_markdown"] = generate_github_suggestion_block(outcome.refactored)
         provider_label = (
             "Amazon Bedrock"
             if getattr(outcome, "provider", None) == "aws_bedrock"

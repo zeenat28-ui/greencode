@@ -471,14 +471,48 @@ export default function Issues() {
                       >
                         {copiedKey === `btn-${key}` ? (
                           <>
-                            <CheckCircle size={13} className="text-emerald-600" /> Copied to Clipboard
+                            <CheckCircle size={13} className="text-emerald-600" /> Copied Code
                           </>
                         ) : (
                           <>
-                            <Copy size={13} /> Copy Patch
+                            <Copy size={13} /> Copy Refactored Code
                           </>
                         )}
                       </button>
+
+                      {refactorResult.unified_diff && (
+                        <button
+                          onClick={() => handleCopy(refactorResult.unified_diff, `diff-${key}`)}
+                          className="btn-secondary flex items-center gap-2 text-xs py-2 px-4 shadow-xs"
+                        >
+                          {copiedKey === `diff-${key}` ? (
+                            <>
+                              <CheckCircle size={13} className="text-emerald-600" /> Copied .diff
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={13} /> Copy Unified .diff
+                            </>
+                          )}
+                        </button>
+                      )}
+
+                      {refactorResult.github_suggestion_markdown && (
+                        <button
+                          onClick={() => handleCopy(refactorResult.github_suggestion_markdown, `sug-${key}`)}
+                          className="btn-secondary flex items-center gap-2 text-xs py-2 px-4 shadow-xs"
+                        >
+                          {copiedKey === `sug-${key}` ? (
+                            <>
+                              <CheckCircle size={13} className="text-emerald-600" /> Copied Suggestion
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={13} /> Copy PR Suggestion
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : isRefactoring ? (

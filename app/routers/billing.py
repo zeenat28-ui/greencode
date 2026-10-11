@@ -167,3 +167,120 @@ async def mark_invoice_paid(
     """Mark an invoice as paid."""
     _enforce_tenant(actor, org_id)
     return BillingService.mark_invoice_paid(org_id=org_id, invoice_number=invoice_number)
+
+
+class IssueLicenseRequest(BaseModel):
+    org_id: int = Field(..., gt=0)
+    tier: str = Field("pro", pattern="^(free|pro|enterprise)$")
+    seats: int = Field(5, ge=1, le=10000)
+    expires_days: int = Field(365, ge=1, le=3650)
+
+
+class ActivateLicenseRequest(BaseModel):
+    org_id: int = Field(..., gt=0)
+    license_key: str = Field(..., min_length=12, max_length=512)
+
+
+class OpenCollectiveWebhookPayload(BaseModel):
+    type: str = Field("order.processed", max_length=120)
+    org_id: int = Field(1, gt=0)
+    amount_usd: float = Field(..., ge=0.0)
+    sponsor_slug: str = Field("contributor", max_length=200)
+    seats: int = Field(5, ge=1, le=10000)
+
+
+@router.post("/license/issue", status_code=status.HTTP_200_OK)
+async def issue_license_key(
+    payload: IssueLicenseRequest,
+    actor: Dict[str, Any] = Depends(require_permission(Permission.MANAGE_ORG)),
+):
+    """Issue a cryptographically signed GC-LIC-... commercial license key for the organization."""
+    _enforce_tenant(actor, payload.org_id)
+    from app.pricing import LicenseKeyManager
+    key = LicenseKeyManager.generate_license_key(
+        org_id=payload.org_id,
+        tier=payload.tier,
+        seats=payload.seats,
+        expires_days=payload.expires_days,
+    )
+    verification = LicenseKeyManager.verify_license_key(key)
+    return {
+        "status": "issued",
+        "license_key": key,
+        "org_id": payload.org_id,
+        "tier": payload.tier,
+        "seats": payload.seats,
+        "expires_at_unix": verification.get("expires_at_unix"),
+    }
+
+
+@router.post("/license/activate", status_code=status.HTTP_200_OK)
+async def activate_license_key(
+    payload: ActivateLicenseRequest,
+    actor: Dict[str, Any] = Depends(get_current_actor),
+):
+    """Verify a signed GC-LIC-... license key and activate the corresponding subscription tier."""
+    _enforce_tenant(actor, payload.org_id)
+    from app.pricing import LicenseKeyManager
+    verification = LicenseKeyManager.verify_license_key(payload.license_key)
+    if not verification.get("valid"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=verification.get("error", "Invalid license key."),
+        )
+    if int(verification["org_id"]) != int(payload.org_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"License key was issued for organization #{verification['org_id']}, not #{payload.org_id}.",
+        )
+    sub = BillingService.change_tier(
+        org_id=payload.org_id,
+        new_tier=verification["tier"],
+        seats=verification["seats"],
+    )
+    return {
+        "status": "activated",
+        "subscription": sub,
+        "license": verification,
+    }
+
+
+@router.post("/webhooks/opencollective", status_code=status.HTTP_200_OK)
+async def handle_opencollective_webhook(
+    payload: OpenCollectiveWebhookPayload,
+    actor: Dict[str, Any] = Depends(get_current_actor),
+):
+    """Process an Open Collective / GitHub Sponsors contribution and auto-provision the matching tier."""
+    _enforce_tenant(actor, payload.org_id)
+    from app.pricing import LicenseKeyManager
+    if payload.amount_usd >= 499.0:
+        assigned_tier = "enterprise"
+        seats = max(payload.seats, 25)
+    elif payload.amount_usd >= 49.0:
+        assigned_tier = "pro"
+        seats = max(payload.seats, 5)
+    else:
+        assigned_tier = "free"
+        seats = 1
+
+    sub = BillingService.change_tier(
+        org_id=payload.org_id,
+        new_tier=assigned_tier,
+        seats=seats,
+    )
+    license_key = LicenseKeyManager.generate_license_key(
+        org_id=payload.org_id,
+        tier=assigned_tier,
+        seats=seats,
+        expires_days=365,
+    )
+    return {
+        "status": "processed",
+        "event_type": payload.type,
+        "sponsor_slug": payload.sponsor_slug,
+        "amount_usd": payload.amount_usd,
+        "assigned_tier": assigned_tier,
+        "subscription": sub,
+        "license_key": license_key,
+    }
+

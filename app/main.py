@@ -2434,6 +2434,11 @@ def run_cli():
         help="Run in CI/CD pipeline blocker mode (exits with code 1 if score < threshold)",
     )
     parser.add_argument(
+        "--diff",
+        default=None,
+        help="Audit only modified lines in a git diff range (e.g. 'origin/main...HEAD') or a unified .diff file path",
+    )
+    parser.add_argument(
         "--serve",
         action="store_true",
         help="Start the FastAPI backend server daemon",
@@ -2470,13 +2475,42 @@ def run_cli():
     print(f"Target Path     : {target_path}")
     print(f"Quality Gate    : Minimum Green Score >= {args.threshold}/100")
     print(f"Grid Zone       : {args.zone}")
+    if args.diff:
+        print(f"Diff Scope      : {args.diff}")
     print("-" * 70)
 
     if not os.path.exists(target_path):
         print(f"[ERROR] Target path '{target_path}' does not exist.")
         sys.exit(1)
 
-    result = audit_repository(target_path)
+    if args.diff:
+        from app.parser import audit_git_diff
+        import subprocess
+        diff_arg = str(args.diff).strip()
+        if os.path.isfile(diff_arg):
+            with open(diff_arg, "r", encoding="utf-8", errors="replace") as df:
+                diff_text = df.read()
+        else:
+            proc = subprocess.run(
+                ["git", "diff", "--unified=0", diff_arg],
+                cwd=target_path if os.path.isdir(target_path) else os.path.dirname(target_path),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            diff_text = proc.stdout or ""
+        diff_res = audit_git_diff(diff_text, repo_root=target_path if os.path.isdir(target_path) else os.path.dirname(target_path))
+        result = {
+            "repo_path": target_path,
+            "total_files": diff_res.get("files_modified", 0),
+            "total_lines": diff_res.get("hunks_evaluated", 0),
+            "total_violations": diff_res.get("total_diff_violations", 0),
+            "green_score": diff_res.get("diff_green_score", 100.0),
+            "violations": diff_res.get("violations", []),
+            "diff_mode": True,
+        }
+    else:
+        result = audit_repository(target_path)
     score = result["green_score"]
     violations = result["violations"]
 

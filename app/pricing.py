@@ -116,3 +116,106 @@ class PricingManager:
             "remaining": max_calls - (current_calls_count + 1),
         }
 
+
+class LicenseKeyManager:
+    """Cryptographic HMAC-SHA256 license key issuer and verifier for self-serve & enterprise plans."""
+
+    PREFIX = "GC-LIC-"
+
+    @classmethod
+    def _signing_secret(cls, override: Optional[str] = None) -> bytes:
+        import os
+        raw = (
+            override
+            or os.environ.get("GREENCODE_LICENSE_SECRET")
+            or os.environ.get("GREENCODE_JWT_SECRET")
+            or "greencode-commercial-license-signing-key-v1"
+        )
+        return raw.encode("utf-8")
+
+    @classmethod
+    def generate_license_key(
+        cls,
+        org_id: int,
+        tier: str = "pro",
+        seats: int = 5,
+        expires_days: int = 365,
+        secret: Optional[str] = None,
+    ) -> str:
+        """Issue a signed license key encoding org_id, tier, seats, and expiration."""
+        import base64
+        import hashlib
+        import hmac
+        import json
+        import time
+
+        clean_tier = tier.lower().strip()
+        if clean_tier not in PRICING_CATALOG:
+            raise ValueError(f"Unsupported license tier: {tier}")
+        exp_ts = int(time.time()) + max(1, int(expires_days)) * 86400
+        payload_dict = {
+            "org_id": int(org_id),
+            "tier": clean_tier,
+            "seats": max(1, int(seats)),
+            "exp": exp_ts,
+        }
+        payload_bytes = json.dumps(payload_dict, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        payload_b64 = base64.urlsafe_b64encode(payload_bytes).decode("ascii").rstrip("=")
+        sig = hmac.new(cls._signing_secret(secret), payload_b64.encode("ascii"), hashlib.sha256).hexdigest()[:24]
+        return f"{cls.PREFIX}{payload_b64}.{sig}"
+
+    @classmethod
+    def verify_license_key(
+        cls,
+        license_key: str,
+        secret: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Verify HMAC signature and expiration of a GC-LIC-... license key."""
+        import base64
+        import hashlib
+        import hmac
+        import json
+        import time
+
+        raw_key = (license_key or "").strip()
+        if not raw_key.startswith(cls.PREFIX) or "." not in raw_key:
+            return {"valid": False, "error": "Malformed license key format (expected GC-LIC-<payload>.<sig>)."}
+
+        body = raw_key[len(cls.PREFIX):]
+        payload_b64, _, provided_sig = body.partition(".")
+        if not payload_b64 or not provided_sig:
+            return {"valid": False, "error": "License key is missing payload or signature segment."}
+
+        expected_sig = hmac.new(
+            cls._signing_secret(secret),
+            payload_b64.encode("ascii"),
+            hashlib.sha256,
+        ).hexdigest()[:24]
+
+        if not hmac.compare_digest(provided_sig, expected_sig):
+            return {"valid": False, "error": "License key cryptographic signature verification failed."}
+
+        try:
+            padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+            data = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+        except Exception:
+            return {"valid": False, "error": "License key payload could not be decoded."}
+
+        exp_ts = int(data.get("exp", 0))
+        if exp_ts < int(time.time()):
+            return {"valid": False, "error": "License key has expired.", "payload": data}
+
+        tier = str(data.get("tier", "free")).lower()
+        if tier not in PRICING_CATALOG:
+            return {"valid": False, "error": f"Unknown tier in license key: {tier}"}
+
+        return {
+            "valid": True,
+            "org_id": int(data.get("org_id", 1)),
+            "tier": tier,
+            "seats": int(data.get("seats", 1)),
+            "expires_at_unix": exp_ts,
+            "features": asdict(PRICING_CATALOG[tier]),
+        }
+
+

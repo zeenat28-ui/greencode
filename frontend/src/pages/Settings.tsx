@@ -37,6 +37,62 @@ export default function Settings() {
   const [rotateMsg, setRotateMsg] = useState<string | null>(null);
   const [rotateError, setRotateError] = useState<string | null>(null);
 
+  const [usageData, setUsageData] = useState<any | null>(null);
+  const [licenseKey, setLicenseKey] = useState('');
+  const [activatingLicense, setActivatingLicense] = useState(false);
+  const [licenseMsg, setLicenseMsg] = useState<string | null>(null);
+  const [licenseError, setLicenseError] = useState<string | null>(null);
+
+  const loadBillingUsage = async () => {
+    try {
+      const token = localStorage.getItem('greencode_token') || '';
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch('/api/billing/usage?org_id=1', { headers });
+      if (res.ok) {
+        setUsageData(await res.json());
+      }
+    } catch {
+      // Non-blocking
+    }
+  };
+
+  useEffect(() => { loadBillingUsage(); }, []);
+
+  const handleActivateLicense = async () => {
+    const trimmed = licenseKey.trim();
+    if (!trimmed) {
+      setLicenseError('Enter a valid GC-LIC-... license key.');
+      return;
+    }
+    setActivatingLicense(true);
+    setLicenseError(null);
+    setLicenseMsg(null);
+    try {
+      const token = localStorage.getItem('greencode_token') || '';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+      const res = await fetch('/api/billing/license/activate', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ org_id: 1, license_key: trimmed }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLicenseError(body?.detail || 'License verification failed.');
+      } else {
+        setLicenseKey('');
+        setLicenseMsg(`Activated ${String(body?.license?.tier || 'pro').toUpperCase()} tier (${body?.license?.seats || 1} seats).`);
+        await loadBillingUsage();
+      }
+    } catch (err: any) {
+      setLicenseError(err?.message || 'Could not reach billing service.');
+    } finally {
+      setActivatingLicense(false);
+    }
+  };
+
   const loadGrid = async () => {
     setGridLoading(true);
     setGridError(null);
@@ -297,6 +353,69 @@ export default function Settings() {
             <p className="text-[11px] text-slate-500 leading-relaxed">
               This threshold is consumed identically by GitHub Actions and the Alexa Voice MCP agent, guaranteeing deterministic policy enforcement.
             </p>
+          </div>
+
+          <div className="card p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-olive-50 text-olive-800 border border-olive-200 flex items-center justify-center">
+                  <Key size={16} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Plan Quota &amp; License Activation</h2>
+                  <p className="text-[11px] text-slate-500">Activate a signed GC-LIC commercial key or sponsor tier</p>
+                </div>
+              </div>
+              {usageData?.tier && (
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-olive-100 text-olive-900 border border-olive-300">
+                  {usageData.tier}
+                </span>
+              )}
+            </div>
+
+            {usageData && (
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold">Monthly API Usage</div>
+                  <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">
+                    {usageData.used_calls ?? 0} / {usageData.included_calls ?? 100}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold">Remaining Calls</div>
+                  <div className="font-mono font-bold text-olive-800 text-sm mt-0.5">
+                    {usageData.remaining_included_calls ?? 100}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="license-key-input" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Commercial License Key
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="license-key-input"
+                  type="text"
+                  value={licenseKey}
+                  onChange={(e) => { setLicenseKey(e.target.value); setLicenseError(null); setLicenseMsg(null); }}
+                  placeholder="GC-LIC-eyJvcmdfaWQiOjEsInRpZXIiOiJwcm8ifQ..."
+                  className="input text-xs font-mono flex-1"
+                  autoComplete="off"
+                />
+                <button
+                  onClick={handleActivateLicense}
+                  disabled={activatingLicense || !licenseKey.trim()}
+                  className="btn-primary text-xs px-3.5 py-1.5 flex items-center gap-1.5"
+                >
+                  {activatingLicense ? <Loader2 size={11} className="animate-spin" /> : <Key size={11} />}
+                  Activate
+                </button>
+              </div>
+              {licenseError && <p className="text-xs text-red-600 mt-1.5 font-medium">{licenseError}</p>}
+              {licenseMsg && <p className="text-xs text-olive-800 mt-1.5 font-medium">{licenseMsg}</p>}
+            </div>
           </div>
 
           <div className="card p-5">

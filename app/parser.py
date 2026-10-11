@@ -58,6 +58,7 @@ class ViolationType:
     RECURSION_WITHOUT_MEMOIZATION = "RECURSION_WITHOUT_MEMOIZATION"
     LINEAR_LOOKUP_IN_LOOP = "LINEAR_LOOKUP_IN_LOOP"
     EXCESSIVE_LOGGING_IN_LOOP = "EXCESSIVE_LOGGING_IN_LOOP"
+    HEAVY_CLIENT_INSTANTIATION_IN_LOOP = "HEAVY_CLIENT_INSTANTIATION_IN_LOOP"
 
 
 VIOLATION_METADATA = {
@@ -180,6 +181,14 @@ VIOLATION_METADATA = {
         "gsf_pattern": "I/O Batching & Log Amortization",
         "description": "print()/console.log/System.out.print inside a loop performs a synchronous I/O syscall per iteration. Terminal, pipe and log-shipping latency multiplies by N and often dominates short iterations.",
         "fix_guidance": "Accumulate messages and flush once after the loop, log at a sampled rate, or use a buffered/async logger.",
+    },
+    ViolationType.HEAVY_CLIENT_INSTANTIATION_IN_LOOP: {
+        "title": "Heavy SDK / HTTP Client Instantiated Inside Loop",
+        "deduction": 14.0,
+        "severity": "HIGH",
+        "gsf_pattern": "Resource Reuse & Connection Pooling",
+        "description": "Constructing an SDK or HTTP client (e.g. boto3.client, httpx.Client, OpenAI, Anthropic, S3Client) inside a loop allocates TLS contexts, credential chains, and connection pools per iteration.",
+        "fix_guidance": "Instantiate the client once outside the loop (or as a module/class singleton) and reuse the shared connection pool across iterations.",
     },
 }
 
@@ -941,6 +950,25 @@ class GreenCodePythonASTVisitor(ast.NodeVisitor):
                     f"{func_name_str}() inside a loop performs a synchronous I/O syscall once per iteration.",
                 )
 
+            # Heavy SDK / HTTP client or connection pool constructed per iteration.
+            is_heavy_client = False
+            client_label = func_name_str
+            if receiver_name == "boto3" and func_name_str in ("client", "resource", "Session"):
+                is_heavy_client = True
+                client_label = f"boto3.{func_name_str}"
+            elif receiver_name in ("httpx", "requests", "aiohttp") and func_name_str in ("Client", "AsyncClient", "Session", "ClientSession"):
+                is_heavy_client = True
+                client_label = f"{receiver_name}.{func_name_str}"
+            elif func_name_str in ("OpenAI", "AsyncOpenAI", "Anthropic", "AsyncAnthropic", "Web3"):
+                is_heavy_client = True
+                client_label = func_name_str
+            if is_heavy_client:
+                self._add_violation(
+                    ViolationType.HEAVY_CLIENT_INSTANTIATION_IN_LOOP,
+                    node,
+                    f"{client_label}() constructed inside a loop allocates TLS contexts and connection pools on every iteration.",
+                )
+
             # Intra-module call-graph transitive hazard detection
             if func_name_str in self._func_loop_hazards and receiver_name in ("", "self", "cls"):
                 for hazard_vtype, call_chain in self._func_loop_hazards[func_name_str]:
@@ -1261,6 +1289,79 @@ def audit_universal_lexical_scope(source_code: str, language: str, file_path: st
                     "context_code": snippet,
                 })
 
+            if lang_clean != "python":
+                s_idx = max(0, line_no - 2)
+                e_idx = min(len(lines), line_no + 1)
+                snippet = "\n".join(lines[s_idx:e_idx])
+                if any(tok in stripped_no_strings for tok in ("JSON.parse(", "JSON.stringify(", "json.Marshal(", "json.Unmarshal(", "JsonSerializer.Serialize(", "JsonConvert.SerializeObject(")):
+                    meta_json = VIOLATION_METADATA[ViolationType.JSON_SERIALIZE_IN_LOOP]
+                    violations.append({
+                        "file_path": file_path,
+                        "language": language,
+                        "line_number": line_no,
+                        "end_line_number": line_no,
+                        "violation_type": ViolationType.JSON_SERIALIZE_IN_LOOP,
+                        "title": meta_json["title"],
+                        "severity": meta_json["severity"],
+                        "deduction": meta_json["deduction"],
+                        "gsf_pattern": meta_json["gsf_pattern"],
+                        "description": f"JSON (de)serialization inside iteration loop in {language.title()} re-parses or re-serializes payloads on every pass.",
+                        "suggested_fix": meta_json["fix_guidance"],
+                        "snippet": snippet,
+                        "context_code": snippet,
+                    })
+                if any(tok in stripped_no_strings for tok in ("new RegExp(", "Pattern.compile(", "regexp.MustCompile(", "regexp.Compile(", "Regex::new(")):
+                    meta_re = VIOLATION_METADATA[ViolationType.INEFFICIENT_REGEX_IN_LOOP]
+                    violations.append({
+                        "file_path": file_path,
+                        "language": language,
+                        "line_number": line_no,
+                        "end_line_number": line_no,
+                        "violation_type": ViolationType.INEFFICIENT_REGEX_IN_LOOP,
+                        "title": meta_re["title"],
+                        "severity": meta_re["severity"],
+                        "deduction": meta_re["deduction"],
+                        "gsf_pattern": meta_re["gsf_pattern"],
+                        "description": f"Regular expression compiled inside a loop in {language.title()} re-parses the pattern on every iteration.",
+                        "suggested_fix": meta_re["fix_guidance"],
+                        "snippet": snippet,
+                        "context_code": snippet,
+                    })
+                if any(tok in stripped_no_strings for tok in ("fs.readFileSync(", "fs.writeFileSync(", "fs.appendFileSync(", "Files.readString(", "Files.writeString(", "os.ReadFile(", "os.WriteFile(")):
+                    meta_io = VIOLATION_METADATA[ViolationType.SYNC_FILE_IO_IN_LOOP]
+                    violations.append({
+                        "file_path": file_path,
+                        "language": language,
+                        "line_number": line_no,
+                        "end_line_number": line_no,
+                        "violation_type": ViolationType.SYNC_FILE_IO_IN_LOOP,
+                        "title": meta_io["title"],
+                        "severity": meta_io["severity"],
+                        "deduction": meta_io["deduction"],
+                        "gsf_pattern": meta_io["gsf_pattern"],
+                        "description": f"Synchronous file I/O inside a loop in {language.title()} blocks the worker thread on every iteration.",
+                        "suggested_fix": meta_io["fix_guidance"],
+                        "snippet": snippet,
+                        "context_code": snippet,
+                    })
+                if any(tok in stripped_no_strings for tok in ("new HttpClient(", "new RestTemplate(", "new OpenAI(", "new Anthropic(", "new S3Client(", "new DynamoDBClient(")):
+                    meta_hc = VIOLATION_METADATA[ViolationType.HEAVY_CLIENT_INSTANTIATION_IN_LOOP]
+                    violations.append({
+                        "file_path": file_path,
+                        "language": language,
+                        "line_number": line_no,
+                        "end_line_number": line_no,
+                        "violation_type": ViolationType.HEAVY_CLIENT_INSTANTIATION_IN_LOOP,
+                        "title": meta_hc["title"],
+                        "severity": meta_hc["severity"],
+                        "deduction": meta_hc["deduction"],
+                        "gsf_pattern": meta_hc["gsf_pattern"],
+                        "description": f"Heavy SDK/HTTP client instantiated inside a loop in {language.title()} allocates connection pools and TLS state per iteration.",
+                        "suggested_fix": meta_hc["fix_guidance"],
+                        "snippet": snippet,
+                        "context_code": snippet,
+                    })
+
         # 3. Check for raw database cursor/connection without context manager
         if (
             UNIVERSAL_DB_REGEX.search(stripped_no_strings)
@@ -1510,6 +1611,7 @@ def audit_source_code(source_code: str, language: str = "python", file_path: str
         ViolationType.SYNC_FILE_IO_IN_LOOP: "O(N * Disk_IO)",
         ViolationType.THREAD_THRASHING_IN_LOOP: "O(N * OS_ContextSwitch)",
         ViolationType.HIDDEN_ITERATIVE_COMPUTATION: "O(N_unvectorized)",
+        ViolationType.HEAVY_CLIENT_INSTANTIATION_IN_LOOP: "O(N * TLS_Pool_Init)",
         "ML_MISSING_INFERENCE_MODE": "O(N * Autograd_DAG)",
         "ML_INEFFICIENT_BATCH_SIZE": "O(N_unbatched_GPU)",
         "ML_SYNC_GPU_TENSOR_TRANSFER": "O(N * PCIe_Sync)",

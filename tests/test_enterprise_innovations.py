@@ -1074,3 +1074,134 @@ def test_control_plane_live_workloads_and_budgets_integration():
     assert any(r["repo_name"] == "greencode-org/greencode" for r in repos_after["repositories"])
 
 
+def test_purza2_multilanguage_static_rules_and_unified_diff_patches():
+    """Verify Purza 2: HEAVY_CLIENT_INSTANTIATION_IN_LOOP, JS/TS/Go loop hazards, unified .diff, and GitHub suggestion blocks."""
+    from app.parser import audit_source_code, ViolationType
+    from app.optimizer import refactor_repository_code, generate_unified_diff, generate_github_suggestion_block
+
+    # 1. Python heavy SDK client construction inside loop
+    py_bad = (
+        "import boto3\n"
+        "def upload_items(items):\n"
+        "    for item in items:\n"
+        "        s3 = boto3.client('s3')\n"
+        "        s3.put_object(Bucket='b', Key=item, Body=b'x')\n"
+    )
+    py_audit = audit_source_code(py_bad, language="python", file_path="uploader.py")
+    py_vtypes = [v["violation_type"] for v in py_audit["violations"]]
+    assert ViolationType.HEAVY_CLIENT_INSTANTIATION_IN_LOOP in py_vtypes
+
+    # 2. TypeScript / JavaScript loop hazards (JSON.stringify, new RegExp, fs.readFileSync, new OpenAI)
+    ts_bad = (
+        "for (const row of rows) {\n"
+        "  const payload = JSON.stringify(row);\n"
+        "  const re = new RegExp(row.pattern);\n"
+        "  const raw = fs.readFileSync(row.path, 'utf-8');\n"
+        "  const ai = new OpenAI({ apiKey: key });\n"
+        "}\n"
+    )
+    ts_audit = audit_source_code(ts_bad, language="typescript", file_path="worker.ts")
+    ts_vtypes = [v["violation_type"] for v in ts_audit["violations"]]
+    assert ViolationType.JSON_SERIALIZE_IN_LOOP in ts_vtypes
+    assert ViolationType.INEFFICIENT_REGEX_IN_LOOP in ts_vtypes
+    assert ViolationType.SYNC_FILE_IO_IN_LOOP in ts_vtypes
+    assert ViolationType.HEAVY_CLIENT_INSTANTIATION_IN_LOOP in ts_vtypes
+
+    # 3. Deterministic refactor returns unified_diff and github_suggestion_markdown
+    ref_res = refactor_repository_code(
+        bad_snippet=py_bad,
+        violation_type=ViolationType.HEAVY_CLIENT_INSTANTIATION_IN_LOOP,
+        language_id="python",
+    )
+    assert "unified_diff" in ref_res
+    assert "--- a/code.py" in ref_res["unified_diff"]
+    assert "+++ b/code.py" in ref_res["unified_diff"]
+    assert ref_res["github_suggestion_markdown"].startswith("```suggestion\n")
+    assert ref_res["github_suggestion_markdown"].endswith("\n```")
+    assert generate_unified_diff("x = 1\n", "x = 2\n", "app/demo.py").startswith("--- a/app/demo.py")
+    assert generate_github_suggestion_block("x = 2").startswith("```suggestion\nx = 2\n```")
+
+
+def test_purza3_commercial_license_keys_opencollective_webhook_and_cli_diff_gate(tmp_path):
+    """Verify Purza 3: HMAC license key generation/verification, billing endpoints, Open Collective webhook, and CLI --diff gate."""
+    import subprocess
+    import sys
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.pricing import LicenseKeyManager
+    from app.auth.jwt import create_tokens
+    from app.auth.roles import Role
+
+    # 1. Direct LicenseKeyManager cryptographic verification & tamper rejection
+    key = LicenseKeyManager.generate_license_key(org_id=1, tier="enterprise", seats=25, expires_days=90)
+    assert key.startswith("GC-LIC-")
+    verified = LicenseKeyManager.verify_license_key(key)
+    assert verified["valid"] is True
+    assert verified["org_id"] == 1
+    assert verified["tier"] == "enterprise"
+    assert verified["seats"] == 25
+
+    tampered = key[:-4] + "0000"
+    assert LicenseKeyManager.verify_license_key(tampered)["valid"] is False
+
+    # 2. Billing API endpoints: /api/billing/license/issue, /api/billing/license/activate, /api/billing/webhooks/opencollective
+    client = TestClient(app)
+    tokens = create_tokens(user_id=1, org_id=1, role=Role.SUPERADMIN.value)
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    issue_resp = client.post(
+        "/api/billing/license/issue",
+        headers=headers,
+        json={"org_id": 1, "tier": "pro", "seats": 10, "expires_days": 365},
+    )
+    assert issue_resp.status_code == 200
+    issued_key = issue_resp.json()["license_key"]
+
+    act_resp = client.post(
+        "/api/billing/license/activate",
+        headers=headers,
+        json={"org_id": 1, "license_key": issued_key},
+    )
+    assert act_resp.status_code == 200
+    assert act_resp.json()["status"] == "activated"
+    assert act_resp.json()["subscription"]["tier"] == "pro"
+    assert act_resp.json()["subscription"]["seats"] == 10
+
+    oc_resp = client.post(
+        "/api/billing/webhooks/opencollective",
+        headers=headers,
+        json={
+            "type": "order.processed",
+            "org_id": 1,
+            "amount_usd": 500.0,
+            "sponsor_slug": "global-cloud-corp",
+            "seats": 30,
+        },
+    )
+    assert oc_resp.status_code == 200
+    oc_data = oc_resp.json()
+    assert oc_data["assigned_tier"] == "enterprise"
+    assert oc_data["subscription"]["tier"] == "enterprise"
+    assert oc_data["license_key"].startswith("GC-LIC-")
+
+    # 3. CLI --diff PR gatekeeper mode on a unified diff file
+    diff_file = tmp_path / "pr_changes.diff"
+    diff_file.write_text(
+        "--- a/clean_module.py\n"
+        "+++ b/clean_module.py\n"
+        "@@ -1,0 +1,2 @@\n"
+        "+def compute_sum(values):\n"
+        "+    return sum(values)\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [sys.executable, "-m", "app.main", "--path", ".", "--diff", str(diff_file), "--threshold", "90", "--ci"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert proc.returncode == 0, f"Expected CLI --diff on clean hunk to pass, got: {proc.stdout}\n{proc.stderr}"
+    assert "[PASSED]" in proc.stdout
+
+
+

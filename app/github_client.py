@@ -767,6 +767,33 @@ def post_pr_carbon_comment(
     if len(violations) > 8:
         comment_body += f"\n*... and {len(violations) - 8} additional minor issues documented in full audit report.*\n"
 
+    if violations:
+        try:
+            from app.optimizer import _synthesize_green_code, generate_unified_diff
+            patch_blocks = []
+            for idx, v in enumerate(violations[:3], 1):
+                fpath = v.get("file_path", "code.py")
+                line = v.get("line_number", 1)
+                vtype = v.get("violation_type", "NESTED_LOOPS")
+                lang = v.get("language", "python")
+                snippet = v.get("snippet") or v.get("context_code") or "# code snippet"
+                synth = _synthesize_green_code(snippet, vtype, language_id=lang)
+                suggestion_md = synth.get("github_suggestion_markdown", "")
+                udiff = generate_unified_diff(snippet, synth.get("refactored_code", ""), file_path=fpath)
+                patch_blocks.append(
+                    f"#### {idx}. `{fpath}:{line}` — {v.get('title', vtype)} (-{synth.get('energy_reduction_pct', 30)}% Energy)\n"
+                    f"**GitHub 1-Click Suggestion:**\n{suggestion_md}\n\n"
+                    f"**Unified Patch (`.diff`):**\n```diff\n{udiff.strip()}\n```"
+                )
+            if patch_blocks:
+                comment_body += (
+                    "\n<details>\n<summary><b>Automated Code Refactoring Patches & GitHub Suggestions</b></summary>\n\n"
+                    + "\n\n".join(patch_blocks)
+                    + "\n</details>\n"
+                )
+        except Exception:
+            pass
+
     comment_body += (
         f"\n<details>\n<summary><b>Green Software Foundation (GSF) Standards Reference</b></summary>\n\n"
         f"- **Specification**: Software Carbon Intensity (SCI) v1.0 standard\n"

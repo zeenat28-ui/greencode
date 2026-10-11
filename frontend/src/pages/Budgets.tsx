@@ -26,6 +26,7 @@ export default function Budgets() {
     reason: string;
     projectedPct: number;
   } | null>(null);
+  const [focusReport, setFocusReport] = useState<any>(null);
 
   const mapBudgetRows = useCallback((rawList: any[]): TeamBudgetRow[] => {
     return rawList.map((b: any) => {
@@ -60,6 +61,15 @@ export default function Budgets() {
           if (rows.length > 0 && !rows.some((r) => r.team === selectedSimTeam)) {
             setSelectedSimTeam(rows[0].team);
           }
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/billing/focus/sample-report')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.reconciled_items)) {
+          setFocusReport(data);
         }
       })
       .catch(() => {});
@@ -309,8 +319,72 @@ export default function Budgets() {
           </div>
         </div>
       </div>
+
+      {/* FinOps Foundation FOCUS 1.4 Cloud Billing & Carbon Reconciliation */}
+      {focusReport && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div>
+              <h2 className="font-semibold text-slate-900">FinOps Foundation FOCUS 1.4 Cloud Billing &amp; Carbon Reconciliation</h2>
+              <p className="text-xs text-slate-500">
+                Reconciles BilledCost and EffectiveCost against regional PUE, grid intensity (gCO2e/kWh), and AWS Graviton right-sizing
+              </p>
+            </div>
+            <div className="flex gap-2 text-xs font-semibold">
+              <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Savings: ${focusReport.summary?.identified_monthly_usd_savings}/mo (${focusReport.summary?.identified_annual_usd_savings}/yr)
+              </span>
+              <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                Avoidable: {focusReport.summary?.identified_co2e_savings_kg} kg CO2e/mo
+              </span>
+            </div>
+          </div>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-200">
+              <tr>
+                <th className="px-5 py-3">Service / Resource</th>
+                <th className="px-5 py-3">SKU</th>
+                <th className="px-5 py-3">Region (Grid)</th>
+                <th className="px-5 py-3">EffectiveCost</th>
+                <th className="px-5 py-3">Energy &amp; Carbon</th>
+                <th className="px-5 py-3">Potential Savings</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {(focusReport.reconciled_items || []).map((item: any, idx: number) => (
+                <tr key={idx} className="hover:bg-slate-50/50">
+                  <td className="px-5 py-3.5">
+                    <div className="font-semibold text-slate-900">{item.service_name}</div>
+                    <div className="text-xs font-mono text-slate-400">{item.resource_id}</div>
+                  </td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-800">{item.resource_type}</td>
+                  <td className="px-5 py-3.5 text-xs text-slate-600">
+                    {item.region_id} ({item.grid_intensity_gco2_kwh} gCO2/kWh)
+                  </td>
+                  <td className="px-5 py-3.5 font-mono font-semibold text-slate-900">
+                    ${Number(item.effective_cost_usd).toFixed(2)}
+                  </td>
+                  <td className="px-5 py-3.5 text-xs text-slate-700 font-mono">
+                    {item.estimated_energy_kwh} kWh &middot; {item.total_co2e_kg} kg CO2e
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {item.potential_monthly_usd_savings > 0 ? (
+                      <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+                        -${item.potential_monthly_usd_savings}/mo (-{item.potential_co2e_savings_kg} kg CO2e)
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">Optimal Graviton / Clean Grid</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
+
 
 

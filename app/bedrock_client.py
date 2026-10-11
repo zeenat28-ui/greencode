@@ -301,12 +301,12 @@ class BedrockClient:
         )
 
     def _to_converse(
-        self, messages: List[Dict[str, str]]
+        self, messages: List[Dict[str, str]], model_id: Optional[str] = None
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """Split a system prompt out and map the rest onto provider roles."""
         system_parts: List[str] = []
         mapped: List[Dict[str, Any]] = []
-        active = self._healthy_model or self.model or DEFAULT_MODELS[0]
+        active = model_id or self._healthy_model or self.model or DEFAULT_MODELS[0]
         roles = _PROVIDER_ROLES.get(_provider_of(active), _DEFAULT_ROLES)
 
         for message in messages:
@@ -343,10 +343,10 @@ class BedrockClient:
         candidates: List[str] = []
         if model:
             candidates.append(model)
+        if self._healthy_model and self._healthy_model not in candidates:
+            candidates.append(self._healthy_model)
         if self.model and self.model not in candidates:
             candidates.append(self.model)
-        if self._healthy_model and self._healthy_model not in candidates:
-            candidates.insert(0, self._healthy_model)
         for fallback in DEFAULT_MODELS:
             if fallback not in candidates:
                 candidates.append(fallback)
@@ -377,11 +377,10 @@ class BedrockClient:
 
         last_error: Optional[BedrockError] = None
         for candidate in candidates:
-            self._healthy_model = candidate
             t0 = time.perf_counter()
             try:
                 runtime = self._runtime()
-                system_block, mapped = self._to_converse(messages)
+                system_block, mapped = self._to_converse(messages, model_id=candidate)
                 inference: Dict[str, Any] = {
                     "maxTokens": max_tokens,
                     "temperature": temperature,

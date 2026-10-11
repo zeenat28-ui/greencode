@@ -179,6 +179,25 @@ class TestRefactorGate(unittest.TestCase):
             r = refactor(QUADRATIC, language="python", fallback="FALLBACK")
         self.assertEqual(r.refactored, "FALLBACK")
 
+    def test_self_healing_retry_recovers_after_initial_rejection(self):
+        """If attempt 1 fails verification, attempt 2 receives the error feedback and recovers."""
+        client = mock.Mock(spec=HuggingFaceClient)
+        client.chat.side_effect = [
+            (SUBTLE_BREAK, LLMUsage(10, 20), "test/model"),
+            (CORRECT_O_N, LLMUsage(15, 25), "test/model"),
+        ]
+        with mock.patch("app.llm_refactor.get_client", return_value=client):
+            r = refactor(QUADRATIC, language="python")
+        self.assertTrue(r.accepted)
+        self.assertEqual(r.source, "llm")
+        self.assertEqual(r.attempts, 2)
+        self.assertIn("self-healed on attempt 2", r.reason)
+        self.assertEqual(r.usage["prompt_tokens"], 25)
+        self.assertEqual(r.usage["completion_tokens"], 45)
+        # Verify feedback turn was appended to messages on the second call
+        second_call_messages = client.chat.call_args_list[1][0][0]
+        self.assertTrue(any("rejected by our verification gate" in m["content"] for m in second_call_messages))
+
 
 class TestClientErrorClassification(unittest.TestCase):
     def setUp(self):

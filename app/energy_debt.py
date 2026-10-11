@@ -59,6 +59,16 @@ class EnergyDebtTracker:
         "RECURSION_WITHOUT_MEMOIZATION": {"duration_1k_s": 1.60, "cpu_pct": 94.0, "mem_mb": 512.0},
         "LINEAR_LOOKUP_IN_LOOP": {"duration_1k_s": 0.48, "cpu_pct": 70.0, "mem_mb": 160.0},
         "EXCESSIVE_LOGGING_IN_LOOP": {"duration_1k_s": 0.38, "cpu_pct": 50.0, "mem_mb": 128.0},
+        "PANDAS_ITERROWS_IN_LOOP": {"duration_1k_s": 1.45, "cpu_pct": 86.0, "mem_mb": 512.0},
+        # AI / ML Carbon Waste Profiles (PyTorch / TensorFlow / LLM inference)
+        "ML_CPU_ONLY_TENSOR_OPS": {"duration_1k_s": 2.40, "cpu_pct": 95.0, "mem_mb": 1024.0},
+        "ML_DATALOADER_SINGLE_WORKER": {"duration_1k_s": 1.60, "cpu_pct": 68.0, "mem_mb": 768.0},
+        "ML_GRAD_ENABLED_INFERENCE": {"duration_1k_s": 1.95, "cpu_pct": 90.0, "mem_mb": 1536.0},
+        "ML_MISSING_INFERENCE_MODE": {"duration_1k_s": 1.20, "cpu_pct": 82.0, "mem_mb": 1024.0},
+        "ML_FP32_NO_AMP": {"duration_1k_s": 2.20, "cpu_pct": 94.0, "mem_mb": 2048.0},
+        "ML_EPOCH_CHECKPOINT_SPAM": {"duration_1k_s": 1.35, "cpu_pct": 62.0, "mem_mb": 1024.0},
+        "ML_REDUNDANT_MODEL_RELOAD": {"duration_1k_s": 2.80, "cpu_pct": 88.0, "mem_mb": 2048.0},
+        "ML_UNBOUNDED_TOKEN_GENERATION": {"duration_1k_s": 2.50, "cpu_pct": 92.0, "mem_mb": 1536.0},
     }
 
     SEVERITY_FALLBACK_PROFILES: Dict[str, Dict[str, float]] = {

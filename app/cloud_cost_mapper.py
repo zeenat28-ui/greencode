@@ -93,25 +93,54 @@ class CloudCostMapper:
         "Standard_D8s_v5": "c8g.2xlarge",
     }
 
-    # Regional grid carbon intensity baselines (gCO2eq/kWh)
+    # Regional grid carbon intensity baselines (gCO2eq/kWh) across AWS, GCP, and Azure
     REGIONAL_CARBON_FACTORS = {
+        # AWS
         "us-east-1": 390.0,
         "us-east-2": 410.0,
+        "us-west-1": 215.0,
         "us-west-2": 215.0,
-        "ca-central-1": 28.0,
+        "ca-central-1": 28.0,  # Montreal (Hydro-Québec grid)
         "eu-west-1": 280.0,
         "eu-west-2": 185.0,
+        "eu-west-3": 44.0,
         "eu-central-1": 340.0,
         "eu-north-1": 18.0,
         "ap-southeast-1": 490.0,
         "ap-northeast-1": 460.0,
         "ap-south-1": 650.0,
+        # GCP
+        "us-central1": 420.0,
+        "us-west1": 140.0,
+        "northamerica-northeast1": 28.0,
+        "europe-west1": 165.0,
+        "europe-west2": 185.0,
+        "europe-west3": 340.0,
+        "europe-west9": 44.0,
+        "europe-north1": 45.0,
+        "asia-east1": 510.0,
+        "asia-southeast1": 490.0,
+        # Azure
+        "eastus": 390.0,
+        "eastus2": 390.0,
+        "westus2": 140.0,
+        "centralus": 420.0,
+        "canadacentral": 40.0,
+        "northeurope": 280.0,
+        "westeurope": 295.0,
+        "swedencentral": 18.0,
+        "norwayeast": 22.0,
         "default": 380.0,
     }
 
     @classmethod
     def _resolve_hourly_rate(cls, service_type: str, rates: Dict[str, float]) -> float:
-        st_lower = service_type.lower().replace(".", "_")
+        st_lower = service_type.lower().replace(".", "_").replace("-", "_")
+        direct_key = f"{st_lower}_per_hr"
+        if direct_key in rates:
+            return rates[direct_key]
+        if st_lower.startswith("standard_") and f"{st_lower[len('standard_'):]}_per_hr" in rates:
+            return rates[f"{st_lower[len('standard_'):]}_per_hr"]
         exact_key = f"ec2_{st_lower}_per_hr" if not st_lower.startswith("ec2_") else f"{st_lower}_per_hr"
         if exact_key in rates:
             return rates[exact_key]
@@ -137,7 +166,12 @@ class CloudCostMapper:
             return rates.get("ec2_c5_xlarge_per_hr", 0.1700)
         if "t3_xlarge" in st_lower:
             return rates.get("ec2_t3_xlarge_per_hr", 0.1664)
-        return rates.get("ec2_t3_medium_per_hr", 0.0416)
+        return (
+            rates.get("ec2_t3_medium_per_hr")
+            or rates.get("e2_standard_4_per_hr")
+            or rates.get("d4s_v5_per_hr")
+            or 0.0416
+        )
 
     @classmethod
     def calculate_cost(
@@ -163,7 +197,13 @@ class CloudCostMapper:
         # 2. Hyperscaler compute billing component
         st_lower = service_type.lower()
         if "lambda" in st_lower or "function" in st_lower:
-            compute_cost = duration_seconds * rates.get("lambda_per_gb_second", 0.0000166667)
+            gb_sec_rate = (
+                rates.get("lambda_per_gb_second")
+                or rates.get("cloud_functions_per_gb_second")
+                or rates.get("functions_per_gb_second")
+                or 0.0000166667
+            )
+            compute_cost = duration_seconds * gb_sec_rate
         else:
             compute_cost = hours * cls._resolve_hourly_rate(service_type, rates)
 

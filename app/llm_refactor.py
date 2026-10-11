@@ -106,10 +106,12 @@ class RefactorOutcome:
     reason: str
     source: str                    # "llm" | "fallback" | "none"
     model: Optional[str] = None
+    provider: Optional[str] = None
     language: str = "python"
     usage: Dict[str, int] = field(default_factory=dict)
     similarity: float = 0.0
     behaviour_verified: Optional[bool] = None
+    attempts: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -117,9 +119,11 @@ class RefactorOutcome:
             "reason": self.reason,
             "source": self.source,
             "model": self.model,
+            "provider": self.provider,
             "language": self.language,
             "similarity": round(self.similarity, 3),
             "behaviour_verified": self.behaviour_verified,
+            "attempts": self.attempts,
             "usage": self.usage,
             "original": self.original,
             "refactored": self.refactored,
@@ -296,6 +300,44 @@ def _behaviour_matches(original: str, refactored: str) -> Tuple[bool, str]:
 MIN_SIMILARITY = 0.25
 
 
+def _verify_candidate(
+    code: str, candidate: str, language: str
+) -> Tuple[bool, str, float, Optional[bool]]:
+    """Run all static and dynamic verification gates on a candidate rewrite.
+
+    Returns ``(passed, reason, similarity, behaviour_verified)``.
+    """
+    if not candidate.strip():
+        return False, "model returned no code", 0.0, None
+    if _looks_like_stub(candidate):
+        return False, "model returned a stub rather than a refactor", 0.0, None
+    if language == "python" and not _python_compiles(candidate):
+        return False, "refactor does not compile", 0.0, None
+
+    sim = _similarity(code, candidate)
+    if sim < MIN_SIMILARITY:
+        return (
+            False,
+            f"refactor too dissimilar to the original (similarity {sim:.2f})",
+            sim,
+            None,
+        )
+
+    behaviour: Optional[bool] = None
+    if language == "python":
+        matched, detail = _behaviour_matches(code, candidate)
+        behaviour = matched
+        if not matched:
+            return False, f"rejected: {detail}", sim, behaviour
+
+    return (
+        True,
+        "verified: compiles, similar, and behaviour-preserving on probe inputs",
+        sim,
+        behaviour,
+    )
+
+
 def refactor(
     code: str,
     *,
@@ -304,23 +346,17 @@ def refactor(
     guidance: Optional[str] = None,
     fallback: Optional[str] = None,
     max_tokens: int = 1024,
+    max_attempts: int = 2,
 ) -> RefactorOutcome:
-    """Request an energy-focused refactor and verify it before returning.
+    """Request an energy-focused refactor, self-heal on rejection, and verify before returning.
 
-    Args:
-        code: the original snippet.
-        language: target language; behaviour checking currently covers Python.
-        violation: the rule that fired, e.g. ``"nested_loops"``.
-        guidance: the analyser's own remediation advice, passed to the model so
-            the rewrite matches the rule that actually triggered.
-        fallback: a deterministic suggestion from the rule engine, returned when
-            the model's output is rejected or unavailable.
-
-    The returned :class:`RefactorOutcome` always says which path was taken and
-    why, so the UI can be honest about whether a suggestion is model-generated
-    and verified.
+    When the first LLM candidate fails compilation, similarity, or behaviour
+    verification, ``refactor`` feeds the exact rejection reason back into a
+    second self-healing turn so the model can synthesize a corrected patch
+    before falling back to the deterministic rule engine.
     """
     language = (language or "python").lower()
+    max_attempts = max(1, int(max_attempts))
 
     if fallback is not None and fallback.strip() == code.strip():
         # A "fallback" identical to the input is not a suggestion.
@@ -344,27 +380,14 @@ def refactor(
     parts.append("\nREFACTORED CODE (output only the code):")
 
     user_prompt = "\n".join(parts)
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
 
     try:
         client, provider = _select_client()
-        content, usage, model = client.chat(
-            [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=max_tokens,
-            temperature=0.0,
-        )
-    except LLMError as exc:
-        return RefactorOutcome(
-            original=code,
-            refactored=(fallback if fallback else code),
-            accepted=fallback is not None,
-            reason=f"model unavailable ({exc.kind}): {exc.message}",
-            source="fallback" if fallback else "none",
-            language=language,
-        )
-    except Exception as exc:  # defensive: never let the API path 500 the request
+    except Exception as exc:
         return RefactorOutcome(
             original=code,
             refactored=(fallback if fallback else code),
@@ -374,56 +397,105 @@ def refactor(
             language=language,
         )
 
-    candidate = _strip_fences(content)
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
+    last_reason = "not attempted"
+    last_sim = 0.0
+    last_behaviour: Optional[bool] = None
+    last_model: Optional[str] = None
+    attempts_made = 0
 
-    def reject(reason: str, similarity: float = 0.0, behaviour: Optional[bool] = None):
-        return RefactorOutcome(
-            original=code,
-            refactored=(fallback if fallback else code),
-            accepted=fallback is not None,
-            reason=reason,
-            source="fallback" if fallback else "none",
-            model=model,
-            language=language,
-            usage={"prompt_tokens": usage.prompt_tokens,
-                   "completion_tokens": usage.completion_tokens},
-            similarity=similarity,
-            behaviour_verified=behaviour,
-        )
+    for attempt in range(1, max_attempts + 1):
+        try:
+            content, usage, model = client.chat(
+                messages,
+                max_tokens=max_tokens,
+                temperature=0.0,
+            )
+        except LLMError as exc:
+            if attempt == 1:
+                return RefactorOutcome(
+                    original=code,
+                    refactored=(fallback if fallback else code),
+                    accepted=fallback is not None,
+                    reason=f"model unavailable ({exc.kind}): {exc.message}",
+                    source="fallback" if fallback else "none",
+                    provider=provider,
+                    language=language,
+                )
+            break
+        except Exception as exc:  # defensive: never let the API path 500 the request
+            if attempt == 1:
+                return RefactorOutcome(
+                    original=code,
+                    refactored=(fallback if fallback else code),
+                    accepted=fallback is not None,
+                    reason=f"unexpected error: {type(exc).__name__}: {exc}",
+                    source="fallback" if fallback else "none",
+                    provider=provider,
+                    language=language,
+                )
+            break
 
-    if not candidate.strip():
-        return reject("model returned no code")
-    if _looks_like_stub(candidate):
-        return reject("model returned a stub rather than a refactor")
+        attempts_made = attempt
+        last_model = model
+        total_prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+        total_completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
 
-    if language == "python" and not _python_compiles(candidate):
-        return reject("refactor does not compile")
+        candidate = _strip_fences(content)
+        passed, reason, sim, behaviour = _verify_candidate(code, candidate, language)
+        if passed:
+            return RefactorOutcome(
+                original=code,
+                refactored=candidate,
+                accepted=True,
+                reason=reason if attempt == 1 else f"{reason} (self-healed on attempt {attempt})",
+                source="llm",
+                model=model,
+                provider=provider,
+                language=language,
+                usage={
+                    "prompt_tokens": total_prompt_tokens,
+                    "completion_tokens": total_completion_tokens,
+                },
+                similarity=sim,
+                behaviour_verified=behaviour,
+                attempts=attempts_made,
+            )
 
-    sim = _similarity(code, candidate)
-    if sim < MIN_SIMILARITY:
-        return reject(
-            f"refactor too dissimilar to the original (similarity {sim:.2f})", sim
-        )
+        last_reason = reason
+        last_sim = sim
+        last_behaviour = behaviour
 
-    behaviour: Optional[bool] = None
-    if language == "python":
-        matched, detail = _behaviour_matches(code, candidate)
-        behaviour = matched
-        if not matched:
-            return reject(f"rejected: {detail}", sim, behaviour)
+        if attempt < max_attempts:
+            messages.append({"role": "assistant", "content": candidate or content})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Your previous refactored code was rejected by our verification gate ({reason}). "
+                        f"Please fix this issue and output ONLY the corrected, behaviour-preserving {language} code "
+                        "with the exact same function signature and return values."
+                    ),
+                }
+            )
 
     return RefactorOutcome(
         original=code,
-        refactored=candidate,
-        accepted=True,
-        reason="verified: compiles, similar, and behaviour-preserving on probe inputs",
-        source="llm",
-        model=model,
+        refactored=(fallback if fallback else code),
+        accepted=fallback is not None,
+        reason=last_reason,
+        source="fallback" if fallback else "none",
+        model=last_model,
+        provider=provider,
         language=language,
-        usage={"prompt_tokens": usage.prompt_tokens,
-               "completion_tokens": usage.completion_tokens},
-        similarity=sim,
-        behaviour_verified=behaviour,
+        usage={
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+        },
+        similarity=last_sim,
+        behaviour_verified=last_behaviour,
+        attempts=attempts_made,
     )
 
 

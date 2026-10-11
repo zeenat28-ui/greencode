@@ -77,9 +77,12 @@ class GreenDeployPredictor:
             total_joules_1k = base_joules_1k + viol_joules_1k + score_overhead_joules_1k
 
         annual_1k_batches = (max(1, daily_invocations) * 365.0) / 1000.0
-        annual_kwh = (total_joules_1k * annual_1k_batches) / 3_600_000.0
-        annual_co2_kg = viol_co2_kg + ((score_overhead_joules_1k * annual_1k_batches) / 3_600_000.0) * 0.380
-        annual_cost_usd = viol_cost_usd + (annual_kwh * EnergyDebtTracker.ELECTRICITY_KWH_USD)
+        # viol_cost_usd and viol_co2_kg already include electricity and carbon for viol_joules_1k,
+        # so only bill non-violation joules (baseline + unmodeled score overhead) on top.
+        non_viol_joules_1k = max(0.0, total_joules_1k - viol_joules_1k)
+        non_viol_kwh = (non_viol_joules_1k * annual_1k_batches) / 3_600_000.0
+        annual_co2_kg = viol_co2_kg + (non_viol_kwh * 0.380)
+        annual_cost_usd = viol_cost_usd + (non_viol_kwh * EnergyDebtTracker.ELECTRICITY_KWH_USD)
 
         return {
             "joules_1k": total_joules_1k,
@@ -97,8 +100,8 @@ class GreenDeployPredictor:
         warn_threshold_pct: Optional[float] = None,
     ) -> DeployPredictionResult:
         """Analyze PR diff and output definitive deployment gating verdict."""
-        warn_limit = warn_threshold_pct or cls.WARN_THRESHOLD_PCT
-        block_limit = block_threshold_pct or cls.BLOCK_THRESHOLD_PCT
+        warn_limit = warn_threshold_pct if warn_threshold_pct is not None else cls.WARN_THRESHOLD_PCT
+        block_limit = block_threshold_pct if block_threshold_pct is not None else cls.BLOCK_THRESHOLD_PCT
 
         base_score = float(base_audit.get("green_score", 100.0))
         incoming_score = float(incoming_audit.get("green_score", 100.0))

@@ -135,6 +135,14 @@ class TestBedrockChat(unittest.TestCase):
         client, runtime = self._client()
         client.chat([{"role": "human", "content": "x"}], stop=["```"])
         self.assertEqual(runtime.calls[0]["inferenceConfig"]["stopSequences"], ["```"])
+
+    def test_explicit_model_parameter_takes_precedence_over_cached_healthy_model(self):
+        client, runtime = self._client()
+        client._healthy_model = DEFAULT_MODELS[0]
+        explicit_haiku = "anthropic.claude-3-5-haiku-20241022-v1:0"
+        _, _, used = client.chat([{"role": "human", "content": "x"}], model=explicit_haiku)
+        self.assertEqual(used, explicit_haiku)
+        self.assertEqual(runtime.calls[0]["modelId"], explicit_haiku)
 class TestBedrockCredentials(unittest.TestCase):
 
     def test_fails_closed_without_credentials(self):

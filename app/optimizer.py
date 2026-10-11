@@ -555,6 +555,12 @@ def _refactor_string_concat_code(snippet: str) -> str:
     lines = snippet.splitlines()
     transformed_lines = []
     accumulator_var = "chunks"
+    base_indent = ""
+
+    for line in lines:
+        if line.strip():
+            base_indent = line[: len(line) - len(line.lstrip())]
+            break
 
     for line in lines:
         if "+=" in line:
@@ -562,7 +568,7 @@ def _refactor_string_concat_code(snippet: str) -> str:
             accumulator_var = parts[0].strip()
             break
 
-    transformed_lines.append(f"{accumulator_var}_chunks = []")
+    transformed_lines.append(f"{base_indent}{accumulator_var}_chunks = []")
     for line in lines:
         if "+=" in line and accumulator_var in line:
             val = line.split("+=")[1].strip()
@@ -571,7 +577,7 @@ def _refactor_string_concat_code(snippet: str) -> str:
         else:
             transformed_lines.append(line)
 
-    transformed_lines.append(f"{accumulator_var} = ''.join({accumulator_var}_chunks)")
+    transformed_lines.append(f"{base_indent}{accumulator_var} = ''.join({accumulator_var}_chunks)")
     return "\n".join(transformed_lines)
 
 
@@ -942,13 +948,21 @@ def refactor_repository_code(
         "reason": outcome.reason,
         "similarity": round(outcome.similarity, 3),
         "behaviour_verified": outcome.behaviour_verified,
+        "attempts": getattr(outcome, "attempts", 1),
+        "provider": getattr(outcome, "provider", None),
         "prompt_tokens": outcome.usage.get("prompt_tokens", 0),
         "completion_tokens": outcome.usage.get("completion_tokens", 0),
     }
 
     if outcome.accepted and outcome.source == "llm":
         synthesized["refactored_code"] = outcome.refactored
-        synthesized["model_used"] = f"HuggingFace {outcome.model} (verified)"
+        provider_label = (
+            "Amazon Bedrock"
+            if getattr(outcome, "provider", None) == "aws_bedrock"
+            or (outcome.model and outcome.model.startswith(("anthropic.", "amazon.", "meta.")))
+            else "HuggingFace"
+        )
+        synthesized["model_used"] = f"{provider_label} {outcome.model} (verified)"
     else:
         synthesized["model_used"] = "Deterministic rule engine (LLM output rejected)"
 

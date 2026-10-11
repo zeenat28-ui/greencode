@@ -670,6 +670,31 @@ def test_kepler_prometheus_parser_does_not_double_count_rapl_hierarchy():
     assert abs(by_pod["worker-1"].power_watts - 1.25) < 1e-4
 
 
+def test_cloud_cost_mapper_gcp_and_azure_rates_and_regions():
+    gcp_vm = CloudCostMapper.calculate_cost(
+        provider="gcp",
+        region="us-west1",
+        service_type="e2_standard_4",
+        duration_seconds=3600.0,
+        energy_joules=36000.0,
+    )
+    assert gcp_vm.provider == "GCP"
+    assert abs(gcp_vm.compute_cost_usd - 0.1340) < 1e-4
+    assert abs(gcp_vm.carbon_intensity_g_per_kwh - 140.0) < 1e-4
+
+    azure_vm = CloudCostMapper.calculate_cost(
+        provider="azure",
+        region="swedencentral",
+        service_type="Standard_D4s_v5",
+        duration_seconds=3600.0,
+        energy_joules=36000.0,
+    )
+    assert azure_vm.provider == "AZURE"
+    assert abs(azure_vm.compute_cost_usd - 0.1920) < 1e-4
+    assert abs(azure_vm.carbon_intensity_g_per_kwh - 18.0) < 1e-4
+
+
+
 
 
 

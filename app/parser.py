@@ -1567,12 +1567,13 @@ def audit_source_code(source_code: str, language: str = "python", file_path: str
             pass  # no-op
 
     # 3. Universal Lexical Scope & Pattern Analyzer (Tier 2 - covers ALL 500+ languages)
-    univ_violations = audit_universal_lexical_scope(source_code, language, file_path)
-    for uv in univ_violations:
-        key = (uv["line_number"], uv["violation_type"])
-        if key not in seen_v_keys:
-            seen_v_keys.add(key)
-            all_violations.append(uv)
+    if language not in ("md", "markdown", "txt", "rst"):
+        univ_violations = audit_universal_lexical_scope(source_code, language, file_path)
+        for uv in univ_violations:
+            key = (uv["line_number"], uv["violation_type"])
+            if key not in seen_v_keys:
+                seen_v_keys.add(key)
+                all_violations.append(uv)
 
     # 3b. Declarative Custom Rules (.greencode-rules.yaml)
     norm_fp = (file_path or "").replace("\\", "/").lower()

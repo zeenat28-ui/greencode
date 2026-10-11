@@ -1,6 +1,6 @@
 """GreenCode Auditor — Eco-Refactored Heavy Pipeline.
 
-IBM Bob 2.0 Plan Mode transformation of samples/heavy_pipeline.py.
+Deterministic AST & Amazon Bedrock Verification Gate transformation of samples/heavy_pipeline.py.
 All 4 GSF anti-patterns eliminated:
   1. O(N^3) deep nested loops  → itertools.product() linear generator pipeline
   2. Quadratic '+=' string concat inside loop → list.append() + ''.join()

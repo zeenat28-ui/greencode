@@ -4,7 +4,7 @@ Tests all 7 system layers under realistic operational conditions:
 1. Multi-Language Tree-sitter CST Parsing (Speed & Detection Precision)
 2. Live Regional Grid Telemetry (Electricity Maps & Cache Invalidation)
 3. Dynamic Execution Profiling & GSF SCI Model (Hardware Telemetry)
-4. AI Multi-Language Eco-Refactoring (IBM Bob 2.0 Engine & Latency)
+4. AI Multi-Language Eco-Refactoring (Amazon Bedrock & Deterministic Verifier)
 5. Pre-flight Repository Ingestion (Safety & Media Asset Filtering)
 6. CI/CD Gatekeeper Evaluation (Quality Threshold Enforcement)
 7. SQLite Analytics Persistence & Aggregations
@@ -192,10 +192,10 @@ class ScenarioBenchmarkRunner:
         }
 
     # ----------------------------------------------------
-    # SCENARIO 4: Live AI Eco-Refactoring (IBM Bob 2.0 Engine)
+    # SCENARIO 4: Live AI Eco-Refactoring (Amazon Bedrock & Verifier)
     # ----------------------------------------------------
     def scenario_4_ai_refactoring(self):
-        print("\n[Scenario 4/7] Testing Live GreenCode AI Eco-Refactoring via IBM Bob 2.0 Engine...")
+        print("\n[Scenario 4/7] Testing Live GreenCode AI Eco-Refactoring via Amazon Bedrock & Verifier...")
         
         test_cases = [
             ("python", "NESTED_LOOPS_DEPTH_3+", "for i in range(10):\n    for j in range(10):\n        for k in range(10):\n            val = i*j*k"),

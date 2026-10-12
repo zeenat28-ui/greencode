@@ -877,7 +877,7 @@ def attribute_process_energy(
     best_method = caps.get("best_available", "model")
     host_watts = model_power_watts(cpu_percent=min(100.0, cpu_share * 100.0 * logical_cores), memory_mb=avg_rss_mb)
     host_joules = max(0.0, host_watts * wall_dt)
-    dram_joules = (avg_rss_mb / 1024.0) * MEMORY_WATTS_PER_GB * wall_dt
+    dram_joules = (avg_rss_mb / 1024.0) * MEMORY_WATTS_PER_GIB * wall_dt
     process_joules = round(host_joules * cpu_share + dram_joules, 6)
 
     return {

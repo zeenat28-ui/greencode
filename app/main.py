@@ -709,12 +709,10 @@ _ENTERPRISE_DASHBOARD_HTML = os.path.join(os.path.dirname(__file__), "static", "
 @app.get("/settings/org", response_class=FileResponse, include_in_schema=False)
 @app.get("/settings/security", response_class=FileResponse, include_in_schema=False)
 def serve_enterprise_dashboard():
-    """Serves the compiled React SPA when built, falling back to static dashboard HTML."""
-    spa_index = os.path.join(FRONTEND_DIST, "index.html")
-    if os.path.isfile(spa_index):
-        return FileResponse(spa_index)
+    """Serves the enterprise dashboard HTML or compiled React SPA."""
     if os.path.isfile(_ENTERPRISE_DASHBOARD_HTML):
         return FileResponse(_ENTERPRISE_DASHBOARD_HTML)
+    spa_index = os.path.join(FRONTEND_DIST, "index.html")
     return FileResponse(spa_index)
 
 
@@ -1056,7 +1054,9 @@ def get_task_status_endpoint(
 
 
 @app.get("/api/profile/benchmarks", tags=["Runtime Profiler"])
-def list_profile_benchmarks_endpoint():
+def list_profile_benchmarks_endpoint(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
     """List the bundled benchmark scripts the runtime profiler is allowed to execute."""
     return {"benchmarks": list_benchmark_scripts()}
 
@@ -1103,6 +1103,7 @@ def profile_code_endpoint(
 def refactor_code_endpoint(
     request: Request,
     req: RefactorRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Refactor inefficient code using the GreenCode AI Synthesizer directives."""
     code_input = (req.snippet or req.source_code or "").strip()

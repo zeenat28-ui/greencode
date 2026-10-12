@@ -113,8 +113,9 @@ def _command_for(language: str, entry: str) -> Optional[List[str]]:
 # Injected before the target script. Samples peak RSS from VmHWM on a timer and
 # emits it on exit, so peak memory is measured *inside* the container rather
 # than inferred from the Docker daemon's own footprint.
-_MEM_PROBE = """import atexit, json, os, sys, threading, time
+_MEM_PROBE = """import atexit, json, os, sys, threading
 _peak = {"rss_kb": 0}
+_stop_evt = threading.Event()
 def _probe():
     try:
         with open("/proc/self/status") as _fh:
@@ -124,12 +125,11 @@ def _probe():
     except Exception:
         pass  # no-op
 def _loop():
-    while True:
+    while not _stop_evt.wait(0.05):
         _probe()
-        time.sleep(0.05)
 threading.Thread(target=_loop, daemon=True).start()
-atexit.register(lambda: sys.stderr.write(
-    "@@GREENCODE_META@@" + json.dumps(_peak) + "\\n"))
+atexit.register(lambda: (_stop_evt.set(), sys.stderr.write(
+    "@@GREENCODE_META@@" + json.dumps(_peak) + "\\n")))
 """
 
 _META_RE = re.compile(r"@@GREENCODE_META@@(\{.*?\})", re.DOTALL)

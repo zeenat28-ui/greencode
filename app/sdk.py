@@ -199,3 +199,13 @@ class GreenCodeSDK:
 
         return audit_cross_file_loops(files)
 
+    def export_otlp(self, **kwargs: Any) -> Dict[str, Any]:
+        """Serialize and optionally push OpenTelemetry (OTLP/HTTP v1 JSON) carbon & SCI metrics."""
+        from app.otel_exporter import build_otlp_metrics_payload, export_otlp_metrics
+
+        endpoint = kwargs.pop("endpoint", None)
+        headers = kwargs.pop("headers", None)
+        payload = build_otlp_metrics_payload(**kwargs)
+        return export_otlp_metrics(payload, endpoint=endpoint, headers=headers)
+
+

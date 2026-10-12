@@ -133,3 +133,27 @@ async def audit_repository_call_graph(payload: Dict[str, Any]):
     return audit_cross_file_loops(normalized)
 
 
+@router.post("/telemetry/otlp")
+async def export_otlp_telemetry(payload: Dict[str, Any]):
+    """Build and optionally push an OpenTelemetry (OTLP/HTTP v1 JSON) carbon & SCI metrics payload."""
+    from app.otel_exporter import build_otlp_metrics_payload, export_otlp_metrics
+
+    otlp_payload = build_otlp_metrics_payload(
+        service_name=str(payload.get("service_name") or "greencode-auditor"),
+        repository=str(payload.get("repository") or "zeenat28-ui/greencode"),
+        green_score=float(payload.get("green_score", 100.0)),
+        energy_joules=float(payload.get("energy_joules", 25.0)),
+        duration_seconds=float(payload.get("duration_seconds", 1.0)),
+        functional_unit=float(payload.get("functional_unit", 1.0)),
+        grid_intensity_gco2_kwh=float(payload.get("grid_intensity_gco2_kwh", 210.0)),
+        zone=str(payload.get("zone") or "IE"),
+        measurement_method=payload.get("measurement_method"),
+    )
+    return export_otlp_metrics(
+        otlp_payload,
+        endpoint=payload.get("endpoint"),
+        headers=payload.get("headers") if isinstance(payload.get("headers"), dict) else None,
+    )
+
+
+

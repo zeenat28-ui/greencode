@@ -39,3 +39,39 @@ def test_greencode_sdk_facade():
 
     if_res = sdk.export_if_manifest(component_name="sdk-service", energy_joules=25.0)
     assert "sdk-service" in if_res["tree"]["children"]
+
+
+def test_otlp_carbon_exporter_and_endpoint():
+    from pathlib import Path
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    sdk = GreenCodeSDK(default_zone="EU-SE")
+    res = sdk.export_otlp(
+        service_name="billing-engine",
+        green_score=94.5,
+        energy_joules=420.0,
+        zone="EU-SE",
+    )
+    assert res["mode"] == "dry_run_serialized"
+    payload = res["payload"]
+    assert "resourceMetrics" in payload
+    rm = payload["resourceMetrics"][0]
+    metrics = rm["scopeMetrics"][0]["metrics"]
+    metric_names = {m["name"] for m in metrics}
+    assert "greencode.sci.gco2e_per_unit" in metric_names
+    assert "greencode.energy.joules" in metric_names
+    assert "greencode.audit.green_score" in metric_names
+
+    client = TestClient(app)
+    resp = client.post(
+        "/api/audit/telemetry/otlp",
+        json={"service_name": "api-gw", "green_score": 98.0, "energy_joules": 110.0},
+    )
+    assert resp.status_code == 200
+    assert "resourceMetrics" in resp.json()["payload"]
+
+    otel_src = Path("app/otel_exporter.py").read_text(encoding="utf-8")
+    self_audit = sdk.audit_code(otel_src, language="python")
+    assert self_audit["green_score"] == 100.0
+

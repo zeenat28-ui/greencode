@@ -273,6 +273,7 @@ class TestProcessEnergyAttribution(unittest.TestCase):
     """Verify unprivileged per-process and Linux cgroup v2 energy attribution."""
 
     def test_cgroup_v2_cpu_stat_parsing(self):
+        import os
         import tempfile
         from app import energy_sensors as es
 
@@ -284,6 +285,7 @@ class TestProcessEnergyAttribution(unittest.TestCase):
             self.assertEqual(val, 482000)
 
     def test_attribute_process_energy_live_and_cgroup(self):
+        import os
         from app import energy_sensors as es
 
         res = es.attribute_process_energy(duration_seconds=0.02)
@@ -291,5 +293,34 @@ class TestProcessEnergyAttribution(unittest.TestCase):
         self.assertGreater(res["process_joules"], 0.0)
         self.assertIn(res["attribution_source"], ("proc_stat", "psutil_process"))
         self.assertIn("measurement_is_hardware", res)
+
+
+class TestHardwareCalibrationMatrix(unittest.TestCase):
+    """Verify non-linear hardware vs. TDP calibration and ARM64 vs. x86 comparison."""
+
+    def test_calibrate_tdp_estimate_confidence_bounds(self):
+        from app.calibration import calibrate_tdp_estimate, list_calibration_profiles
+
+        profiles = list_calibration_profiles()
+        self.assertGreaterEqual(len(profiles), 5)
+
+        cal = calibrate_tdp_estimate(
+            raw_model_joules=35.0,
+            cpu_percent=65.0,
+            duration_seconds=2.0,
+            profile_id="intel_xeon_rapl",
+        )
+        self.assertFalse(cal["measurement_is_hardware"])
+        self.assertGreater(cal["calibrated_joules"], 0.0)
+        self.assertLess(cal["ci_95_lower_joules"], cal["calibrated_joules"])
+        self.assertGreater(cal["ci_95_upper_joules"], cal["calibrated_joules"])
+
+    def test_graviton4_arm64_is_more_efficient_than_xeon_x86(self):
+        from app.calibration import compare_architecture_efficiency
+
+        comp = compare_architecture_efficiency(cpu_percent=70.0, duration_seconds=10.0)
+        self.assertGreater(comp["graviton4_vs_xeon_energy_reduction_pct"], 30.0)
+        self.assertEqual(comp["recommended_cloud_architecture"], "aws_graviton4_arm64")
+
 
 

@@ -1,9 +1,11 @@
 """Tests for Cross-File Inter-Procedural Call Graph Analyzer (app/call_graph.py)."""
 
+from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.call_graph import audit_cross_file_loops
 from app.main import app
+from app.parser import audit_source_code
 from app.sdk import GreenCodeSDK
 
 
@@ -41,6 +43,68 @@ def test_transitive_three_file_call_graph_detection():
     assert "db_layer.py:run_sql_query" in violation["call_chain"]
 
 
+def test_typescript_go_and_rust_cross_file_call_graph():
+    files = {
+        # TypeScript 2-file chain
+        "repo/userRepo.ts": (
+            "export async function queryUserById(db: any, id: string) {\n"
+            "  return await db.query('SELECT * FROM users WHERE id = $1', [id]);\n"
+            "}\n"
+        ),
+        "services/userService.ts": (
+            "import { queryUserById } from '../repo/userRepo';\n"
+            "export async function syncUsers(db: any, ids: string[]) {\n"
+            "  for (const id of ids) {\n"
+            "    await queryUserById(db, id);\n"
+            "  }\n"
+            "}\n"
+        ),
+        # Go 2-file chain
+        "pkg/http_client.go": (
+            "package pkg\n"
+            "import \"net/http\"\n"
+            "func FetchQuote(symbol string) (*http.Response, error) {\n"
+            "    return http.Get(\"https://quotes.internal/\" + symbol)\n"
+            "}\n"
+        ),
+        "pkg/portfolio.go": (
+            "package pkg\n"
+            "func RefreshPortfolio(symbols []string) {\n"
+            "    for _, sym := range symbols {\n"
+            "        FetchQuote(sym)\n"
+            "    }\n"
+            "}\n"
+        ),
+        # Rust 2-file chain
+        "src/storage.rs": (
+            "pub fn load_config_file(path: &str) -> String {\n"
+            "    std::fs::read_to_string(path).unwrap_or_default()\n"
+            "}\n"
+        ),
+        "src/worker.rs": (
+            "pub fn process_configs(paths: &[&str]) {\n"
+            "    for p in paths {\n"
+            "        load_config_file(p);\n"
+            "    }\n"
+            "}\n"
+        ),
+    }
+
+    report = audit_cross_file_loops(files)
+    assert report["total_violations"] == 3
+    by_lang = {v["language"]: v for v in report["violations"]}
+    assert set(by_lang.keys()) == {"typescript", "go", "rust"}
+    assert by_lang["typescript"]["violation_type"] == "CROSS_FILE_DB_IN_LOOP"
+    assert by_lang["go"]["violation_type"] == "CROSS_FILE_NETWORK_IN_LOOP"
+    assert by_lang["rust"]["violation_type"] == "CROSS_FILE_DB_IN_LOOP"
+
+
+def test_call_graph_module_self_audit_is_100():
+    src = Path("app/call_graph.py").read_text(encoding="utf-8")
+    res = audit_source_code(src, "python", "app/call_graph.py")
+    assert res["green_score"] == 100.0, f"Violations in app/call_graph.py: {res['violations']}"
+
+
 def test_call_graph_http_endpoint_and_sdk():
     files = {
         "net_client.py": (
@@ -67,4 +131,3 @@ def test_call_graph_http_endpoint_and_sdk():
     body = resp.json()
     assert body["total_violations"] == 1
     assert body["violations"][0]["callee_file"] == "net_client.py"
-

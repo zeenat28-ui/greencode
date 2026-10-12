@@ -287,6 +287,24 @@ async def lifespan(app: FastAPI):
             )
         logger.warning("Insecure JWT configuration (development only): %s", detail)
 
+    # SQLite is supported for local and single-node runs, but a production host
+    # that silently fell back to it (unset DATABASE_URL, unreachable Postgres)
+    # loses crash-safe durability and concurrent writes. Always report it;
+    # refuse to boot only when the operator asked for that with
+    # DATABASE_REQUIRE_POSTGRES, because SQLite-on-purpose is documented.
+    from app.database import database_backend_blockers
+
+    backend_faults = database_backend_blockers()
+    if backend_faults:
+        detail = " ".join(backend_faults)
+        if os.environ.get("DATABASE_REQUIRE_POSTGRES", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }:
+            raise RuntimeError(f"Refusing to start: {detail}")
+        logger.warning("Production database backend: %s", detail)
+
     try:
         yield
     finally:
@@ -789,7 +807,11 @@ def health_check():
     # Configuration faults are reported rather than hidden. A host that is
     # running on the published default JWT key is reachable and answering, but
     # its access tokens are forgeable, so it must not report itself as healthy.
-    from app.database import count_plaintext_secrets, secrets_encryption_blockers
+    from app.database import (
+        count_plaintext_secrets,
+        database_backend_blockers,
+        secrets_encryption_blockers,
+    )
 
     secret_faults = jwt_secret_blockers()
     crypto_faults = secrets_encryption_blockers()
@@ -812,6 +834,15 @@ def health_check():
             "python scripts/migrate_plaintext_secrets.py --apply"
         ]
 
+    # A production host running on SQLite almost never chose that - it either
+    # never set DATABASE_URL or silently fell back when PostgreSQL was
+    # unreachable. A connectivity probe alone would call that "ok", so the
+    # backend itself is named and the host is degraded until it is fixed.
+    database_faults = database_backend_blockers()
+    deps["database_backend"] = "sqlite_in_production" if database_faults else "ok"
+    if database_faults:
+        overall = "degraded"
+
     return {
         "status": overall,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -825,6 +856,7 @@ def health_check():
             "credential_encryption_configured": not crypto_faults,
             "credential_encryption_blockers": crypto_faults,
             "plaintext_tokens_pending_migration": plaintext_tokens,
+            "database_backend_blockers": database_faults,
             "rate_limiting_active": SLOWAPI_OK,
             "carbon_intensity_providers": ci_status,
         },

@@ -1,4 +1,7 @@
-# Alexa+ add-on manifest
+# Alexa+ add-on manifest & ASK Skill Registration
+
+- **Registered Amazon Alexa Skill ID:** `amzn1.ask.skill.fd2a8106-e7fb-4f05-83b9-74590f7df6b8` (`GreenCode Auditor`, `en_US`)
+- **ASK Interaction Model (`en_US`):** [`alexa/interaction_model_en_US.json`](interaction_model_en_US.json)
 
 `addon.json` follows the Alexa+ MCP quickstart schema (`manifestVersion`
 `1.0`) and is validated in `tests/test_alexa_compliance.py` against the

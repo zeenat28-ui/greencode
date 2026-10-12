@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 import jwt
 import bcrypt
 
-from app.core.config import settings
+from app.core.config import resolve_jwt_secret, settings
 
 
 def hash_password(password: str) -> str:
@@ -23,18 +23,20 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
     """Issue signed enterprise JWT access token with tenant scopes."""
+    secret = resolve_jwt_secret()
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.jwt_access_expire_minutes)
     )
     to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
-    return jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return jwt.encode(to_encode, secret, algorithm=settings.jwt_algorithm)
 
 
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     """Decode and verify signed JWT token payload."""
     try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        secret = resolve_jwt_secret()
+        return jwt.decode(token, secret, algorithms=[settings.jwt_algorithm])
     except Exception:
         return None
 

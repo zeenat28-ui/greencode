@@ -113,8 +113,10 @@ async def generate_invoice(
 @router.get("/usage", status_code=status.HTTP_200_OK)
 async def get_usage_snapshot(
     org_id: int = Query(1, gt=0),
+    actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Live usage vs quota for the customer dashboard + billing controls (GET)."""
+    _enforce_tenant(actor, org_id)
     return BillingService.usage_snapshot(org_id=org_id)
 
 

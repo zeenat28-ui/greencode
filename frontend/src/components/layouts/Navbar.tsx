@@ -12,15 +12,15 @@ import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
 
 const NAV_ITEMS = [
-  { name: 'Dashboard',       path: '/dashboard',     icon: LayoutDashboard },
-  { name: 'Overview',        path: '/overview',      icon: Activity },
-  { name: 'Budgets',         path: '/budgets',       icon: DollarSign },
-  { name: 'Policies',        path: '/policies',      icon: Sliders },
-  { name: 'Deployments',     path: '/deployments',   icon: Gauge },
-  { name: 'ESG Reports',     path: '/reports',       icon: FileText },
-  { name: 'Scan Code',       path: '/scan',          icon: GitBranch },
-  { name: 'Code Issues',     path: '/issues',        icon: AlertCircle },
-  { name: 'Settings',        path: '/settings',      icon: Settings },
+  { name: 'Dashboard',   path: '/dashboard',   icon: LayoutDashboard },
+  { name: 'Scan',        path: '/scan',        icon: GitBranch },
+  { name: 'Issues',      path: '/issues',      icon: AlertCircle },
+  { name: 'Overview',    path: '/overview',    icon: Activity },
+  { name: 'Budgets',     path: '/budgets',     icon: DollarSign },
+  { name: 'Policies',    path: '/policies',    icon: Sliders },
+  { name: 'Deploys',     path: '/deployments', icon: Gauge },
+  { name: 'Reports',     path: '/reports',     icon: FileText },
+  { name: 'Settings',    path: '/settings',    icon: Settings },
 ];
 
 export default function Navbar() {
@@ -68,44 +68,42 @@ export default function Navbar() {
   const avatar = user?.avatar_url;
 
   return (
-    <nav className="bg-white/95 backdrop-blur-md border-b border-zinc-200/80 sticky top-0 z-50 w-full max-w-full">
+    <nav className="bg-white/95 backdrop-blur-md border-b border-zinc-200/80 sticky top-0 z-50 w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
         <div className="flex items-center justify-between h-14 gap-3">
 
-          <Link to="/dashboard" className="flex items-center gap-2.5 shrink-0 group">
+          <Link to="/dashboard" className="flex items-center gap-2 shrink-0 group">
             <BrandLogo size="sm" />
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-sm text-zinc-950 tracking-tight">
-                GreenCode
-              </span>
-              <span className="hidden sm:inline-block text-[10px] bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded font-mono border border-zinc-200/80 font-medium">
-                v2.1
-              </span>
-            </div>
+            <span className="font-semibold text-sm text-zinc-950 tracking-tight whitespace-nowrap">
+              GreenCode
+            </span>
+            <span className="hidden sm:inline-block text-[10px] bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded font-mono border border-zinc-200/80 font-medium whitespace-nowrap">
+              v2.1
+            </span>
           </Link>
 
-          <div className="hidden lg:flex items-center gap-0.5 bg-zinc-100/80 p-1 rounded-lg border border-zinc-200/70">
+          <div className="hidden lg:flex items-center gap-0.5 bg-zinc-100/80 p-1 rounded-lg border border-zinc-200/70 overflow-x-auto">
             {NAV_ITEMS.map(({ name, path, icon: Icon }) => {
               const active = location.pathname === path;
               return (
                 <Link
                   key={path}
                   to={path}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs whitespace-nowrap transition-all duration-150 ${
                     active
-                      ? 'bg-zinc-900 text-white font-medium shadow-2xs'
+                      ? 'bg-zinc-900 text-white font-medium shadow-sm'
                       : 'text-zinc-600 hover:text-zinc-950 hover:bg-white/70 font-medium'
                   }`}
                 >
                   <Icon size={13} className={active ? 'text-emerald-400' : 'text-zinc-400'} />
-                  {name}
+                  <span>{name}</span>
                 </Link>
               );
             })}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-md bg-zinc-50 border border-zinc-200/80 text-xs font-mono text-zinc-700">
+            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-50 border border-zinc-200/80 text-xs font-mono text-zinc-700 whitespace-nowrap">
               {gridLoading ? (
                 <Loader2 size={11} className="animate-spin text-zinc-400" />
               ) : (
@@ -117,7 +115,7 @@ export default function Navbar() {
               )}
             </div>
 
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50/80 border border-emerald-200/80 text-xs font-mono font-medium text-emerald-900">
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50/80 border border-emerald-200/80 text-xs font-mono font-medium text-emerald-900 whitespace-nowrap">
               <ShieldCheck size={13} className="text-emerald-600" />
               <span>Gate &ge; {threshold}</span>
             </div>
@@ -127,16 +125,16 @@ export default function Navbar() {
                 onClick={() => setMenuOpen((o) => !o)}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
-                className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-zinc-100 transition-colors"
+                className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full hover:bg-zinc-100 transition-colors border border-transparent hover:border-zinc-200"
               >
                 {avatar ? (
-                  <img src={avatar} alt="" className="w-7 h-7 rounded-full border border-zinc-200" />
+                  <img src={avatar} alt="" className="w-7 h-7 rounded-full border border-zinc-200 object-cover" />
                 ) : (
                   <div className="w-7 h-7 rounded-full bg-zinc-900 text-white flex items-center justify-center">
                     <Github size={14} />
                   </div>
                 )}
-                <span className="hidden xl:inline text-xs font-medium text-zinc-700 max-w-[9rem] truncate">
+                <span className="hidden md:inline text-xs font-medium text-zinc-700 max-w-[7.5rem] truncate">
                   {displayName}
                 </span>
                 <ChevronDown size={13} className={`text-zinc-400 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />

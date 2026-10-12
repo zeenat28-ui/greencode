@@ -17,23 +17,23 @@ interface ViolationChartProps {
   breakdown: Record<string, number>;
 }
 
-// Friendly human labels for violation codes
 const FRIENDLY_NAMES: Record<string, { label: string; desc: string; color: string }> = {
-  INEFFICIENT_LOOP: { label: 'Inefficient Loop', desc: 'Consumes excessive CPU cycles per iteration', color: 'bg-amber-500' },
-  NESTED_LOOPS: { label: 'Deeply Nested Loops', desc: 'Exponential O(N²) or O(N³) algorithmic complexity', color: 'bg-rose-500' },
-  REDUNDANT_COMPUTATION: { label: 'Redundant Computation', desc: 'Recalculating identical values repeatedly', color: 'bg-amber-600' },
-  BLOCKING_IO: { label: 'Blocking I/O in Loop', desc: 'Network or disk wait holding thread idle', color: 'bg-rose-600' },
-  UNINDEXED_QUERY: { label: 'Unindexed Query', desc: 'Full database table scans wasting database CPU', color: 'bg-amber-500' },
-  LARGE_PAYLOAD: { label: 'Large Data Transfer', desc: 'Transferring uncompressed or unnecessary payloads', color: 'bg-blue-500' },
-  UNOPTIMIZED_IMPORT: { label: 'Heavy Unused Imports', desc: 'Unnecessary memory load and parse overhead', color: 'bg-slate-500' },
-  FP32_TENSOR_LOOP: { label: 'Unquantized AI Tensors', desc: 'Running FP32 inference without quantization', color: 'bg-purple-600' },
+  QUADRATIC_STRING_CONCAT_IN_LOOP: { label: 'Quadratic String Allocation', desc: 'O(N²) buffer reallocation inside loop', color: 'bg-rose-500' },
+  'NESTED_LOOPS_DEPTH_3+': { label: 'Deep Nested Iteration (O(N³))', desc: 'Polynomial time complexity amplification', color: 'bg-amber-500' },
+  RAW_DB_CURSOR_NO_CONTEXT: { label: 'Unscoped Database Cursor', desc: 'Connection lifecycle leak without context manager', color: 'bg-amber-500' },
+  UNCACHED_NETWORK_IN_LOOP: { label: 'Unbatched Network I/O in Loop', desc: 'Repeated synchronous round-trips inside loop', color: 'bg-rose-500' },
+  INEFFICIENT_LOOP: { label: 'Inefficient Loop', desc: 'Excessive CPU cycles per iteration', color: 'bg-amber-500' },
+  NESTED_LOOPS: { label: 'Deeply Nested Loops', desc: 'O(N²) or O(N³) algorithmic complexity', color: 'bg-rose-500' },
+  REDUNDANT_COMPUTATION: { label: 'Redundant Computation', desc: 'Recalculating invariant expressions repeatedly', color: 'bg-amber-500' },
+  BLOCKING_IO: { label: 'Blocking I/O in Loop', desc: 'Synchronous I/O wait holding worker thread', color: 'bg-rose-500' },
+  UNINDEXED_QUERY: { label: 'Unindexed Query', desc: 'Full table scan increasing database CPU draw', color: 'bg-amber-500' },
 };
 
 function formatLabel(key: string): { label: string; desc: string; color: string } {
   if (FRIENDLY_NAMES[key]) return FRIENDLY_NAMES[key];
   const cleaned = key.replace(/_/g, ' ').toLowerCase();
   const title = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-  return { label: title, desc: 'Algorithmic energy inefficiency', color: 'bg-olive-600' };
+  return { label: title, desc: 'Static efficiency pattern', color: 'bg-emerald-600' };
 }
 
 export default function ViolationChart({ breakdown }: ViolationChartProps) {
@@ -44,27 +44,26 @@ export default function ViolationChart({ breakdown }: ViolationChartProps) {
 
   if (entries.length === 0 || totalCount === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-10 text-center">
-        <div className="w-10 h-10 rounded-full bg-olive-50 border border-olive-200 flex items-center justify-center text-olive-700 mb-2">
-          <CheckCircle2 size={20} />
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <div className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 mb-2">
+          <CheckCircle2 size={18} />
         </div>
-        <p className="text-xs font-bold text-slate-800">No Energy Bottlenecks Found</p>
-        <p className="text-[11px] text-slate-500 mt-0.5">Your code meets Green Software Foundation efficiency guidelines.</p>
+        <p className="text-xs font-semibold text-zinc-900">Zero Efficiency Bottlenecks</p>
+        <p className="text-[11px] text-zinc-500 mt-0.5">All analyzed modules pass GSF SCI rules.</p>
       </div>
     );
   }
 
   const maxCount = entries[0]?.[1] || 1;
 
-  // ChartJS data for graph view
   const chartData = {
     labels: entries.map(([k]) => formatLabel(k).label),
     datasets: [
       {
-        label: 'Issues Found',
+        label: 'Findings',
         data: entries.map(([, v]) => v),
-        backgroundColor: '#384C3B',
-        hoverBackgroundColor: '#28352B',
+        backgroundColor: '#18181B',
+        hoverBackgroundColor: '#059669',
         borderRadius: 6,
         barThickness: 16,
       },
@@ -77,8 +76,8 @@ export default function ViolationChart({ breakdown }: ViolationChartProps) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: '#0F172A',
-        titleFont: { size: 12, weight: 700 as const },
+        backgroundColor: '#09090B',
+        titleFont: { size: 12, weight: 600 as const },
         bodyFont: { size: 11 },
         padding: 10,
         cornerRadius: 8,
@@ -87,85 +86,83 @@ export default function ViolationChart({ breakdown }: ViolationChartProps) {
     scales: {
       x: {
         grid: { display: false },
-        ticks: { color: '#64748B', font: { size: 11 } },
+        ticks: { color: '#71717A', font: { size: 11 } },
       },
       y: {
-        grid: { color: '#F1F5F9' },
-        ticks: { color: '#64748B', font: { size: 11 }, stepSize: 1 },
+        grid: { color: '#F4F4F5' },
+        ticks: { color: '#71717A', font: { size: 11 }, stepSize: 1 },
       },
     },
   };
 
   return (
-    <div className="space-y-4">
-      {/* View switch header */}
+    <div className="space-y-3.5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-900">Distribution</span>
-          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">
-            {totalCount} total issues
+          <span className="text-xs font-medium text-zinc-500">Rule Distribution</span>
+          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
+            {totalCount} findings
           </span>
         </div>
 
-        <div className="flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200 text-xs">
+        <div className="flex items-center p-0.5 rounded-lg bg-zinc-100 border border-zinc-200/80 text-xs">
           <button
             type="button"
             onClick={() => setViewMode('bars')}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all ${
               viewMode === 'bars'
-                ? 'bg-white text-slate-900 shadow-sm font-semibold'
-                : 'text-slate-500 hover:text-slate-800'
+                ? 'bg-white text-zinc-900 shadow-sm'
+                : 'text-zinc-500 hover:text-zinc-800'
             }`}
           >
-            <ListFilter size={12} />
-            Breakdown
+            <ListFilter size={11} />
+            List
           </button>
           <button
             type="button"
             onClick={() => setViewMode('chart')}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all ${
               viewMode === 'chart'
-                ? 'bg-white text-slate-900 shadow-sm font-semibold'
-                : 'text-slate-500 hover:text-slate-800'
+                ? 'bg-white text-zinc-900 shadow-sm'
+                : 'text-zinc-500 hover:text-zinc-800'
             }`}
           >
-            <BarChart3 size={12} />
+            <BarChart3 size={11} />
             Chart
           </button>
         </div>
       </div>
 
       {viewMode === 'bars' ? (
-        <div className="space-y-3 pt-1">
+        <div className="space-y-2.5">
           {entries.map(([key, count]) => {
             const meta = formatLabel(key);
             const percent = Math.round((count / totalCount) * 100);
             const barWidth = Math.max(8, Math.round((count / maxCount) * 100));
 
             return (
-              <div key={key} className="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:bg-white hover:border-slate-300 transition-all space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${meta.color}`} />
-                    <span className="font-bold text-slate-900">{meta.label}</span>
+              <div key={key} className="p-3 rounded-lg bg-zinc-50/70 border border-zinc-200/70 hover:border-zinc-300 transition-all space-y-1.5">
+                <div className="flex items-center justify-between text-xs gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${meta.color}`} />
+                    <span className="font-semibold text-zinc-900 truncate">{meta.label}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] text-slate-500">{percent}% share</span>
-                    <span className="font-mono font-bold text-xs bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-800">
-                      {count} {count === 1 ? 'issue' : 'issues'}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="font-mono text-[11px] text-zinc-400">{percent}%</span>
+                    <span className="font-mono font-semibold text-[11px] bg-white px-1.5 py-0.5 rounded border border-zinc-200 text-zinc-800">
+                      {count}
                     </span>
                   </div>
                 </div>
 
-                {/* Smooth Progress Bar */}
-                <div className="w-full bg-slate-200/70 rounded-full h-2 overflow-hidden">
+                <div className="w-full bg-zinc-200/70 rounded-full h-1.5 overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-all duration-500 bg-olive-700"
+                    className="h-full rounded-full transition-all duration-500 bg-zinc-900"
                     style={{ width: `${barWidth}%` }}
                   />
                 </div>
 
-                <p className="text-[11px] text-slate-500 leading-tight">
+                <p className="text-[11px] text-zinc-500 leading-tight">
                   {meta.desc}
                 </p>
               </div>
@@ -173,7 +170,7 @@ export default function ViolationChart({ breakdown }: ViolationChartProps) {
           })}
         </div>
       ) : (
-        <div className="h-56 w-full pt-2">
+        <div className="h-52 w-full pt-2">
           <Bar data={chartData} options={options} />
         </div>
       )}
@@ -190,7 +187,7 @@ export function LanguageChart({ breakdown }: LanguageChartProps) {
   const total = entries.reduce((acc, [, val]) => acc + val, 0);
 
   if (entries.length === 0 || total === 0) {
-    return <div className="text-center py-8 text-xs text-slate-400">No language data recorded</div>;
+    return <div className="text-center py-8 text-xs text-zinc-400">No language data recorded</div>;
   }
 
   return (
@@ -200,12 +197,12 @@ export function LanguageChart({ breakdown }: LanguageChartProps) {
         return (
           <div key={lang} className="space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-800 capitalize">{lang}</span>
-              <span className="font-mono text-slate-500">{count} files ({pct}%)</span>
+              <span className="font-semibold text-zinc-800 capitalize">{lang}</span>
+              <span className="font-mono text-zinc-500">{count} files ({pct}%)</span>
             </div>
-            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+            <div className="w-full bg-zinc-100 rounded-full h-1.5 overflow-hidden">
               <div
-                className="h-full rounded-full transition-all duration-500 bg-olive-800"
+                className="h-full rounded-full transition-all duration-500 bg-emerald-600"
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -224,7 +221,7 @@ interface ScoreGaugeProps {
 export function ScoreGauge({ score, threshold }: ScoreGaugeProps) {
   const pct = Math.max(0, Math.min(100, Math.round(score)));
   const isPass = pct >= threshold;
-  const strokeColor = isPass ? '#384C3B' : '#E11D48';
+  const strokeColor = isPass ? '#059669' : '#E11D48';
 
   return (
     <div className="text-center">
@@ -235,7 +232,7 @@ export function ScoreGauge({ score, threshold }: ScoreGaugeProps) {
             cy="50"
             r="40"
             fill="none"
-            stroke="#F1F5F9"
+            stroke="#F4F4F5"
             strokeWidth="8"
           />
           <circle
@@ -253,20 +250,20 @@ export function ScoreGauge({ score, threshold }: ScoreGaugeProps) {
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-3xl font-black font-mono" style={{ color: strokeColor }}>
+          <span className="text-3xl font-bold font-mono" style={{ color: strokeColor }}>
             {pct}
           </span>
-          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Score</span>
+          <span className="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider">Score</span>
         </div>
       </div>
-      <p className="text-xs text-slate-500 font-medium">
-        Target: <span className="font-bold text-slate-700">&ge; {threshold}</span>
+      <p className="text-xs text-zinc-500 font-medium">
+        Target: <span className="font-mono font-semibold text-zinc-700">&ge; {threshold}</span>
       </p>
       <div className="mt-1">
-        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-          isPass ? 'bg-olive-50 text-olive-900 border border-olive-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+        <span className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
+          isPass ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
         }`}>
-          {isPass ? 'Meets Green SLA' : 'Needs Optimization'}
+          {isPass ? 'Quality Gate Passed' : 'Optimization Required'}
         </span>
       </div>
     </div>

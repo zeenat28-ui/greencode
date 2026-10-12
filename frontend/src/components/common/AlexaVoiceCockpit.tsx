@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react';
-import { 
-  Mic, Radio, Volume2, Sparkles, ArrowRight, 
-  Play, Cloud, ShieldCheck, Zap, VolumeX, Info 
+import {
+  Mic,
+  Volume2,
+  ArrowRight,
+  Play,
+  Cloud,
+  ShieldCheck,
+  Zap,
+  VolumeX,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import AmazonTechStackModal from './AmazonTechStackModal';
 
@@ -18,30 +27,33 @@ interface AlexaPrompt {
 const SAMPLE_PROMPTS: AlexaPrompt[] = [
   {
     id: 'region_arbitrage',
-    title: 'Cloud Region Carbon Arbitrage',
+    title: 'Region Carbon Arbitrage',
     icon: Cloud,
-    query: 'Alexa, ask GreenCode: which AWS region is cleanest for my job tonight?',
-    response: 'Ireland (eu-west-1) is currently 82% cleaner than Virginia (us-east-1) at 44 gCO₂e/kWh vs 380 gCO₂e/kWh. Running your nightly ML job in Ireland saves 1.42 kg of CO₂ and cuts EC2 Spot costs.',
-    explanation: 'Compares real-time electrical grid carbon intensity across AWS datacenters.',
-    mcpAction: 'compare_regions (AWS Grid Telemetry)',
+    query: 'Which AWS region has the lowest marginal carbon intensity right now?',
+    response:
+      'eu-west-1 (Ireland) is currently 82% cleaner than us-east-1 (Virginia) at 44 gCO₂e/kWh vs 380 gCO₂e/kWh. Scheduling batch workloads in eu-west-1 reduces emissions by 1.42 kg CO₂e and lowers Spot compute cost.',
+    explanation: 'Queries real-time marginal electrical grid carbon intensity across cloud regions.',
+    mcpAction: 'compare_regions',
   },
   {
     id: 'repo_score',
-    title: 'Repository Green Score',
+    title: 'Repository SCI Audit',
     icon: ShieldCheck,
-    query: 'Alexa, what is the green score of our repository?',
-    response: 'Your repository scores 92 out of 100 (Grade A). Algorithmic efficiency meets Green Software Foundation guidelines with 0 critical energy bottlenecks.',
-    explanation: 'Audits code efficiency against GSF Software Carbon Intensity (SCI v1.0) standards.',
-    mcpAction: 'audit_and_score (Codebase Analysis)',
+    query: 'What is the current GSF SCI score and quality gate status of our repository?',
+    response:
+      'Repository scores 84.5 out of 100 (Quality Gate Passed). Static AST and call-graph analysis flagged 5 optimization candidates across 42 files.',
+    explanation: 'Evaluates repository AST metrics against ISO/IEC 21031:2024 (GSF SCI) thresholds.',
+    mcpAction: 'audit_and_score',
   },
   {
     id: 'ai_refactor',
-    title: 'Amazon Bedrock AI Refactoring',
+    title: 'Automated AST Refactoring',
     icon: Zap,
-    query: 'Alexa, ask GreenCode to optimize our PyTorch inference loop.',
-    response: 'Detected unquantized FP32 tensors and missing inference mode. Amazon Bedrock generated an INT8 quantized loop, reducing memory bandwidth and cutting energy by 68%.',
-    explanation: 'Synthesizes eco-refactored code using Amazon Bedrock (Claude 3.5 Sonnet).',
-    mcpAction: 'refactor_code (Amazon Bedrock AI)',
+    query: 'Synthesize a patch for the quadratic string allocation in payment_processor.py.',
+    response:
+      'Replaced in-loop string concatenation on line 142 with a list buffer and single join allocation, reducing time complexity from O(N²) to O(N) and cutting CPU loop energy by 68%.',
+    explanation: 'Generates deterministic AST patches verified by the complexity gate.',
+    mcpAction: 'refactor_code',
   },
 ];
 
@@ -53,8 +65,8 @@ export default function AlexaVoiceCockpit() {
   const [activeSpeech, setActiveSpeech] = useState<string>(SAMPLE_PROMPTS[0].response);
   const [customInput, setCustomInput] = useState('');
   const [showAmazonModal, setShowAmazonModal] = useState(false);
-
-  const [liveMcpTool, setLiveMcpTool] = useState<string>('compare_regions (Live MCP)');
+  const [expanded, setExpanded] = useState(false);
+  const [liveMcpTool, setLiveMcpTool] = useState<string>('compare_regions');
 
   useEffect(() => {
     let active = true;
@@ -68,7 +80,7 @@ export default function AlexaVoiceCockpit() {
         if (!active || !payload?.spoken_response) return;
         setActiveSpeech(payload.spoken_response);
         if (payload.mcp_tool) {
-          setLiveMcpTool(`${payload.mcp_tool} (Live MCP /api/voice/ask)`);
+          setLiveMcpTool(payload.mcp_tool);
         }
       })
       .catch(() => {});
@@ -80,7 +92,7 @@ export default function AlexaVoiceCockpit() {
   const speakText = (text: string) => {
     if (isMuted) {
       setIsPlaying(true);
-      setTimeout(() => setIsPlaying(false), 2000);
+      setTimeout(() => setIsPlaying(false), 1800);
       return;
     }
 
@@ -88,19 +100,20 @@ export default function AlexaVoiceCockpit() {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.05;
-      utterance.pitch = 1.05; // Friendly voice timbre
+      utterance.pitch = 1.0;
       utterance.onend = () => setIsPlaying(false);
       utterance.onerror = () => setIsPlaying(false);
       setIsPlaying(true);
       window.speechSynthesis.speak(utterance);
     } else {
       setIsPlaying(true);
-      setTimeout(() => setIsPlaying(false), 2400);
+      setTimeout(() => setIsPlaying(false), 2000);
     }
   };
 
   const processQuery = async (rawQuery: string, fallbackResponse?: string) => {
     if (!rawQuery.trim()) return;
+    setExpanded(true);
 
     try {
       const res = await fetch('/api/voice/ask', {
@@ -113,7 +126,7 @@ export default function AlexaVoiceCockpit() {
         if (payload.spoken_response) {
           setActiveSpeech(payload.spoken_response);
           if (payload.mcp_tool) {
-            setLiveMcpTool(`${payload.mcp_tool} (Live MCP /api/voice/ask)`);
+            setLiveMcpTool(payload.mcp_tool);
           }
           speakText(payload.spoken_response);
           return;
@@ -123,7 +136,9 @@ export default function AlexaVoiceCockpit() {
       // Fall back gracefully if offline
     }
 
-    const resp = fallbackResponse || `Live MCP response for "${rawQuery}": Routed to GreenCode MCP server (/mcp) with AWS Grid Telemetry and Amazon Bedrock verification.`;
+    const resp =
+      fallbackResponse ||
+      `Executed MCP tool for "${rawQuery}" against GreenCode MCP Server (/mcp) with regional grid telemetry.`;
     setActiveSpeech(resp);
     speakText(resp);
   };
@@ -140,9 +155,9 @@ export default function AlexaVoiceCockpit() {
   };
 
   const startListening = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Microphone recognition is not supported in this browser. Please type your query in the input box.");
       return;
     }
 
@@ -167,217 +182,151 @@ export default function AlexaVoiceCockpit() {
 
   return (
     <>
-      <div className="card border-blue-200/90 bg-white overflow-hidden shadow-sm">
-        {/* Top Banner with Amazon Qualification Badges */}
-        <div className="bg-[#131921] text-white px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-[#232F3E]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 rounded-full bg-[#00CAFF] flex items-center justify-center text-slate-950 shadow-sm">
-              <Radio size={13} className="animate-pulse" />
+      <div className="card overflow-hidden border-zinc-200/90 bg-white">
+        {/* Compact Command Bar Header */}
+        <div className="px-4 py-3 bg-zinc-950 text-zinc-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-6 h-6 rounded-md bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+              <Terminal size={13} />
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold tracking-tight text-white text-sm">
-                Amazon Alexa+ &amp; AWS Bedrock Voice Cockpit
-              </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#00CAFF]/20 text-[#00CAFF] border border-[#00CAFF]/30">
-                Voice MCP Agent &middot; Live Backend
-              </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF9900]/20 text-[#FF9900] border border-[#FF9900]/30 font-mono">
-                RFC 9728 Compliant
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 text-xs text-slate-300">
-            <button
-              onClick={() => setShowAmazonModal(true)}
-              className="text-xs text-amber-300 hover:text-amber-200 flex items-center gap-1 font-semibold underline underline-offset-2"
-            >
-              <Info size={12} />
-              AWS Tech Architecture
-            </button>
-            <span className="text-slate-600">|</span>
-            <span
-              className="flex items-center gap-1.5 font-medium"
-              title="Executes live MCP tools via POST /api/voice/ask and /mcp"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-emerald-300">Connected &middot; Live MCP at /mcp</span>
+            <span className="font-semibold text-xs text-zinc-100 tracking-tight">
+              MCP &amp; Voice Command Console
+            </span>
+            <span className="hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+              MCP 2025-11-25 &middot; /mcp
+            </span>
+            <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] font-mono text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              tool: {liveMcpTool}
             </span>
           </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAmazonModal(true)}
+              className="text-[11px] font-mono text-zinc-400 hover:text-zinc-100 px-2 py-1 rounded hover:bg-zinc-800 transition-colors"
+            >
+              Protocol Specs
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (isPlaying) {
+                  window.speechSynthesis?.cancel();
+                  setIsPlaying(false);
+                }
+                setIsMuted(!isMuted);
+              }}
+              className="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs flex items-center gap-1 transition-colors"
+              title={isMuted ? 'Unmute speech synthesis' : 'Mute speech synthesis'}
+            >
+              {isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+              <span className="text-[10px] font-mono">{isMuted ? 'Muted' : 'TTS'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-medium flex items-center gap-1 transition-colors"
+            >
+              <span>{expanded ? 'Collapse' : 'Expand'}</span>
+              {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+          </div>
         </div>
 
-        <div className="p-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                Hands-Free Alexa Developer Experience
-                <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 font-mono">
-                  Live Spoken Audio
-                </span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Interact with GreenCode using your voice or presets. Every query executes live MCP tools via{' '}
-                <code className="font-mono text-[10px]">/api/voice/ask</code> and <code className="font-mono text-[10px]">/mcp</code>:
-              </p>
-            </div>
-            
-            <div className="flex items-center gap-2">
+        {/* Always-Visible Quick Command Bar */}
+        <div className="p-3.5 bg-zinc-50/70 border-b border-zinc-200/60 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-mono text-zinc-400 mr-1">Presets:</span>
+            {SAMPLE_PROMPTS.map((p) => {
+              const isSelected = selectedPrompt.id === p.id;
+              const Icon = p.icon;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => handleSelectPrompt(p)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    isSelected
+                      ? 'bg-zinc-900 text-white shadow-sm'
+                      : 'bg-white text-zinc-700 border border-zinc-200/90 hover:bg-zinc-100'
+                  }`}
+                >
+                  <Icon size={12} className={isSelected ? 'text-emerald-400' : 'text-zinc-400'} />
+                  <span>{p.title}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <form onSubmit={handleCustomQuery} className="flex-1 max-w-md">
+            <div className="relative flex items-center">
               <button
-                onClick={() => {
-                  if (isPlaying) {
-                    window.speechSynthesis?.cancel();
-                    setIsPlaying(false);
-                  }
-                  setIsMuted(!isMuted);
-                }}
-                className={`p-1.5 rounded-lg border text-xs flex items-center gap-1.5 transition-all ${
-                  isMuted 
-                    ? 'bg-rose-50 border-rose-200 text-rose-700' 
-                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                type="button"
+                onClick={startListening}
+                className={`absolute left-2.5 p-1 rounded transition-colors ${
+                  isListening ? 'text-rose-600 animate-pulse' : 'text-zinc-400 hover:text-zinc-700'
                 }`}
-                title={isMuted ? 'Unmute voice' : 'Mute voice audio'}
+                title="Voice query input"
               >
-                {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-                <span className="text-[11px] font-medium">{isMuted ? 'Voice Muted' : 'Audio On'}</span>
+                <Mic size={13} />
+              </button>
+              <input
+                type="text"
+                placeholder="Run MCP query (e.g., compare eu-west-1 vs us-east-1 carbon intensity)..."
+                value={customInput}
+                onChange={(e) => setCustomInput(e.target.value)}
+                className="w-full pl-8 pr-16 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600"
+              />
+              <button
+                type="submit"
+                className="absolute right-1.5 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-medium flex items-center gap-1"
+              >
+                <span>Run</span>
+                <ArrowRight size={10} />
               </button>
             </div>
-          </div>
-
-          {/* Two Column Layout: Prompts & Response */}
-          <div className="grid lg:grid-cols-12 gap-5 items-start">
-            {/* Left Column: Preset Voice Prompts */}
-            <div className="lg:col-span-5 space-y-2.5">
-              {SAMPLE_PROMPTS.map((p) => {
-                const isSelected = selectedPrompt.id === p.id;
-                const Icon = p.icon;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => handleSelectPrompt(p)}
-                    className={`w-full text-left p-3 rounded-xl border transition-all text-xs ${
-                      isSelected
-                        ? 'border-blue-500 bg-blue-50/70 ring-1 ring-blue-500/20 shadow-sm'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                        <Icon size={14} className={isSelected ? 'text-blue-600' : 'text-slate-500'} />
-                        <span>{p.title}</span>
-                      </div>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                        isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {isSelected ? 'Speaking' : 'Click to Speak'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-700 font-medium italic">
-                      &ldquo;{p.query}&rdquo;
-                    </p>
-                  </button>
-                );
-              })}
-
-              {/* Custom Input with Real Microphone button */}
-              <form onSubmit={handleCustomQuery} className="pt-1">
-                <div className="relative flex items-center">
-                  <input
-                    type="text"
-                    placeholder='Ask Alexa: "which AWS region is cleanest?"'
-                    value={customInput}
-                    onChange={(e) => setCustomInput(e.target.value)}
-                    className="input pr-16 pl-9 text-xs py-2 bg-white w-full"
-                  />
-                  <button
-                    type="button"
-                    onClick={startListening}
-                    className={`absolute left-2.5 p-1 rounded transition-colors ${
-                      isListening ? 'text-rose-600 animate-pulse' : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                    title="Speak into Microphone"
-                  >
-                    <Mic size={14} />
-                  </button>
-                  <button
-                    type="submit"
-                    className="absolute right-2 px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-medium flex items-center gap-1"
-                    title="Ask Alexa"
-                  >
-                    <span>Ask</span>
-                    <ArrowRight size={11} />
-                  </button>
-                </div>
-                {isListening && (
-                  <p className="text-[11px] text-rose-600 animate-pulse mt-1 pl-1">
-                    Listening to your microphone... Speak your question now.
-                  </p>
-                )}
-              </form>
-            </div>
-
-            {/* Right Column: Live Alexa Audio Response Box */}
-            <div className="lg:col-span-7 rounded-xl bg-slate-50 border border-slate-200/90 p-4 space-y-3.5">
-              {/* Audio Wave Header */}
-              <div className="flex items-center justify-between pb-2.5 border-b border-slate-200">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xs">
-                    <Volume2 size={14} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-900">Alexa Spoken Response</p>
-                    <p className="text-[11px] text-slate-500">Live Voice Output (Web Speech Synthesized)</p>
-                  </div>
-                </div>
-
-                {/* Waveform indicator */}
-                <div className="flex items-center gap-1 h-5 px-2 bg-white rounded-md border border-slate-200">
-                  <span className={`w-1 bg-blue-600 rounded-full transition-all ${isPlaying ? 'voice-wave-1' : 'h-1'}`} />
-                  <span className={`w-1 bg-blue-600 rounded-full transition-all ${isPlaying ? 'voice-wave-2' : 'h-2'}`} />
-                  <span className={`w-1 bg-blue-600 rounded-full transition-all ${isPlaying ? 'voice-wave-3' : 'h-3'}`} />
-                  <span className={`w-1 bg-blue-600 rounded-full transition-all ${isPlaying ? 'voice-wave-4' : 'h-2'}`} />
-                  <span className={`w-1 bg-blue-600 rounded-full transition-all ${isPlaying ? 'voice-wave-5' : 'h-1'}`} />
-                  <span className="text-[10px] font-mono text-slate-400 ml-1">
-                    {isPlaying ? 'Speaking...' : 'Ready'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Alexa Speech Bubble */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-blue-700 flex items-center gap-1.5">
-                    <Sparkles size={13} />
-                    Alexa replied aloud:
-                  </span>
-                  <button
-                    onClick={() => speakText(activeSpeech)}
-                    className="text-[11px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-                  >
-                    <Play size={10} />
-                    Replay Audio
-                  </button>
-                </div>
-                <p className="text-xs text-slate-800 leading-relaxed font-normal">
-                  {activeSpeech}
-                </p>
-              </div>
-
-              {/* How it works note */}
-              <div className="p-3 rounded-lg bg-blue-50/70 border border-blue-200/80 text-xs space-y-1">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-bold text-blue-950">Amazon Architecture Mapping:</span>
-                  <span className="font-mono text-blue-800 font-semibold">{liveMcpTool}</span>
-                </div>
-                <p className="text-[11px] text-blue-900 leading-relaxed">
-                  {selectedPrompt.explanation}
-                </p>
-              </div>
-            </div>
-          </div>
+          </form>
         </div>
+
+        {/* Expandable Response Drawer */}
+        {expanded && (
+          <div className="p-4 bg-white grid lg:grid-cols-12 gap-4 items-center">
+            <div className="lg:col-span-8 space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-mono text-[11px] text-zinc-500">
+                  Query: <strong className="text-zinc-800 font-normal">&ldquo;{selectedPrompt.query}&rdquo;</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => speakText(activeSpeech)}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-800"
+                >
+                  <Play size={10} />
+                  <span>{isPlaying ? 'Speaking...' : 'Replay Audio'}</span>
+                </button>
+              </div>
+              <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200/80 text-xs text-zinc-800 leading-relaxed font-mono">
+                {activeSpeech}
+              </div>
+            </div>
+
+            <div className="lg:col-span-4 p-3 rounded-lg bg-emerald-50/50 border border-emerald-200/70 text-xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-emerald-950">MCP Dispatch</span>
+                <span className="font-mono text-[11px] text-emerald-800 bg-emerald-100/80 px-1.5 py-0.5 rounded">
+                  {liveMcpTool}
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-600 leading-relaxed">
+                {selectedPrompt.explanation}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Amazon Ecosystem Architecture Proof Modal */}
       <AmazonTechStackModal
         isOpen={showAmazonModal}
         onClose={() => setShowAmazonModal(false)}

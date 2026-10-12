@@ -11,18 +11,18 @@ export default function ScoreBadge({ score, size = 'md' }: ScoreBadgeProps) {
     score >= 60 ? 'C'  : 'F';
 
   const strokeColor =
-    score >= 80 ? '#384c3b' :
-    score >= 60 ? '#d97706' : '#dc2626';
+    score >= 80 ? '#059669' :
+    score >= 60 ? '#d97706' : '#e11d48';
 
-  const dim   = size === 'lg' ? 120 : size === 'md' ? 80 : 56;
+  const dim   = size === 'lg' ? 96 : size === 'md' ? 72 : 52;
   const r     = (dim - 10) / 2;
   const circ  = 2 * Math.PI * r;
   const dash  = (score / 100) * circ;
   const gap   = circ - dash;
 
   const fontSize =
-    size === 'lg' ? 22 :
-    size === 'md' ? 15 : 11;
+    size === 'lg' ? 20 :
+    size === 'md' ? 14 : 11;
 
   const subSize =
     size === 'lg' ? 10 :
@@ -34,14 +34,14 @@ export default function ScoreBadge({ score, size = 'md' }: ScoreBadgeProps) {
         <circle
           cx={dim / 2} cy={dim / 2} r={r}
           fill="none"
-          stroke="#e2e8f0"
-          strokeWidth={size === 'lg' ? 7 : 5}
+          stroke="#f4f4f5"
+          strokeWidth={size === 'lg' ? 6 : 5}
         />
         <circle
           cx={dim / 2} cy={dim / 2} r={r}
           fill="none"
           stroke={strokeColor}
-          strokeWidth={size === 'lg' ? 7 : 5}
+          strokeWidth={size === 'lg' ? 6 : 5}
           strokeLinecap="round"
           strokeDasharray={`${dash} ${gap}`}
           style={{ transition: 'stroke-dasharray 0.6s ease' }}
@@ -49,12 +49,12 @@ export default function ScoreBadge({ score, size = 'md' }: ScoreBadgeProps) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span
-          className="font-extrabold leading-none"
+          className="font-mono font-bold leading-none"
           style={{ color: strokeColor, fontSize }}
         >
           {Math.round(score)}
         </span>
-        <span className="font-semibold text-slate-500 leading-none" style={{ fontSize: subSize }}>
+        <span className="font-mono font-semibold text-zinc-400 leading-none mt-0.5" style={{ fontSize: subSize }}>
           {grade}
         </span>
       </div>

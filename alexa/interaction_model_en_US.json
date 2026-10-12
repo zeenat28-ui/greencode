@@ -43,7 +43,8 @@
             "compare {region_one} with {region_two}",
             "should we run this job in {region_one} or {region_two}",
             "is {region_one} cleaner than {region_two}",
-            "between {region_one} and {region_two} which is greener"
+            "between {region_one} and {region_two} which is greener",
+            "where should we schedule our kubernetes workload between {region_one} and {region_two}"
           ]
         },
         {
@@ -59,7 +60,8 @@
             "how clean is the grid in {region}",
             "check grid carbon intensity for {region}",
             "live grid intensity in {region}",
-            "carbon intensity of {region}"
+            "carbon intensity of {region}",
+            "what is the marginal carbon intensity in {region}"
           ]
         },
         {
@@ -75,7 +77,8 @@
             "scan my {language} snippet for energy waste",
             "check {language} code for carbon anti patterns",
             "find nested loops in my {language} code",
-            "audit and score my {language} code"
+            "audit and score my {language} code",
+            "run static analysis on my {language} service"
           ]
         },
         {
@@ -87,7 +90,8 @@
             "check software carbon intensity",
             "run a green code audit",
             "scan my github repository",
-            "what are the top energy offenders in my repo"
+            "what are the top energy offenders in my repo",
+            "run an inter procedural call graph audit"
           ]
         },
         {
@@ -102,7 +106,9 @@
             "calculate software carbon intensity",
             "calculate sci for {region}",
             "what is the sci score in {region}",
-            "compute gsf sci score"
+            "compute gsf sci score",
+            "compute iso software carbon intensity score",
+            "calculate operational and embodied carbon for {region}"
           ]
         },
         {
@@ -113,7 +119,8 @@
             "check hardware energy sensors",
             "are we using rapl or tdp model",
             "measure cpu power in joules",
-            "what energy sensor is active on this host"
+            "what energy sensor is active on this host",
+            "check nvidia gpu and apple silicon energy sensors"
           ]
         },
         {
@@ -124,7 +131,8 @@
             "was the energy measured by a hardware counter or estimated",
             "how is the software carbon intensity calculated",
             "what is the provenance of this green score",
-            "is this score hardware verified or modelled"
+            "is this score hardware verified or modelled",
+            "verify audit provenance and data freshness"
           ]
         },
         {
@@ -139,7 +147,30 @@
             "refactor my {language} code to save energy",
             "optimize my {language} loop with amazon bedrock",
             "suggest a greener rewrite for {language}",
-            "fix energy anti patterns in my code"
+            "fix energy anti patterns in my code",
+            "verify ast execution equivalence for my {language} refactor"
+          ]
+        },
+        {
+          "name": "CheckSlaComplianceIntent",
+          "slots": [],
+          "samples": [
+            "check our enterprise carbon sla compliance",
+            "are we within our carbon budget",
+            "report greenhouse gas scope two and scope three emissions",
+            "check energy sla gate status",
+            "what is our current carbon budget utilization"
+          ]
+        },
+        {
+          "name": "AuditIaCIntent",
+          "slots": [],
+          "samples": [
+            "audit our terraform and kubernetes infrastructure",
+            "can we migrate instances to aws graviton arm processors",
+            "check infrastructure as code for carbon savings",
+            "run finops and graviton sustainability check",
+            "scan terraform for idle cloud resources"
           ]
         },
         {
@@ -168,63 +199,84 @@
               "id": "IE",
               "name": {
                 "value": "Ireland",
-                "synonyms": ["eu west 1", "dublin", "ireland"]
+                "synonyms": ["eu west one", "dublin", "europe ireland"]
               }
             },
             {
               "id": "SE",
               "name": {
                 "value": "Sweden",
-                "synonyms": ["eu north 1", "stockholm", "sweden"]
+                "synonyms": ["eu north one", "stockholm", "europe stockholm"]
               }
             },
             {
               "id": "US-MIDA-PJM",
               "name": {
                 "value": "Virginia",
-                "synonyms": ["us east 1", "northern virginia", "virginia"]
+                "synonyms": ["us east one", "northern virginia", "east coast"]
               }
             },
             {
               "id": "US-NW-PACW",
               "name": {
                 "value": "Oregon",
-                "synonyms": ["us west 2", "oregon"]
+                "synonyms": ["us west two", "pacific northwest"]
               }
             },
             {
               "id": "US-CAL-CISO",
               "name": {
                 "value": "California",
-                "synonyms": ["us west 1", "northern california", "california"]
+                "synonyms": ["us west one", "northern california", "silicon valley"]
               }
             },
             {
               "id": "DE",
               "name": {
                 "value": "Frankfurt",
-                "synonyms": ["eu central 1", "germany", "frankfurt"]
+                "synonyms": ["eu central one", "germany", "europe frankfurt"]
               }
             },
             {
               "id": "GB",
               "name": {
                 "value": "London",
-                "synonyms": ["eu west 2", "uk", "united kingdom", "london"]
+                "synonyms": ["eu west two", "united kingdom", "britain"]
               }
             },
             {
-              "id": "AP-SOUTH",
+              "id": "FR",
+              "name": {
+                "value": "Paris",
+                "synonyms": ["eu west three", "france", "europe paris"]
+              }
+            },
+            {
+              "id": "IN-WE",
               "name": {
                 "value": "Mumbai",
-                "synonyms": ["ap south 1", "india", "mumbai"]
+                "synonyms": ["ap south one", "india", "asia pacific mumbai"]
               }
             },
             {
               "id": "SG",
               "name": {
                 "value": "Singapore",
-              "synonyms": ["ap southeast 1", "singapore"]
+                "synonyms": ["ap southeast one", "asia pacific singapore"]
+              }
+            },
+            {
+              "id": "JP-TK",
+              "name": {
+                "value": "Tokyo",
+                "synonyms": ["ap northeast one", "japan", "asia pacific tokyo"]
+              }
+            },
+            {
+              "id": "AU-NSW",
+              "name": {
+                "value": "Sydney",
+                "synonyms": ["ap southeast two", "australia", "asia pacific sydney"]
               }
             }
           ]
@@ -232,14 +284,54 @@
         {
           "name": "CODE_LANGUAGE",
           "values": [
-            { "name": { "value": "python" } },
-            { "name": { "value": "javascript" } },
-            { "name": { "value": "typescript" } },
-            { "name": { "value": "java" } },
-            { "name": { "value": "go" } },
-            { "name": { "value": "rust" } },
-            { "name": { "value": "c plus plus", "synonyms": ["cpp", "c++"] } },
-            { "name": { "value": "solidity" } }
+            {
+              "name": {
+                "value": "python",
+                "synonyms": ["python code", "fastapi", "django"]
+              }
+            },
+            {
+              "name": {
+                "value": "javascript",
+                "synonyms": ["node", "nodejs", "react"]
+              }
+            },
+            {
+              "name": {
+                "value": "typescript",
+                "synonyms": ["ts", "nextjs"]
+              }
+            },
+            {
+              "name": {
+                "value": "java",
+                "synonyms": ["spring boot", "jvm"]
+              }
+            },
+            {
+              "name": {
+                "value": "go",
+                "synonyms": ["golang"]
+              }
+            },
+            {
+              "name": {
+                "value": "rust",
+                "synonyms": ["cargo"]
+              }
+            },
+            {
+              "name": {
+                "value": "c plus plus",
+                "synonyms": ["cpp", "c language"]
+              }
+            },
+            {
+              "name": {
+                "value": "solidity",
+                "synonyms": ["smart contract", "ethereum"]
+              }
+            }
           ]
         }
       ]

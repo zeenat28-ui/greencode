@@ -192,3 +192,10 @@ class GreenCodeSDK:
     def export_if_manifest(self, **kwargs: Any) -> Dict[str, Any]:
         """Export a Green Software Foundation Impact Framework (.imp.yaml) manifest."""
         return export_impact_framework_manifest(**kwargs)
+
+    def audit_call_graph(self, files: Dict[str, str]) -> Dict[str, Any]:
+        """Run cross-file inter-procedural call-graph analysis across multiple files."""
+        from app.call_graph import audit_cross_file_loops
+
+        return audit_cross_file_loops(files)
+

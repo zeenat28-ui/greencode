@@ -268,3 +268,28 @@ class TestSCI(unittest.TestCase):
         self.assertGreaterEqual(carbon_equivalents(100.0)["km_driven_petrol_car"], 0.5)
         self.assertEqual(carbon_equivalents(-5.0)["smartphone_charges"], 0.0)
 
+
+class TestProcessEnergyAttribution(unittest.TestCase):
+    """Verify unprivileged per-process and Linux cgroup v2 energy attribution."""
+
+    def test_cgroup_v2_cpu_stat_parsing(self):
+        import tempfile
+        from app import energy_sensors as es
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stat_file = os.path.join(tmpdir, "cpu.stat")
+            with open(stat_file, "w", encoding="utf-8") as fh:
+                fh.write("usage_usec 482000\nuser_usec 300000\nsystem_usec 182000\n")
+            val = es.read_cgroup_cpu_usec(tmpdir)
+            self.assertEqual(val, 482000)
+
+    def test_attribute_process_energy_live_and_cgroup(self):
+        from app import energy_sensors as es
+
+        res = es.attribute_process_energy(duration_seconds=0.02)
+        self.assertEqual(res["pid"], os.getpid())
+        self.assertGreater(res["process_joules"], 0.0)
+        self.assertIn(res["attribution_source"], ("proc_stat", "psutil_process"))
+        self.assertIn("measurement_is_hardware", res)
+
+

@@ -4,6 +4,7 @@ Allows engineering teams to author and enforce organization-specific static
 carbon and FinOps rules via `.greencode-rules.yaml` or HTTP API payloads.
 """
 
+import ast
 from functools import lru_cache
 import json
 import os
@@ -24,6 +25,7 @@ DEFAULT_CUSTOM_RULES: List[Dict[str, Any]] = [
             "Polling with time.sleep() inside a loop holds worker threads and prevents "
             "CPU package C-state residency. Prefer event-driven callbacks or asyncio.Event."
         ),
+        "ast_call_in_loop": "time.sleep",
         "pattern_regex": r"(?:for|while)[ \t]+[^\n:]+:[ \t]*(?:\n[ \t]+[^\s\n][^\n]*){0,6}\n[ \t]+time\.sleep\s*\(",
         "languages": ["python"],
         "severity": "MEDIUM",
@@ -38,6 +40,7 @@ DEFAULT_CUSTOM_RULES: List[Dict[str, Any]] = [
             "Loading full CSV frames repeatedly inside a loop spikes DRAM allocation "
             "and memory controller power draw."
         ),
+        "ast_call_in_loop": "pd.read_csv",
         "pattern_regex": r"(?:for|while)[ \t]+[^\n:]+:[ \t]*(?:\n[ \t]+[^\s\n][^\n]*){0,6}\n[ \t]+[^\s\n][^\n]*\bpd\.read_csv\s*\(",
         "languages": ["python"],
         "severity": "HIGH",
@@ -66,6 +69,7 @@ DEFAULT_CUSTOM_RULES: List[Dict[str, Any]] = [
             "Serializing full dictionaries with json.dumps() on every iteration wastes CPU "
             "cycles on redundant string encoding."
         ),
+        "ast_call_in_loop": "json.dumps",
         "pattern_regex": r"(?:for|while)[ \t]+[^\n:]+:[ \t]*(?:\n[ \t]+[^\s\n][^\n]*){0,6}\n[ \t]+[^\s\n][^\n]*\bjson\.dumps\s*\(",
         "languages": ["python"],
         "severity": "MEDIUM",
@@ -116,7 +120,8 @@ def _normalize_single_rule(item: Any) -> Optional[Dict[str, Any]]:
         return None
     rule_id = str(item.get("id") or "").strip()
     pattern_regex = str(item.get("pattern_regex") or item.get("pattern") or "").strip()
-    if not rule_id or not pattern_regex:
+    ast_call_in_loop = str(item.get("ast_call_in_loop") or "").strip()
+    if not rule_id or (not pattern_regex and not ast_call_in_loop):
         return None
     langs = item.get("languages") or ["python"]
     if isinstance(langs, str):
@@ -125,6 +130,7 @@ def _normalize_single_rule(item: Any) -> Optional[Dict[str, Any]]:
         "id": rule_id,
         "title": str(item.get("title") or rule_id),
         "description": str(item.get("description") or "Custom declarative energy rule match."),
+        "ast_call_in_loop": ast_call_in_loop,
         "pattern_regex": pattern_regex,
         "languages": [str(x).lower() for x in langs],
         "severity": str(item.get("severity") or "MEDIUM").upper(),
@@ -158,19 +164,107 @@ def load_repo_custom_rules(repo_root: Optional[str] = None) -> List[Dict[str, An
     return list(DEFAULT_CUSTOM_RULES)
 
 
+def _extract_dotted_call(call_node: ast.Call) -> str:
+    func = call_node.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        parts: List[str] = [func.attr]
+        curr = func.value
+        while isinstance(curr, ast.Attribute):
+            parts.append(curr.attr)
+            curr = curr.value
+        if isinstance(curr, ast.Name):
+            parts.append(curr.id)
+        parts.reverse()
+        return ".".join(parts)
+    return ""
+
+
+def _collect_ast_loop_calls(tree: ast.AST) -> List[tuple]:
+    """Return list of (loop_line, call_line, dotted_call_name) for all calls inside AST loops."""
+    collected: List[tuple] = []
+    loop_nodes = [
+        n for n in ast.walk(tree)
+        if isinstance(n, (ast.For, ast.AsyncFor, ast.While, ast.ListComp, ast.SetComp))
+    ]
+    for loop_node in loop_nodes:
+        loop_line = int(getattr(loop_node, "lineno", 1))
+        for child in ast.walk(loop_node):
+            if isinstance(child, ast.Call):
+                cname = _extract_dotted_call(child)
+                if cname:
+                    collected.append((loop_line, int(getattr(child, "lineno", loop_line)), cname))
+    return collected
+
+
+def _match_ast_selector(
+    rule: Dict[str, Any],
+    ast_loop_calls: List[tuple],
+    lines: List[str],
+    language: str,
+    file_path: str,
+) -> List[Dict[str, Any]]:
+    """Match a structural `ast_call_in_loop` rule against pre-extracted AST loop calls."""
+    target_call = str(rule.get("ast_call_in_loop") or "").strip()
+    if not target_call:
+        return []
+    findings: List[Dict[str, Any]] = []
+    seen_lines = set()
+    for loop_line, call_line, cname in ast_loop_calls:
+        if cname != target_call and not cname.endswith("." + target_call.split(".")[-1]) or (
+            "." in target_call and cname != target_call
+        ):
+            continue
+        if call_line in seen_lines:
+            continue
+        seen_lines.add(call_line)
+        snippet_lines = lines[max(0, loop_line - 1): min(len(lines), call_line)]
+        snippet_text = "\n".join(snippet_lines).strip()
+        if "greencode: ignore" in snippet_text or "greencode:ignore" in snippet_text:
+            continue
+        findings.append({
+            "violation_type": rule["id"],
+            "severity": rule["severity"],
+            "title": rule["title"],
+            "description": rule["description"],
+            "line_number": loop_line,
+            "end_line_number": max(loop_line, call_line),
+            "deduction": float(rule["deduction"]),
+            "gsf_pattern": rule["gsf_pattern"],
+            "suggested_fix": rule["fix_guidance"],
+            "file_path": file_path,
+            "language": language,
+            "snippet": snippet_text[:300],
+            "complexity_class": "O(N_custom_ast_rule)",
+            "span_lines": max(1, call_line - loop_line + 1),
+            "custom_rule": True,
+        })
+    return findings
+
+
 def _match_single_rule(
     rule: Dict[str, Any],
     source_code: str,
     lines: List[str],
     language: str,
     file_path: str,
+    ast_loop_calls: Optional[List[tuple]] = None,
 ) -> List[Dict[str, Any]]:
     """Evaluate a single pre-normalized custom rule against source_code."""
     allowed_langs = rule.get("languages", [])
     if allowed_langs and "*" not in allowed_langs and language.lower() not in allowed_langs:
         return []
 
-    compiled = _compile_cached_regex(rule["pattern_regex"])
+    if language.lower() == "python" and rule.get("ast_call_in_loop") and ast_loop_calls is not None:
+        ast_matches = _match_ast_selector(rule, ast_loop_calls, lines, language, file_path)
+        if ast_matches:
+            return ast_matches
+
+    pattern_regex = rule.get("pattern_regex") or ""
+    if not pattern_regex:
+        return []
+    compiled = _compile_cached_regex(pattern_regex)
     if compiled is None:
         return []
 
@@ -216,7 +310,17 @@ def evaluate_custom_rules(
 
     rules = custom_rules if custom_rules is not None else load_repo_custom_rules()
     lines = source_code.splitlines()
+    ast_loop_calls: Optional[List[tuple]] = None
+    if language.lower() == "python":
+        try:
+            tree = ast.parse(source_code)
+            ast_loop_calls = _collect_ast_loop_calls(tree)
+        except SyntaxError:
+            ast_loop_calls = None
+
     all_findings: List[Dict[str, Any]] = []
     for rule in rules:
-        all_findings.extend(_match_single_rule(rule, source_code, lines, language, file_path))
+        all_findings.extend(
+            _match_single_rule(rule, source_code, lines, language, file_path, ast_loop_calls)
+        )
     return all_findings

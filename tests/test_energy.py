@@ -34,7 +34,7 @@ class TestHardwareMethodClassification(unittest.TestCase):
     """
 
     def test_every_documented_backend_is_hardware(self):
-        for method in ("rapl", "scaphandre", "perf", "battery"):
+        for method in ("rapl", "scaphandre", "perf", "battery", "nvidia_smi", "apple_smc"):
             with self.subTest(method=method):
                 self.assertIn(method, HARDWARE_METHODS)
                 self.assertTrue(is_hardware_method(method))
@@ -86,6 +86,26 @@ class TestHardwareMethodClassification(unittest.TestCase):
         self.assertGreaterEqual(wall, 0.0)
         self.assertAlmostEqual(joules["total_joules"], 2.5, places=6)
         self.assertAlmostEqual(joules["cpu_joules"], 2.5, places=6)
+
+    def test_nvidia_gpu_and_apple_silicon_meters(self):
+        from app.energy_sensors import (
+            AppleSiliconMeter,
+            AppleSiliconPoint,
+            NvidiaGpuMeter,
+            NvidiaGpuPoint,
+        )
+
+        p1 = NvidiaGpuPoint(timestamp=10.0, power_watts=180.0, device_name="NVIDIA A10G")
+        p2 = NvidiaGpuPoint(timestamp=12.0, power_watts=220.0, device_name="NVIDIA A10G")
+        gpu_j = NvidiaGpuMeter.joules_between(p1, p2)
+        self.assertAlmostEqual(gpu_j["gpu_joules"], 400.0, places=6)
+        self.assertAlmostEqual(gpu_j["total_joules"], 400.0, places=6)
+
+        a1 = AppleSiliconPoint(timestamp=5.0, power_watts=18.0)
+        a2 = AppleSiliconPoint(timestamp=7.0, power_watts=22.0)
+        soc_j = AppleSiliconMeter.joules_between(a1, a2)
+        self.assertAlmostEqual(soc_j["cpu_joules"], 40.0, places=6)
+        self.assertAlmostEqual(soc_j["total_joules"], 40.0, places=6)
 
 
 class TestCounterArithmetic(unittest.TestCase):

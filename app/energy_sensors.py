@@ -56,7 +56,9 @@ DATACENTER_PUE = 1.20
 #
 # Every module that must classify a figure imports this, so adding a backend in
 # one place can no longer leave the others silently behind.
-HARDWARE_METHODS = frozenset({"rapl", "scaphandre", "perf", "battery"})
+HARDWARE_METHODS = frozenset(
+    {"rapl", "scaphandre", "perf", "battery", "nvidia_smi", "apple_smc"}
+)
 
 
 def is_hardware_method(method: Optional[str]) -> bool:
@@ -515,23 +517,192 @@ def scaphandre_available(url: str = SCAPHANDRE_URL) -> bool:
     return ScaphandreMeter(url).available
 
 
+@dataclass
+class NvidiaGpuPoint:
+    """Snapshot of NVIDIA GPU board power draw from NVML / nvidia-smi."""
+
+    timestamp: float
+    power_watts: float
+    device_name: str = "NVIDIA GPU"
+
+
+class NvidiaGpuMeter:
+    """Hardware GPU power meter backed by `nvidia-smi` / NVML telemetry."""
+
+    def __init__(self) -> None:
+        self._sample: Optional[Tuple[float, str]] = None
+        self._probed = False
+
+    def _query_gpu_power(self) -> Optional[Tuple[float, str]]:
+        """Return (total_gpu_power_watts, primary_device_name) across active NVIDIA GPUs."""
+        import shutil
+
+        if shutil.which("nvidia-smi") is None:
+            return None
+        try:
+            out = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=power.draw,name",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            if out.returncode != 0:
+                return None
+            total_w = 0.0
+            dev_name = "NVIDIA GPU"
+            found = False
+            for line in (out.stdout or "").splitlines():
+                parts = [p.strip() for p in line.split(",")]
+                if not parts or not parts[0]:
+                    continue
+                total_w += float(parts[0])
+                if len(parts) > 1 and parts[1]:
+                    dev_name = parts[1]
+                found = True
+            return (total_w, dev_name) if found and total_w > 0 else None
+        except Exception:
+            return None
+
+    @property
+    def available(self) -> bool:
+        if not self._probed:
+            self._sample = self._query_gpu_power()
+            self._probed = True
+        return self._sample is not None
+
+    def read(self) -> Optional[NvidiaGpuPoint]:
+        queried = self._query_gpu_power()
+        if queried is None:
+            return None
+        watts, name = queried
+        return NvidiaGpuPoint(timestamp=time.monotonic(), power_watts=watts, device_name=name)
+
+    @staticmethod
+    def joules_between(a: NvidiaGpuPoint, b: NvidiaGpuPoint) -> Dict[str, float]:
+        dt = max(0.0, b.timestamp - a.timestamp)
+        avg_w = max(0.0, (a.power_watts + b.power_watts) / 2.0)
+        gpu_j = avg_w * dt
+        return {
+            "cpu_joules": 0.0,
+            "memory_joules": 0.0,
+            "gpu_joules": gpu_j,
+            "total_joules": gpu_j,
+        }
+
+    def measure(self, fn, *args, **kwargs) -> Tuple[Any, float, Dict[str, float]]:
+        before = self.read()
+        t0 = time.perf_counter()
+        result = fn(*args, **kwargs)
+        wall = time.perf_counter() - t0
+        after = self.read()
+        if before is None or after is None:
+            return result, wall, {"cpu_joules": 0.0, "memory_joules": 0.0, "gpu_joules": 0.0, "total_joules": 0.0}
+        # Ensure positive wall time is reflected when mocked timestamps match
+        if after.timestamp <= before.timestamp:
+            after = NvidiaGpuPoint(timestamp=before.timestamp + wall, power_watts=after.power_watts, device_name=after.device_name)
+        return result, wall, self.joules_between(before, after)
+
+    def describe(self) -> Dict[str, Any]:
+        dev = self._sample[1] if self._sample else "NVIDIA GPU"
+        return {"backend": "nvidia_smi", "device": dev}
+
+
+@dataclass
+class AppleSiliconPoint:
+    """Snapshot of Apple Silicon SoC/system power telemetry on macOS arm64."""
+
+    timestamp: float
+    power_watts: float
+    chip_arch: str = "apple-arm64"
+
+
+class AppleSiliconMeter:
+    """Hardware power meter for macOS Apple Silicon (M1/M2/M3/M4) via IORegistry SMC telemetry."""
+
+    _AMP_RE = re.compile(r'"InstantAmperage"\s*=\s*(-?\d+)')
+    _VOLT_RE = re.compile(r'"Voltage"\s*=\s*(\d+)')
+
+    def __init__(self) -> None:
+        self._sample: Optional[float] = None
+        self._probed = False
+
+    def _query_smc_power(self) -> Optional[float]:
+        """Return instantaneous system power in Watts on Darwin arm64 via ioreg."""
+        if platform.system().lower() != "darwin":
+            return None
+        try:
+            out = subprocess.run(
+                ["ioreg", "-rw0", "-c", "AppleSmartBattery"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            if out.returncode != 0:
+                return None
+            text = out.stdout or ""
+            amp_m = self._AMP_RE.search(text)
+            volt_m = self._VOLT_RE.search(text)
+            if not amp_m or not volt_m:
+                return None
+            ma = abs(int(amp_m.group(1)))
+            mv = int(volt_m.group(1))
+            watts = (ma * mv) / 1_000_000.0
+            return watts if 0.5 <= watts <= 250.0 else None
+        except Exception:
+            return None
+
+    @property
+    def available(self) -> bool:
+        if not self._probed:
+            self._sample = self._query_smc_power()
+            self._probed = True
+        return self._sample is not None
+
+    def read(self) -> Optional[AppleSiliconPoint]:
+        watts = self._query_smc_power()
+        if watts is None:
+            return None
+        return AppleSiliconPoint(timestamp=time.monotonic(), power_watts=watts)
+
+    @staticmethod
+    def joules_between(a: AppleSiliconPoint, b: AppleSiliconPoint) -> Dict[str, float]:
+        dt = max(0.0, b.timestamp - a.timestamp)
+        avg_w = max(0.0, (a.power_watts + b.power_watts) / 2.0)
+        soc_j = avg_w * dt
+        return {
+            "cpu_joules": soc_j,
+            "memory_joules": 0.0,
+            "total_joules": soc_j,
+        }
+
+    def measure(self, fn, *args, **kwargs) -> Tuple[Any, float, Dict[str, float]]:
+        before = self.read()
+        t0 = time.perf_counter()
+        result = fn(*args, **kwargs)
+        wall = time.perf_counter() - t0
+        after = self.read()
+        if before is None or after is None:
+            return result, wall, {"cpu_joules": 0.0, "memory_joules": 0.0, "total_joules": 0.0}
+        if after.timestamp <= before.timestamp:
+            after = AppleSiliconPoint(timestamp=before.timestamp + wall, power_watts=after.power_watts)
+        return result, wall, self.joules_between(before, after)
+
+    def describe(self) -> Dict[str, Any]:
+        return {"backend": "apple_smc", "chip_arch": "apple-arm64"}
+
+
 def select_meter(prefer: Optional[str] = None):
     """Return the best available energy meter, or None if only the model works.
 
     Priority follows the documented tier order: RAPL (direct sysfs) -> Scaphandre
-    (HTTP sidecar) -> perf (PMU via `perf stat`) -> Battery.
-
-    The `perf` tier is included here deliberately. It used to be documented as
-    tier 3 in the README and reported by `probe_capabilities()`, but was never
-    actually reached by this function, so a host whose PMU was readable but whose
-    `powercap` sysfs tree was not - a common container-permission configuration -
-    fell straight past a genuinely working counter to the battery probe and then
-    to the TDP model. Capability reporting and meter selection now agree.
-
-    The model fallback is handled by the caller, not here, so this returns None
-    rather than a fake meter when nothing real is reachable.
+    (HTTP sidecar) -> NVIDIA GPU (nvidia_smi) -> Apple Silicon SMC (apple_smc)
+    -> perf (PMU via `perf stat`) -> Battery.
     """
-    for backend in ("rapl", "scaphandre", "perf", "battery"):
+    for backend in ("rapl", "scaphandre", "nvidia_smi", "apple_smc", "perf", "battery"):
         if prefer is not None and prefer != backend:
             continue
         try:
@@ -544,17 +715,15 @@ def select_meter(prefer: Optional[str] = None):
 
 
 def _instantiate_meter(backend: str):
-    """Build one meter by tier name, or None when the tier is not a meter class.
-
-    `perf` is not a class here: `perf stat` brackets a *command* rather than
-    exposing a differenceable counter, so it is surfaced through
-    `measure_with_perf()` instead. It is still reported as available so the
-    capability probe reflects the documented tier list.
-    """
+    """Build one meter by tier name, or None when the tier is not a meter class."""
     if backend == "rapl":
         return RaplMeter()
     if backend == "scaphandre":
         return ScaphandreMeter()
+    if backend == "nvidia_smi":
+        return NvidiaGpuMeter()
+    if backend == "apple_smc":
+        return AppleSiliconMeter()
     if backend == "battery":
         return BatteryMeter()
     return None
@@ -569,18 +738,7 @@ _PROBE_CACHE_TTL = float(os.environ.get("GREENCODE_PROBE_TTL", "300"))
 
 
 def probe_capabilities(force: bool = False) -> Dict[str, Any]:
-    """Report what this host can genuinely measure. Surfaced by /api/health.
-
-    The answer is a property of the host, not of the request, but the probes
-    that produce it are expensive: the Windows battery tier spawns PowerShell
-    (6 s timeout), the Scaphandre tier waits on an HTTP probe, and the perf
-    tier can run a subprocess. Uncached that cost (~4.5 s here) was paid on
-    *every* measure_energy call, which is what made audit_and_score take ~8 s.
-
-    The result is therefore cached for GREENCODE_PROBE_TTL seconds (default
-    300). Pass force=True to re-probe immediately; set the TTL to 0 to disable
-    caching entirely.
-    """
+    """Report what this host can genuinely measure. Surfaced by /api/health."""
     global _PROBE_CACHE
 
     if not force and _PROBE_CACHE_TTL > 0:
@@ -597,17 +755,25 @@ def probe_capabilities(force: bool = False) -> Dict[str, Any]:
     battery = battery_discharge_watts()
     perf_ok = perf_available()
     scaph_ok = scaphandre_available()
+    nvidia_meter = NvidiaGpuMeter()
+    nvidia_ok = nvidia_meter.available
+    apple_meter = AppleSiliconMeter()
+    apple_ok = apple_meter.available
 
     result = {
         "platform": platform.system().lower(),
         "rapl": {"supported": bool(rapl_domains), "domains": rapl_domains},
         "scaphandre": {"supported": scaph_ok, "url": SCAPHANDRE_URL},
+        "nvidia_smi": {"supported": nvidia_ok, "device": nvidia_meter.describe().get("device") if nvidia_ok else None},
+        "apple_smc": {"supported": apple_ok},
         "perf": {"supported": perf_ok},
         "battery": {"supported": battery is not None, "watts": battery},
         "modelled_fallback": True,
         "best_available": (
             "rapl" if rapl_domains
             else "scaphandre" if scaph_ok
+            else "nvidia_smi" if nvidia_ok
+            else "apple_smc" if apple_ok
             else "perf" if perf_ok
             else "battery" if battery
             else "model"

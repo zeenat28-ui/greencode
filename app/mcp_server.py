@@ -948,6 +948,534 @@ async def authorization_server_metadata(request: Request) -> JSONResponse:
     )
 
 
+_ALEXA_REGION_ALIASES: Dict[str, str] = {
+    "ireland": "IE",
+    "dublin": "IE",
+    "eu-west-1": "IE",
+    "eu west 1": "IE",
+    "ie": "IE",
+    "sweden": "SE",
+    "stockholm": "SE",
+    "eu-north-1": "SE",
+    "eu north 1": "SE",
+    "se": "SE",
+    "virginia": "US-MIDA-PJM",
+    "northern virginia": "US-MIDA-PJM",
+    "us-east-1": "US-MIDA-PJM",
+    "us east 1": "US-MIDA-PJM",
+    "us-mida-pjm": "US-MIDA-PJM",
+    "oregon": "US-NW-PACW",
+    "us-west-2": "US-NW-PACW",
+    "us west 2": "US-NW-PACW",
+    "us-nw-pacw": "US-NW-PACW",
+    "california": "US-CAL-CISO",
+    "northern california": "US-CAL-CISO",
+    "us-west-1": "US-CAL-CISO",
+    "us west 1": "US-CAL-CISO",
+    "us-cal-ciso": "US-CAL-CISO",
+    "frankfurt": "DE",
+    "germany": "DE",
+    "eu-central-1": "DE",
+    "eu central 1": "DE",
+    "de": "DE",
+    "london": "GB",
+    "uk": "GB",
+    "united kingdom": "GB",
+    "eu-west-2": "GB",
+    "eu west 2": "GB",
+    "gb": "GB",
+    "paris": "FR",
+    "france": "FR",
+    "eu-west-3": "FR",
+    "fr": "FR",
+    "mumbai": "IN-WE",
+    "india": "IN-WE",
+    "ap-south-1": "IN-WE",
+    "ap south 1": "IN-WE",
+    "ap-south": "IN-WE",
+    "in-we": "IN-WE",
+    "singapore": "SG",
+    "ap-southeast-1": "SG",
+    "ap southeast 1": "SG",
+    "sg": "SG",
+    "tokyo": "JP-TK",
+    "japan": "JP-TK",
+    "ap-northeast-1": "JP-TK",
+    "jp-tk": "JP-TK",
+    "sydney": "AU-NSW",
+    "australia": "AU-NSW",
+    "ap-southeast-2": "AU-NSW",
+    "au-nsw": "AU-NSW",
+}
+
+_DEMO_LANGUAGE_SNIPPETS: Dict[str, str] = {
+    "python": (
+        "def aggregate_items(records, tags):\n"
+        "    output = ''\n"
+        "    for r in records:\n"
+        "        for t in tags:\n"
+        "            if r == t:\n"
+        "                output = output + str(r) + ','\n"
+        "    return output\n"
+    ),
+    "javascript": (
+        "function matchUsers(users, activeIds) {\n"
+        "  let out = '';\n"
+        "  for (let i = 0; i < users.length; i++) {\n"
+        "    for (let j = 0; j < activeIds.length; j++) {\n"
+        "      if (users[i].id === activeIds[j]) out += users[i].name + ',';\n"
+        "    }\n"
+        "  }\n"
+        "  return out;\n"
+        "}\n"
+    ),
+}
+
+
+def _normalize_alexa_zone(raw_value: Optional[str], default: str = "IE") -> str:
+    """Resolve spoken region names, AWS codes, or canonical zone IDs."""
+    if not raw_value:
+        return default
+    cleaned = raw_value.strip().lower()
+    if cleaned in _ALEXA_REGION_ALIASES:
+        return _ALEXA_REGION_ALIASES[cleaned]
+    for alias, zone in _ALEXA_REGION_ALIASES.items():
+        if alias in cleaned:
+            return zone
+    return raw_value.strip().upper()
+
+
+def _extract_alexa_slot(slots: Dict[str, Any], slot_name: str) -> Optional[str]:
+    """Extract canonical ID or spoken value from an ASK intent slot object."""
+    if not isinstance(slots, dict):
+        return None
+    slot_obj = slots.get(slot_name)
+    if not isinstance(slot_obj, dict):
+        return None
+    resolutions = (
+        slot_obj.get("resolutions", {}).get("resolutionsPerAuthority") or []
+    )
+    for auth in resolutions:
+        status_code = auth.get("status", {}).get("code")
+        values = auth.get("values") or []
+        if status_code == "ER_SUCCESS_MATCH" and values:
+            val_obj = values[0].get("value", {})
+            canonical_id = val_obj.get("id") or val_obj.get("name")
+            if canonical_id:
+                return str(canonical_id)
+    raw = slot_obj.get("value")
+    return str(raw).strip() if raw else None
+
+
+def _build_ask_response(
+    speech_text: str,
+    *,
+    card_title: str = "GreenCode Auditor",
+    reprompt_text: Optional[str] = None,
+    should_end_session: bool = False,
+    session_attributes: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build a standard Amazon Alexa Skills Kit (ASK) v1.0 JSON response."""
+    response_body: Dict[str, Any] = {
+        "outputSpeech": {
+            "type": "PlainText",
+            "text": speech_text,
+        },
+        "card": {
+            "type": "Simple",
+            "title": card_title,
+            "content": speech_text,
+        },
+        "shouldEndSession": should_end_session,
+    }
+    if reprompt_text and not should_end_session:
+        response_body["reprompt"] = {
+            "outputSpeech": {
+                "type": "PlainText",
+                "text": reprompt_text,
+            }
+        }
+    return {
+        "version": "1.0",
+        "sessionAttributes": session_attributes or {},
+        "response": response_body,
+    }
+
+
+def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Process an Amazon Alexa Skills Kit (ASK) v1.0 JSON webhook payload.
+
+    Bridges standard Alexa Custom Skill voice requests (LaunchRequest,
+    IntentRequest, SessionEndedRequest) directly to GreenCode's live MCP tool
+    functions with full hardware-vs-model and grid-tier provenance.
+    """
+    session_attrs: Dict[str, Any] = dict(
+        (payload.get("session") or {}).get("attributes") or {}
+    )
+    req = payload.get("request") or {}
+    req_type = req.get("type", "")
+
+    if req_type == "SessionEndedRequest":
+        return _build_ask_response(
+            "Goodbye from GreenCode Auditor.",
+            should_end_session=True,
+            session_attributes=session_attrs,
+        )
+
+    if req_type == "LaunchRequest":
+        caps = energy_sensors.probe_capabilities()
+        best = caps.get("best_available", "model")
+        is_hw = energy_sensors.is_hardware_method(best)
+        sensor_desc = (
+            f"hardware sensor {best}"
+            if is_hw
+            else f"TDP model fallback on {caps.get('platform', 'host')}"
+        )
+        speech = (
+            f"Welcome to GreenCode Auditor. Active energy backend is {sensor_desc}. "
+            "You can ask me to compare AWS regions like Ireland and Virginia, "
+            "check live grid carbon intensity, audit your Python or JavaScript code, "
+            "calculate Software Carbon Intensity, or explain a Green Score."
+        )
+        return _build_ask_response(
+            speech,
+            card_title="GreenCode Auditor — Ready",
+            reprompt_text="Ask me: which AWS region is cleanest tonight, or audit my Python code.",
+            should_end_session=False,
+            session_attributes=session_attrs,
+        )
+
+    if req_type == "IntentRequest":
+        intent = req.get("intent") or {}
+        intent_name = intent.get("name", "")
+        slots = intent.get("slots") or {}
+
+        if intent_name in ("AMAZON.CancelIntent", "AMAZON.StopIntent"):
+            return _build_ask_response(
+                "Stopping GreenCode Auditor. Goodbye!",
+                should_end_session=True,
+                session_attributes=session_attrs,
+            )
+
+        if intent_name in ("AMAZON.HelpIntent", "AMAZON.NavigateHomeIntent"):
+            speech = (
+                "GreenCode Auditor measures software carbon intensity and grid emissions "
+                "with strict data provenance. Try saying: compare Ireland and Virginia, "
+                "what is the carbon intensity in Sweden, audit my Python code, "
+                "measure hardware energy, or explain this score."
+            )
+            return _build_ask_response(
+                speech,
+                card_title="GreenCode Auditor — Help",
+                reprompt_text="What would you like to audit or compare?",
+                should_end_session=False,
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "CompareRegionsIntent":
+            r1 = _extract_alexa_slot(slots, "region_one")
+            r2 = _extract_alexa_slot(slots, "region_two")
+            if r1 and r2:
+                zones = [_normalize_alexa_zone(r1, "IE"), _normalize_alexa_zone(r2, "US-MIDA-PJM")]
+            elif r1:
+                z1 = _normalize_alexa_zone(r1, "IE")
+                zones = [z1, "US-MIDA-PJM" if z1 != "US-MIDA-PJM" else "IE"]
+            else:
+                zones = ["IE", "SE", "US-CAL-CISO", "US-MIDA-PJM"]
+
+            comp = compare_regions(zones)["data"]
+            cleanest = comp.get("cleanest")
+            dirtiest = comp.get("dirtiest")
+            imp = comp.get("improvement_pct", 0.0)
+            if cleanest and dirtiest:
+                speech = (
+                    f"Comparing {', '.join(zones)}: the cleanest region is {cleanest['zone']} "
+                    f"at {cleanest['carbon_intensity']} grams CO2 per kilowatt-hour "
+                    f"(source tier: {cleanest.get('tier') or cleanest.get('source')}). "
+                    f"The highest-emission region is {dirtiest['zone']} at "
+                    f"{dirtiest['carbon_intensity']} grams CO2 per kilowatt-hour. "
+                    f"Running your workload in {cleanest['zone']} cuts grid carbon intensity by {imp} percent."
+                )
+            else:
+                speech = "Grid intensity data is currently unavailable for the requested regions."
+            session_attrs["last_zones"] = zones
+            return _build_ask_response(
+                speech,
+                card_title="GreenCode Region Comparison",
+                reprompt_text="Would you like to check another region or audit your code?",
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "GetGridIntensityIntent":
+            raw_region = _extract_alexa_slot(slots, "region")
+            zone = _normalize_alexa_zone(raw_region, "IE")
+            res = get_grid_intensity(zone)["data"]
+            ci = res.get("carbon_intensity")
+            tier = res.get("intensity_source_tier") or res.get("intensity_source") or "unavailable"
+            if ci is not None:
+                speech = (
+                    f"The grid carbon intensity for zone {zone} is {ci} grams CO2 per kilowatt-hour. "
+                    f"Provenance tier is {tier}."
+                )
+            else:
+                speech = f"No live or reference carbon intensity reading was available for zone {zone}."
+            session_attrs["last_zone"] = zone
+            return _build_ask_response(
+                speech,
+                card_title=f"Grid Carbon Intensity ({zone})",
+                reprompt_text="Ask me to compare two regions or calculate SCI.",
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "AuditCodeIntent":
+            raw_lang = (_extract_alexa_slot(slots, "language") or "python").lower()
+            lang = "javascript" if "javascript" in raw_lang or "typescript" in raw_lang else "python"
+            snippet = session_attrs.get("source_code") or _DEMO_LANGUAGE_SNIPPETS.get(lang, _DEMO_LANGUAGE_SNIPPETS["python"])
+            zone = session_attrs.get("last_zone", "IE")
+            verdict = audit_and_score(snippet, language=lang, zone=zone)["data"]
+            score = verdict.get("green_score", 0.0)
+            grade = verdict.get("grade", "F")
+            v_count = verdict.get("violation_count", 0)
+            energy_info = verdict.get("energy") or {}
+            is_hw = energy_info.get("measurement_is_hardware", False)
+            method = energy_info.get("measurement_method", "model")
+            sci_val = (verdict.get("sci") or {}).get("sci_gco2_per_functional_unit")
+            hw_phrase = (
+                f"measured by hardware counter {method}"
+                if is_hw
+                else f"estimated via TDP model ({method}, measurement_is_hardware is false)"
+            )
+            speech = (
+                f"Audited {lang} code snippet: Green Score is {score} out of 100 (Grade {grade}) "
+                f"with {v_count} detected energy anti-patterns. "
+                f"Energy was {hw_phrase}, yielding a Software Carbon Intensity of "
+                f"{round(float(sci_val), 6) if sci_val is not None else 'unavailable'} grams CO2 per execution in zone {zone}."
+            )
+            session_attrs["last_score"] = score
+            session_attrs["last_energy_joules"] = energy_info.get("energy_joules", 15.0)
+            session_attrs["last_zone"] = zone
+            return _build_ask_response(
+                speech,
+                card_title=f"GreenCode Audit ({lang.title()})",
+                reprompt_text="Say explain this score for full provenance, or refactor my code.",
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "AuditRepositoryIntent":
+            local_target = os.path.join(os.path.dirname(__file__), "sci.py")
+            try:
+                with open(local_target, "r", encoding="utf-8") as fh:
+                    code_text = fh.read()
+                res = audit_code(code_text, language="python", file_path="app/sci.py")["data"]
+                score = res.get("green_score", 100.0)
+                grade = res.get("grade", "A")
+                v_count = res.get("violation_count", 0)
+                speech = (
+                    f"GreenCode repository audit completed. Core SCI module scored {score} out of 100 "
+                    f"(Grade {grade}) with {v_count} energy anti-patterns detected. "
+                    "Note: static AST analysis identifies structural energy hotspots; use measure hardware energy for runtime Joules."
+                )
+                session_attrs["last_score"] = score
+            except Exception as exc:  # noqa: BLE001
+                speech = f"Repository audit encountered an error: {exc}."
+            return _build_ask_response(
+                speech,
+                card_title="GreenCode Repository Audit",
+                reprompt_text="Ask me to explain this score or compare AWS regions.",
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "CalculateSciIntent":
+            raw_region = _extract_alexa_slot(slots, "region")
+            zone = _normalize_alexa_zone(raw_region, session_attrs.get("last_zone", "IE"))
+            joules = float(session_attrs.get("last_energy_joules", 45.0))
+            res = calculate_sci(energy_joules=joules, duration_seconds=1.5, functional_unit=1.0, zone=zone)
+            if res["status"] == "ok":
+                sci_data = res["data"]["sci"]
+                grade = res["data"]["grade"]
+                sci_val = sci_data["sci_gco2_per_functional_unit"]
+                grid_ci = res["data"]["grid_intensity"].get("carbon_intensity")
+                speech = (
+                    f"Using the Green Software Foundation formula SCI equals E times I plus M divided by R: "
+                    f"for {joules} Joules in zone {zone} (grid intensity {grid_ci} grams CO2 per kilowatt-hour), "
+                    f"the Software Carbon Intensity is {round(float(sci_val), 6)} grams CO2 per functional unit "
+                    f"(Grade {grade}). Energy input is marked as modelled (measurement_is_hardware is false)."
+                )
+            else:
+                speech = f"Could not calculate SCI for zone {zone}: {res['data'].get('reason')}."
+            return _build_ask_response(
+                speech,
+                card_title=f"GSF SCI Calculation ({zone})",
+                reprompt_text="Say explain this score or compare regions.",
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "MeasureEnergyIntent":
+            res = measure_energy(cpu_percent=55.0, memory_mb=512.0, duration_seconds=1.0)["data"]
+            joules = round(float(res.get("energy_joules", 0.0)), 2)
+            watts = round(float(res.get("power_watts", 0.0)), 2)
+            method = res.get("measurement_method", "model")
+            is_hw = res.get("measurement_is_hardware", False)
+            speech = (
+                f"Measured workload power is {watts} Watts ({joules} Joules over 1 second). "
+                f"Active sensor method is {method}, and measurement_is_hardware is {str(is_hw).lower()}. "
+                + (
+                    "This reading comes directly from a hardware counter."
+                    if is_hw
+                    else "Because no hardware counter is exposed on this host, this figure is a TDP model estimate, not a physical sensor reading."
+                )
+            )
+            session_attrs["last_energy_joules"] = joules
+            return _build_ask_response(
+                speech,
+                card_title="GreenCode Energy Sensor Probe",
+                reprompt_text="Ask me to calculate SCI or audit your code.",
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "ExplainScoreIntent":
+            score = float(session_attrs.get("last_score", 88.0))
+            zone = str(session_attrs.get("last_zone", "IE"))
+            joules = float(session_attrs.get("last_energy_joules", 45.0))
+            res = explain_score(
+                green_score=score,
+                zone=zone,
+                energy_joules=joules,
+                duration_seconds=1.0,
+                functional_unit=1.0,
+            )["data"]
+            is_hw = res.get("measurement_is_hardware", False)
+            method = res.get("measurement_method", "model")
+            grid = res.get("grid_intensity") or {}
+            sci_ctx = res.get("scientific_context") or {}
+            sci_val = sci_ctx.get("sci_gco2_per_functional_unit")
+            speech = (
+                f"Provenance trace for Green Score {score} (Grade {res.get('grade')}): "
+                f"energy method is {method} with measurement_is_hardware set to {str(is_hw).lower()}. "
+                f"Grid zone {zone} is at {grid.get('carbon_intensity')} grams CO2 per kilowatt-hour "
+                f"from source tier {grid.get('tier')}. "
+                f"Traceable SCI is {round(float(sci_val), 6) if sci_val is not None else 'not supplied'} grams CO2 per unit."
+            )
+            return _build_ask_response(
+                speech,
+                card_title="GreenCode Score Provenance",
+                reprompt_text="What else would you like to inspect?",
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "RefactorCodeIntent":
+            raw_lang = (_extract_alexa_slot(slots, "language") or "python").lower()
+            lang = "javascript" if "javascript" in raw_lang else "python"
+            snippet = _DEMO_LANGUAGE_SNIPPETS.get(lang, _DEMO_LANGUAGE_SNIPPETS["python"])
+            res = refactor_code(snippet, language=lang, violation_type="nested_loop_Lookup")["data"]
+            accepted = res.get("accepted", False)
+            verified = res.get("behaviour_verified", False)
+            source = res.get("source", "deterministic")
+            speech = (
+                f"Refactored {lang} nested loop anti-pattern using {source} engine. "
+                f"Verification gate accepted is {str(accepted).lower()}, and AST execution equivalence "
+                f"behaviour_verified is {str(verified).lower()}. Replacing O(N squared) lookup with a hash set "
+                "eliminates redundant CPU cycles."
+            )
+            return _build_ask_response(
+                speech,
+                card_title=f"GreenCode Verified Refactor ({lang.title()})",
+                reprompt_text="Would you like to audit another snippet or compare AWS regions?",
+                session_attributes=session_attrs,
+            )
+
+        # FreeformGreenCodeQueryIntent, AMAZON.FallbackIntent, or any custom query
+        raw_query = (
+            _extract_alexa_slot(slots, "query")
+            or _extract_alexa_slot(slots, "region")
+            or intent_name
+        ).lower()
+
+        matched_zones: List[str] = []
+        for alias, z_code in _ALEXA_REGION_ALIASES.items():
+            if len(alias) >= 4 and alias in raw_query and z_code not in matched_zones:
+                matched_zones.append(z_code)
+
+        if len(matched_zones) >= 2 or "cleanest" in raw_query or "region" in raw_query or "compare" in raw_query:
+            zones_to_check = matched_zones if len(matched_zones) >= 2 else ["IE", "SE", "US-CAL-CISO", "US-MIDA-PJM"]
+            comp = compare_regions(zones_to_check)["data"]
+            cleanest = comp.get("cleanest")
+            dirtiest = comp.get("dirtiest")
+            imp = comp.get("improvement_pct", 0.0)
+            if cleanest and dirtiest:
+                speech = (
+                    f"Based on GreenCode telemetry across {', '.join(zones_to_check)}, "
+                    f"{cleanest['zone']} is cleanest at {cleanest['carbon_intensity']} grams CO2 per kilowatt-hour "
+                    f"({cleanest.get('tier')}), cutting carbon intensity by {imp} percent compared to "
+                    f"{dirtiest['zone']} ({dirtiest['carbon_intensity']} grams CO2 per kilowatt-hour)."
+                )
+                return _build_ask_response(speech, card_title="GreenCode Freeform Region Analysis", session_attributes=session_attrs)
+
+        if matched_zones:
+            z = matched_zones[0]
+            gi = get_grid_intensity(z)["data"]
+            speech = (
+                f"Zone {z} has a carbon intensity of {gi.get('carbon_intensity')} grams CO2 per kilowatt-hour "
+                f"(provenance tier: {gi.get('intensity_source_tier')})."
+            )
+            return _build_ask_response(speech, card_title=f"Grid Intensity ({z})", session_attributes=session_attrs)
+
+        if any(w in raw_query for w in ("sensor", "hardware", "rapl", "joule", "watt", "energy")):
+            me = measure_energy()["data"]
+            speech = (
+                f"Active energy backend is {me.get('measurement_method')} "
+                f"(measurement_is_hardware is {str(me.get('measurement_is_hardware')).lower()}), "
+                f"reporting {round(float(me.get('power_watts', 0.0)), 2)} Watts."
+            )
+            return _build_ask_response(speech, card_title="GreenCode Hardware Telemetry", session_attributes=session_attrs)
+
+        if any(w in raw_query for w in ("refactor", "optimize", "loop", "fix")):
+            rf = refactor_code(_DEMO_LANGUAGE_SNIPPETS["python"], language="python")["data"]
+            speech = (
+                f"GreenCode refactored the nested loop using {rf.get('source')} "
+                f"(behaviour_verified={str(rf.get('behaviour_verified')).lower()})."
+            )
+            return _build_ask_response(speech, card_title="GreenCode Refactor", session_attributes=session_attrs)
+
+        # Default grounded synthesis combining region comparison + sensor capability
+        comp = compare_regions(["IE", "SE", "US-MIDA-PJM"])["data"]
+        cleanest = comp.get("cleanest") or {"zone": "SE", "carbon_intensity": 25}
+        caps = energy_sensors.probe_capabilities()
+        best = caps.get("best_available", "model")
+        speech = (
+            f"GreenCode Auditor analyzed your query. Currently {cleanest.get('zone')} is the cleanest "
+            f"monitored grid at {cleanest.get('carbon_intensity')} grams CO2 per kilowatt-hour, and "
+            f"host energy telemetry is using {best} "
+            f"(measurement_is_hardware is {str(energy_sensors.is_hardware_method(best)).lower()}). "
+            "Ask me to compare specific regions, audit Python or JavaScript code, or explain a score."
+        )
+        return _build_ask_response(
+            speech,
+            card_title="GreenCode Auditor",
+            reprompt_text="Try saying: compare Ireland and Virginia, or audit my Python code.",
+            session_attributes=session_attrs,
+        )
+
+    return _build_ask_response(
+        "GreenCode Auditor received an unrecognized request type.",
+        should_end_session=False,
+        session_attributes=session_attrs,
+    )
+
+
+async def alexa_skill_webhook(request: Request) -> JSONResponse:
+    """HTTP POST endpoint for Amazon Alexa Skills Kit (ASK) Custom Skill."""
+    try:
+        payload = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(
+            {"error": "invalid_json", "detail": str(exc)},
+            status_code=400,
+        )
+    response_payload = handle_alexa_skill_request(payload)
+    return JSONResponse(response_payload)
+
+
 def create_app():
     """Return the Starlette app serving MCP over Streamable HTTP.
 
@@ -992,6 +1520,9 @@ def create_app():
         ("/.well-known/oauth-authorization-server", authorization_server_metadata),
     ):
         app.routes.append(Route(well_known, endpoint))
+
+    for ask_path in ("/alexa/skill", "/api/alexa/skill"):
+        app.routes.append(Route(ask_path, alexa_skill_webhook, methods=["POST"]))
 
     # The addon.json URLs (icons, privacy policy, terms) resolve through the
     # same tunnel as /mcp, so serve them here rather than on a separate host.

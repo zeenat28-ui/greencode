@@ -120,3 +120,16 @@ async def dispatch_plugin_test_event(payload: Dict[str, Any]):
     event_data = payload.get("data") if isinstance(payload.get("data"), dict) else {"green_score": 100.0}
     return plugin_registry.dispatch_event(event_type=event_type, payload=event_data)
 
+
+@router.post("/call-graph")
+async def audit_repository_call_graph(payload: Dict[str, Any]):
+    """Build a cross-file inter-procedural call graph and detect cross-module loop I/O."""
+    from app.call_graph import audit_cross_file_loops
+
+    files = payload.get("files")
+    if not isinstance(files, dict) or not files:
+        raise HTTPException(status_code=400, detail="files mapping {file_path: source_code} is required")
+    normalized = {str(k): str(v) for k, v in files.items()}
+    return audit_cross_file_loops(normalized)
+
+

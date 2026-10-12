@@ -3,8 +3,8 @@
 # button on https://github.com/zeenat28-ui/greencode
 
 github: [zeenat28-ui]
-open_collective: greencode
-custom: ["https://opencollective.com/greencode"]
+open_collective: greencode-oss
+custom: ["https://opencollective.com/greencode-oss"]
 
 # Optional additional funding platforms (uncomment and add your handle anytime):
 # ko_fi: zeenat28
@@ -12,4 +12,3 @@ custom: ["https://opencollective.com/greencode"]
 # patreon: zeenat28
 # polar: zeenat28-ui
 # liberapay: zeenat28
-

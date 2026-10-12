@@ -435,6 +435,186 @@ class TestPlaintextSecretMigration(unittest.TestCase):
             self.assertEqual(database.count_plaintext_secrets(), 0)
 
 
+class TestDatabaseBackendGuard(unittest.TestCase):
+    """A production host must not silently run on SQLite.
+
+    SQLite is the documented local/single-node default, so the guard reports
+    rather than refuses - unless the operator opts in with
+    DATABASE_REQUIRE_POSTGRES, which turns the same blocker list into a
+    startup failure. The health diagnostic and the lifespan guard share one
+    function precisely so they can never disagree about what "bad" means.
+    """
+
+    def test_production_sqlite_is_a_blocker(self):
+        with patch.dict(os.environ, {"ENV": "production"}):
+            with patch.object(database, "SYNC_DB_URL", "sqlite:///greencode.db"):
+                blockers = database.database_backend_blockers()
+        self.assertTrue(blockers)
+        self.assertIn("postgresql://", blockers[0])
+
+    def test_development_sqlite_is_not_a_blocker(self):
+        """The zero-dependency local default must stay frictionless."""
+        with patch.dict(os.environ, {"ENV": "development"}):
+            with patch.object(database, "SYNC_DB_URL", "sqlite:///greencode.db"):
+                self.assertEqual(database.database_backend_blockers(), [])
+
+    def test_production_postgres_is_not_a_blocker(self):
+        with patch.dict(os.environ, {"ENV": "production"}):
+            with patch.object(
+                database, "SYNC_DB_URL", "postgresql+asyncpg://user:pw@db/greencode"
+            ):
+                self.assertEqual(database.database_backend_blockers(), [])
+
+    def test_health_degrades_on_production_sqlite(self):
+        """Connectivity alone would call this 'ok' - the backend must be named."""
+        from fastapi.testclient import TestClient
+
+        with patch.dict(os.environ, {"ENV": "production"}):
+            os.environ["JWT_SECRET"] = "p" * 64
+            with patch.object(database, "_ENCRYPTION_KEY_RAW", "e" * 48):
+                with patch.object(database, "SYNC_DB_URL", "sqlite:///greencode.db"):
+                    with TestClient(app) as client:
+                        body = client.get("/api/health").json()
+
+        self.assertEqual(body["status"], "degraded")
+        self.assertTrue(body["security"]["database_backend_blockers"])
+        self.assertEqual(body["deps"]["database_backend"], "sqlite_in_production")
+
+    def test_hard_guard_is_opt_in(self):
+        """Without DATABASE_REQUIRE_POSTGRES a production SQLite host still boots."""
+        from fastapi.testclient import TestClient
+
+        with patch.dict(os.environ, {"ENV": "production"}):
+            os.environ["JWT_SECRET"] = "p" * 64
+            with patch.object(database, "_ENCRYPTION_KEY_RAW", "e" * 48):
+                with patch.object(database, "SYNC_DB_URL", "sqlite:///greencode.db"):
+                    with TestClient(app) as client:
+                        self.assertEqual(client.get("/api/health").status_code, 200)
+
+    def test_database_require_postgres_refuses_startup(self):
+        from fastapi.testclient import TestClient
+
+        with patch.dict(
+            os.environ, {"ENV": "production", "DATABASE_REQUIRE_POSTGRES": "1"}
+        ):
+            os.environ["JWT_SECRET"] = "p" * 64
+            with patch.object(database, "_ENCRYPTION_KEY_RAW", "e" * 48):
+                with patch.object(database, "SYNC_DB_URL", "sqlite:///greencode.db"):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        with TestClient(app):
+                            pass
+        self.assertIn("Refusing to start", str(ctx.exception))
+
+
+class TestSecretsKeyRotation(unittest.TestCase):
+    """Rotating SECRETS_ENCRYPTION_KEY must not strand stored tokens.
+
+    Swapping the env var alone leaves every already-stored GitHub PAT sealed
+    with a key nobody has anymore: decrypt_secret returns the ciphertext
+    unchanged and the failure surfaces only as a mysterious GitHub 401 on a
+    later scan. These tests pin the properties that make rotation safe -
+    round-trip verification, idempotence, and never overwriting a row that
+    could not be read.
+    """
+
+    TOKEN = "ghp_" + "r0t4te4me" * 4
+    OLD_KEY = "old-" + "k" * 44
+    NEW_KEY = "new-" + "k" * 44
+
+    @classmethod
+    def setUpClass(cls):
+        # Same rationale as the migration tests above: this class inserts users
+        # directly and must not depend on some other file having created the
+        # schema first.
+        database.init_db()
+
+    def _insert_user_with_token(self, email: str, stored_token: str) -> int:
+        from app.database import SessionLocal, User, hash_password
+
+        db = SessionLocal()
+        try:
+            user = User(
+                email=email,
+                username=email.split("@")[0],
+                password_hash=hash_password("Sup3rSecret!Pass"),
+                github_token=stored_token,
+            )
+            db.add(user)
+            db.commit()
+            return user.id
+        finally:
+            db.close()
+
+    def _stored_token(self, user_id: int) -> str:
+        from app.database import SessionLocal, User
+
+        db = SessionLocal()
+        try:
+            return db.query(User).filter(User.id == user_id).first().github_token
+        finally:
+            db.close()
+
+    def _delete_user(self, user_id: int) -> None:
+        from app.database import SessionLocal, User
+
+        db = SessionLocal()
+        try:
+            db.query(User).filter(User.id == user_id).delete()
+            db.commit()
+        finally:
+            db.close()
+
+    def test_fernet_for_round_trips_and_handles_missing_inputs(self):
+        fernet = database._fernet_for("k" * 48)
+        self.assertIsNotNone(fernet)
+        self.assertEqual(fernet.decrypt(fernet.encrypt(b"secret")), b"secret")
+        self.assertIsNone(database._fernet_for(""))
+        self.assertIsNone(database._fernet_for(None))
+        if not database.FERNET_OK:
+            self.assertIsNone(database._fernet_for("k" * 48))
+
+    def test_rotation_reencrypts_under_the_new_key(self):
+        old_fernet = database._fernet_for(self.OLD_KEY)
+        new_fernet = database._fernet_for(self.NEW_KEY)
+        uid = self._insert_user_with_token(
+            "rekey@example.com", old_fernet.encrypt(self.TOKEN.encode()).decode()
+        )
+        try:
+            with patch.object(database, "_fernet", new_fernet):
+                dry = database.reencrypt_secrets(self.OLD_KEY, dry_run=True)
+                self.assertGreaterEqual(dry["reencrypted"], 1)
+                # A dry run must not write: the row is still old-key ciphertext.
+                old_fernet.decrypt(self._stored_token(uid).encode("utf-8"))
+
+                applied = database.reencrypt_secrets(self.OLD_KEY, dry_run=False)
+                second = database.reencrypt_secrets(self.OLD_KEY, dry_run=False)
+
+            self.assertGreaterEqual(applied["reencrypted"], 1)
+            stored = self._stored_token(uid)
+            self.assertEqual(
+                new_fernet.decrypt(stored.encode("utf-8")).decode(), self.TOKEN
+            )
+            self.assertEqual(second["reencrypted"], 0, "a second run must change nothing")
+        finally:
+            self._delete_user(uid)
+
+    def test_a_row_under_an_unknown_key_is_never_overwritten(self):
+        """A credential that cannot be read must survive the rotation attempt."""
+        stranger = database._fernet_for("stranger-" + "z" * 39)
+        uid = self._insert_user_with_token(
+            "unknown@example.com", stranger.encrypt(self.TOKEN.encode()).decode()
+        )
+        try:
+            with patch.object(database, "_fernet", database._fernet_for(self.NEW_KEY)):
+                report = database.reencrypt_secrets(self.OLD_KEY, dry_run=False)
+            self.assertGreaterEqual(report["failed"], 1)
+            stored = self._stored_token(uid)
+            self.assertTrue(database.is_encrypted_secret(stored))
+            self.assertEqual(stranger.decrypt(stored.encode("utf-8")).decode(), self.TOKEN)
+        finally:
+            self._delete_user(uid)
+
+
 class TestSuiteIsHermetic(unittest.TestCase):
     """The suite must never run against the developer's real database.
 

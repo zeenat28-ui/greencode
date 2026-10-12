@@ -94,19 +94,27 @@ def secrets_encryption_blockers() -> List[str]:
     return blockers
 
 
-if _ENCRYPTION_KEY_RAW and FERNET_OK:
+def _fernet_for(raw_key: Optional[str]) -> Optional["Fernet"]:
+    """Derive the Fernet instance for a raw SECRETS_ENCRYPTION_KEY.
+
+    The same derivation import time has always used, exposed so a key rotation
+    can decrypt rows with the OLD key while new writes go to the NEW one.
+    Returns None when the key is unset or `cryptography` is missing, matching
+    the module's own encryption state.
+    """
+    if not raw_key or not FERNET_OK:
+        return None
     import base64, hashlib
-    _key_bytes = hashlib.sha256(_ENCRYPTION_KEY_RAW.encode()).digest()
-    _FERNET_KEY = base64.urlsafe_b64encode(_key_bytes)
-    _fernet = Fernet(_FERNET_KEY)
-else:
-    _fernet = None
-    if not _ENCRYPTION_KEY_RAW:
-        import logging as _logging
-        _logging.getLogger("greencode.db").warning(
-            "SECRETS_ENCRYPTION_KEY is not set - GitHub tokens are being stored in "
-            "PLAINTEXT in the database. Set it to a long random string before deploying."
-        )
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(raw_key.encode()).digest()))
+
+
+_fernet = _fernet_for(_ENCRYPTION_KEY_RAW)
+if _fernet is None and not _ENCRYPTION_KEY_RAW:
+    import logging as _logging
+    _logging.getLogger("greencode.db").warning(
+        "SECRETS_ENCRYPTION_KEY is not set - GitHub tokens are being stored in "
+        "PLAINTEXT in the database. Set it to a long random string before deploying."
+    )
 
 
 def secrets_encryption_enabled() -> bool:
@@ -256,6 +264,36 @@ except Exception:
         pool_pre_ping=True,
     )
 SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=sync_engine))
+
+
+def database_backend_blockers() -> List[str]:
+    """Reasons the active database backend is unfit to serve production traffic.
+
+    SQLite is deliberately the default for zero-dependency local and
+    single-node runs (docs/OPERATIONS.md), so this does not refuse to start by
+    itself. What it guarantees is that a production host which silently landed
+    on SQLite - unset DATABASE_URL, or the engine's fallback when PostgreSQL
+    was unreachable - cannot report itself healthy while doing so. The same
+    list backs the lifespan warning (a hard failure when
+    DATABASE_REQUIRE_POSTGRES=1) and the /api/health diagnostic, so the two
+    can never disagree.
+
+    SYNC_DB_URL is read at call time on purpose: the engine rewrites that
+    global whenever it falls back to SQLite, and a check cached at import
+    would miss exactly the fallback it exists to catch.
+    """
+    env = os.environ.get("ENV", "development").strip().lower()
+    if env not in {"production", "prod", "staging"}:
+        return []
+    if "sqlite" not in SYNC_DB_URL.lower():
+        return []
+    return [
+        "The active database backend is SQLite while ENV=production. SQLite is "
+        "supported for local and single-node runs only; set "
+        "DATABASE_URL=postgresql://... for crash-safe durability and concurrent "
+        "writes (docs/OPERATIONS.md)."
+    ]
+
 
 Base = declarative_base()
 
@@ -1890,6 +1928,128 @@ def encrypt_plaintext_secrets(*, dry_run: bool = False) -> Dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         report["errors"].append(f"migration aborted, nothing committed: {exc}")
+    finally:
+        db.close()
+
+    return report
+
+
+def reencrypt_secrets(old_key: str, *, dry_run: bool = False) -> Dict[str, Any]:
+    """Move stored GitHub tokens from `old_key` to the current SECRETS_ENCRYPTION_KEY.
+
+    WHY THIS EXISTS
+    ---------------
+    Rotating JWT_SECRET is an env change; rotating SECRETS_ENCRYPTION_KEY is
+    not, because every token already on disk was sealed with the OLD key.
+    Swapping the env var alone strands those ciphertexts: decrypt_secret
+    returns them unchanged and the only symptom is a mysterious GitHub 401 on
+    every later scan. This performs the rotation properly.
+
+    HOW A ROW IS CLASSIFIED
+    -----------------------
+    1. Decrypts with the CURRENT key first - already rotated, counted and
+       skipped, so the function is idempotent by construction.
+    2. Falls back to `old_key` - genuinely old; re-encrypted with the current
+       key and round-trip verified before it may be written.
+    3. Neither - left untouched and reported. A credential that could not be
+       read is never overwritten by one that might not be readable either.
+
+    Plaintext rows are `encrypt_plaintext_secrets`' job, not a rotation's:
+    different failure, different fix, and they are counted separately.
+
+    Args:
+        old_key: The previous SECRETS_ENCRYPTION_KEY value.
+        dry_run: report what would change without writing (the CLI default).
+    """
+    report: Dict[str, Any] = {
+        "dry_run": dry_run,
+        "current_key_configured": _fernet is not None,
+        "scanned": 0,
+        "already_current": 0,
+        "reencrypted": 0,
+        "plaintext": 0,
+        "failed": 0,
+        "errors": [],
+    }
+
+    if _fernet is None:
+        report["errors"].append(
+            "SECRETS_ENCRYPTION_KEY is not set, so there is no current key to "
+            "encrypt with. Set the NEW key first, then re-run. See: python -c "
+            "\"import secrets; print('SECRETS_ENCRYPTION_KEY=' + secrets.token_urlsafe(48))\""
+        )
+        return report
+
+    old_fernet = _fernet_for(old_key)
+    if old_fernet is None:
+        report["errors"].append(
+            "The old key is empty (or `cryptography` is not installed), so rows "
+            "sealed with it cannot be decrypted."
+        )
+        return report
+
+    init_db()
+    db = SessionLocal()
+    try:
+        users = (
+            db.query(User)
+            .filter(User.github_token.isnot(None), User.github_token != "")
+            .all()
+        )
+        for user in users:
+            report["scanned"] += 1
+            current = user.github_token
+            if not current:
+                continue
+            if not is_encrypted_secret(current):
+                report["plaintext"] += 1
+                continue
+            try:
+                _fernet.decrypt(current.encode("utf-8"))
+                report["already_current"] += 1
+                continue
+            except Exception:
+                pass  # sealed with the old key; handled below
+
+            try:
+                plaintext = old_fernet.decrypt(current.encode("utf-8")).decode("utf-8")
+            except Exception as exc:  # noqa: BLE001
+                report["failed"] += 1
+                report["errors"].append(
+                    f"user {user.id}: neither the current nor the old key "
+                    f"decrypts this token ({exc}); left untouched"
+                )
+                continue
+
+            rotated = _fernet.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+            try:
+                if _fernet.decrypt(rotated.encode("utf-8")).decode("utf-8") != plaintext:
+                    raise ValueError("round trip did not reproduce the original token")
+            except Exception as exc:  # noqa: BLE001
+                report["failed"] += 1
+                report["errors"].append(
+                    f"user {user.id}: verification failed, left as-is ({exc})"
+                )
+                continue
+
+            if dry_run:
+                report["reencrypted"] += 1
+                continue
+            user.github_token = rotated
+            report["reencrypted"] += 1
+
+        if report["plaintext"]:
+            report["errors"].append(
+                f"{report['plaintext']} token(s) are stored in plaintext; run "
+                "python scripts/migrate_plaintext_secrets.py --apply to encrypt them"
+            )
+        if not dry_run and report["reencrypted"]:
+            db.commit()
+        elif not dry_run:
+            db.rollback()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        report["errors"].append(f"rotation aborted, nothing committed: {exc}")
     finally:
         db.close()
 

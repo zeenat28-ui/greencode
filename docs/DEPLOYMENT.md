@@ -39,4 +39,6 @@ terraform plan -var="environment=production" -var="cloud_provider=aws"
 2. **SECRETS_ENCRYPTION_KEY**: Used by `app/database.py` to encrypt stored GitHub tokens at rest via **Fernet (AES-128-CBC with HMAC-SHA256)**.
 3. **Database TLS**: When connecting to external PostgreSQL instances over untrusted networks, configure `sslmode=verify-full` in `DATABASE_URL`.
 4. **Kubernetes Rollback Credentials**: Live cluster rollback in `app/kubernetes_profiler.py` requires either in-cluster `KUBERNETES_SERVICE_HOST` + `KUBERNETES_SERVICE_ACCOUNT_TOKEN` or a configured `KUBECONFIG` with `kubectl`; otherwise rollbacks run in `simulated_dry_run` mode (`is_live_cluster=False`).
+5. **Secrets Rotation**: Follow `docs/policies/SECRETS_ROTATION.md`. Rotating `JWT_SECRET` invalidates every session; rotating `SECRETS_ENCRYPTION_KEY` must go through `scripts/rekey_secrets.py` (a plain env swap strands every stored GitHub token).
+6. **Database Backend**: SQLite is the local/single-node default; production should set `DATABASE_URL=postgresql://...`. `/api/health` reports `deps.database_backend` and degrades when a production host is on SQLite (`security.database_backend_blockers`). Set `DATABASE_REQUIRE_POSTGRES=1` to refuse to boot in that state instead of merely reporting it.
 

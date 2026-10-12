@@ -1,0 +1,55 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "green code auditor",
+      "intents": [
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        },
+        {
+          "name": "CompareRegionsIntent",
+          "slots": [],
+          "samples": [
+            "which aws region is cleanest tonight",
+            "which aws region has the lowest carbon intensity",
+            "compare aws regions for my batch job",
+            "should we run this job in ireland or virginia"
+          ]
+        },
+        {
+          "name": "AuditRepositoryIntent",
+          "slots": [],
+          "samples": [
+            "what is the green score of my repository",
+            "audit my code for energy waste",
+            "check software carbon intensity",
+            "run a green code audit"
+          ]
+        },
+        {
+          "name": "ExplainScoreIntent",
+          "slots": [],
+          "samples": [
+            "explain this score",
+            "was the energy measured by a hardware counter or estimated",
+            "how is the software carbon intensity calculated"
+          ]
+        }
+      ],
+      "types": []
+    }
+  }
+}

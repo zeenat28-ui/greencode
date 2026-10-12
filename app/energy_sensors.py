@@ -783,3 +783,114 @@ def probe_capabilities(force: bool = False) -> Dict[str, Any]:
     with _PROBE_CACHE_LOCK:
         _PROBE_CACHE = (time.monotonic(), copy.deepcopy(result))
     return result
+
+
+def read_cgroup_cpu_usec(cgroup_path: str = "/sys/fs/cgroup") -> Optional[int]:
+    """Read cumulative CPU time in microseconds from Linux cgroup v2 `cpu.stat` (or v1 `cpuacct.usage`)."""
+    v2_stat = os.path.join(cgroup_path, "cpu.stat")
+    if os.path.isfile(v2_stat):
+        try:
+            with open(v2_stat, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    parts = line.strip().split()
+                    if len(parts) == 2 and parts[0] == "usage_usec":
+                        return int(parts[1])
+        except (OSError, ValueError):
+            return None
+
+    v1_stat = os.path.join(cgroup_path, "cpuacct.usage")
+    if os.path.isfile(v1_stat):
+        try:
+            with open(v1_stat, "r", encoding="utf-8") as fh:
+                ns = int(fh.read().strip())
+                return max(0, ns // 1000)
+        except (OSError, ValueError):
+            return None
+    return None
+
+
+def read_proc_cpu_seconds(pid: Optional[int] = None) -> Tuple[float, float, str]:
+    """Return `(cumulative_cpu_seconds, rss_megabytes, attribution_source)` for `pid`."""
+    target_pid = int(pid if pid is not None else os.getpid())
+    proc_stat_path = f"/proc/{target_pid}/stat"
+    if os.path.isfile(proc_stat_path):
+        try:
+            with open(proc_stat_path, "r", encoding="utf-8") as fh:
+                raw = fh.read().strip()
+            rparen = raw.rfind(")")
+            fields = raw[rparen + 2 :].split()
+            utime_ticks = int(fields[11])
+            stime_ticks = int(fields[12])
+            rss_pages = int(fields[21])
+            clk_tck = float(os.sysconf("SC_CLK_TCK")) if hasattr(os, "sysconf") else 100.0
+            page_kb = 4.0
+            return (utime_ticks + stime_ticks) / clk_tck, (rss_pages * page_kb) / 1024.0, "proc_stat"
+        except Exception:
+            pass
+
+    try:
+        import psutil
+
+        proc = psutil.Process(target_pid)
+        ct = proc.cpu_times()
+        mem = proc.memory_info()
+        cpu_s = float(getattr(ct, "user", 0.0) + getattr(ct, "system", 0.0))
+        rss_mb = float(getattr(mem, "rss", 0)) / (1024.0 * 1024.0)
+        return cpu_s, rss_mb, "psutil_process"
+    except Exception:
+        return 0.0, 0.0, "unavailable"
+
+
+def attribute_process_energy(
+    pid: Optional[int] = None,
+    duration_seconds: float = 0.05,
+    cgroup_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Attribute host energy (Joules) to a specific process PID or container cgroup v2 slice.
+
+    Uses proportional CPU time share (via cgroup v2 `cpu.stat`, `/proc/<pid>/stat`,
+    or `psutil.Process`) combined with RSS DRAM power and preserves full hardware-vs-model
+    provenance (`measurement_method` and `measurement_is_hardware`).
+    """
+    target_pid = int(pid if pid is not None else os.getpid())
+    safe_dt = max(0.005, min(float(duration_seconds), 10.0))
+    logical_cores = max(1, os.cpu_count() or 1)
+
+    cg_before = read_cgroup_cpu_usec(cgroup_path) if cgroup_path else None
+    cpu_before, rss_mb, src = read_proc_cpu_seconds(target_pid)
+    t0 = time.perf_counter()
+    time.sleep(safe_dt)
+    wall_dt = max(0.001, time.perf_counter() - t0)
+    cpu_after, rss_mb_after, _ = read_proc_cpu_seconds(target_pid)
+    cg_after = read_cgroup_cpu_usec(cgroup_path) if cgroup_path else None
+
+    if cg_before is not None and cg_after is not None and cg_after >= cg_before:
+        delta_cpu_sec = (cg_after - cg_before) / 1_000_000.0
+        src = "cgroup_v2"
+    else:
+        delta_cpu_sec = max(0.0, cpu_after - cpu_before)
+
+    avg_rss_mb = max(rss_mb, rss_mb_after)
+    cpu_share = min(1.0, max(0.001, delta_cpu_sec / (wall_dt * logical_cores)))
+
+    caps = probe_capabilities()
+    best_method = caps.get("best_available", "model")
+    host_watts = model_power_watts(cpu_percent=min(100.0, cpu_share * 100.0 * logical_cores), memory_mb=avg_rss_mb)
+    host_joules = max(0.0, host_watts * wall_dt)
+    dram_joules = (avg_rss_mb / 1024.0) * MEMORY_WATTS_PER_GB * wall_dt
+    process_joules = round(host_joules * cpu_share + dram_joules, 6)
+
+    return {
+        "pid": target_pid,
+        "process_joules": process_joules,
+        "dram_joules": round(dram_joules, 6),
+        "host_joules": round(host_joules, 6),
+        "cpu_time_delta_seconds": round(delta_cpu_sec, 6),
+        "wall_duration_seconds": round(wall_dt, 6),
+        "cpu_share_ratio": round(cpu_share, 6),
+        "rss_mb": round(avg_rss_mb, 3),
+        "attribution_source": src,
+        "measurement_method": best_method,
+        "measurement_is_hardware": is_hardware_method(best_method),
+    }
+

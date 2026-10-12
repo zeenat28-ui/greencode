@@ -58,3 +58,25 @@ def test_custom_rules_http_endpoints():
     assert body["violations_count"] == 1
     assert body["violations"][0]["violation_type"] == "ORG_NO_BOTO3_SCAN"
     assert body["green_score"] == 88.0
+
+
+def test_structural_ast_call_in_loop_selector():
+    deep_loop_code = (
+        "import time\n"
+        "def run_worker(items):\n"
+        "    for item in items:\n"
+        "        a = 1\n"
+        "        b = 2\n"
+        "        c = 3\n"
+        "        d = 4\n"
+        "        e = 5\n"
+        "        f = 6\n"
+        "        g = 7\n"
+        "        h = 8\n"
+        "        i = a + b + c + d + e + f + g + h\n"
+        "        time.sleep(0.1)\n"
+        "    return items\n"
+    )
+    findings = evaluate_custom_rules(deep_loop_code, language="python", file_path="worker_loop.py")
+    assert any(f["violation_type"] == "CUSTOM_SLEEP_POLLING_IN_LOOP" for f in findings)
+

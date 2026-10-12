@@ -68,3 +68,25 @@ def test_kubernetes_and_dockerfile_iac_endpoints():
     d_body = r_docker.json()
     assert d_body["iac_type"] == "dockerfile"
     assert d_body["total_findings"] == 2
+
+
+def test_terraform_variable_and_locals_resolution():
+    tf_with_vars = (
+        'variable "app_instance_type" {\n'
+        '  default = "m5.2xlarge"\n'
+        '}\n'
+        'locals {\n'
+        '  ebs_tier = "gp2"\n'
+        '}\n'
+        'resource "aws_instance" "api" {\n'
+        '  instance_type = var.app_instance_type\n'
+        '}\n'
+        'resource "aws_ebs_volume" "logs" {\n'
+        '  type = local.ebs_tier\n'
+        '}\n'
+    )
+    res = audit_iac_content(tf_with_vars, file_path="infra/vars.tf")
+    rule_ids = {f["rule_id"] for f in res["findings"]}
+    assert "IAC_TF_NON_GRAVITON_EC2" in rule_ids
+    assert "IAC_TF_LEGACY_GP2_EBS" in rule_ids
+

@@ -132,7 +132,44 @@ def _estimate_instance_savings(instance_type: str) -> Dict[str, float]:
     return {"monthly_usd": monthly_usd, "annual_co2_kg": annual_co2_kg}
 
 
+_RE_TF_VARIABLE_BLOCK = re.compile(
+    r'variable\s+"([a-zA-Z0-9_-]+)"\s*\{([^}]*)\}', re.DOTALL
+)
+_RE_TF_DEFAULT_STR = re.compile(r'default\s*=\s*"([^"]+)"')
+_RE_TF_LOCALS_BLOCK = re.compile(r"locals\s*\{([^}]*)\}", re.DOTALL)
+_RE_TF_LOCAL_KV = re.compile(r'([a-zA-Z0-9_-]+)\s*=\s*"([^"]+)"')
+_RE_TF_REF = re.compile(r"=\s*((?:var|local)\.[a-zA-Z0-9_-]+)\b")
+
+
+def _extract_locals_into_map(l_body: str, var_map: Dict[str, str]) -> None:
+    """Populate `local.<key>` entries into `var_map`."""
+    for kv in _RE_TF_LOCAL_KV.finditer(l_body):
+        var_map[f"local.{kv.group(1)}"] = kv.group(2)
+
+
+def _resolve_terraform_symbols(content: str) -> str:
+    """Resolve `var.<name>` and `local.<name>` expressions against Terraform defaults/locals."""
+    var_map: Dict[str, str] = {}
+    for vm in _RE_TF_VARIABLE_BLOCK.finditer(content):
+        v_name, v_body = vm.group(1), vm.group(2)
+        dm = _RE_TF_DEFAULT_STR.search(v_body)
+        if dm:
+            var_map[f"var.{v_name}"] = dm.group(1)
+
+    for lm in _RE_TF_LOCALS_BLOCK.finditer(content):
+        _extract_locals_into_map(lm.group(1), var_map)
+
+    if not var_map:
+        return content
+
+    return _RE_TF_REF.sub(
+        lambda m: f'= "{var_map[m.group(1)]}"' if m.group(1) in var_map else m.group(0),
+        content,
+    )
+
+
 def _lint_terraform(content: str, file_path: str) -> List[Dict[str, Any]]:
+    content = _resolve_terraform_symbols(content)
     findings: List[Dict[str, Any]] = []
 
     for m in _RE_TF_EC2_X86.finditer(content):

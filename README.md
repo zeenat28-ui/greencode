@@ -139,6 +139,7 @@ python -m pytest tests/ -q
 | Document | Description |
 |---|---|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System architecture, AST/Tree-sitter engine, SCI math, and Reality Verification Pipeline |
+| [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) | Reproducible throughput, polyglot call-graph, and SPECpower hardware calibration benchmarks |
 | [`docs/API.md`](docs/API.md) | REST API endpoints (`/api/audit`, `/api/audit/call-graph`, `/api/audit/telemetry/otlp`, `/api/billing/focus-reconcile`) |
 | [`docs/MEASUREMENT_PLATFORMS.md`](docs/MEASUREMENT_PLATFORMS.md) | Hardware energy tiers (`RAPL`, `cgroup v2`, `Scaphandre`, `perf`) and grid intensity providers |
 | [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md) | ISO/IEC 21031 (GSF SCI), GHG Protocol Scope 2/3, EU CSRD (ESRS E1), and FinOps FOCUS 1.4 |

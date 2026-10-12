@@ -138,8 +138,10 @@ def _strip_fences(text: str) -> str:
 
 
 def _python_compiles(source: str) -> bool:
+    import textwrap
+
     try:
-        compile(source, "<refactor>", "exec")
+        compile(textwrap.dedent(source), "<refactor>", "exec")
         return True
     except (SyntaxError, ValueError):
         return False
@@ -166,15 +168,27 @@ def _similarity(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, ta, tb).ratio()
 
 
-def _target_arity(source: str) -> Optional[Tuple[int, int]]:
-    """Return (required, total) positional parameter counts for the target function.
+def _takes_self_or_cls(source: str) -> bool:
+    """Return True if the target function's first parameter is `self` or `cls`."""
+    import textwrap
 
-    Used to build probes the function can actually accept. Without this, a
-    one-argument probe fails identically in both versions and the comparison
-    reports a vacuous match.
-    """
     try:
-        tree = ast.parse(source)
+        tree = ast.parse(textwrap.dedent(source))
+    except SyntaxError:
+        return False
+    fns = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    if len(fns) != 1:
+        return False
+    all_args = list(fns[0].args.posonlyargs) + list(fns[0].args.args)
+    return bool(all_args and all_args[0].arg in ("self", "cls"))
+
+
+def _target_arity(source: str) -> Optional[Tuple[int, int]]:
+    """Return (required, total) positional parameter counts (excluding `self`/`cls`)."""
+    import textwrap
+
+    try:
+        tree = ast.parse(textwrap.dedent(source))
     except SyntaxError:
         return None
     fns = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
@@ -182,11 +196,13 @@ def _target_arity(source: str) -> Optional[Tuple[int, int]]:
         return None
 
     args = fns[0].args
-    positional = len(args.posonlyargs) + len(args.args)
-    required = positional - len(args.defaults)
+    all_pos = list(args.posonlyargs) + list(args.args)
+    offset = 1 if (all_pos and all_pos[0].arg in ("self", "cls")) else 0
+    positional = max(0, len(all_pos) - offset)
+    required = max(0, positional - len(args.defaults))
     if args.vararg:
         return 1, 1  # variadic: assume a single argument is accepted
-    return max(required, 0), max(positional, 0)
+    return required, positional
 
 
 # Candidate values, chosen to hit the shapes the energy rules actually fire on:
@@ -209,12 +225,7 @@ _PROBE_VALUES: Tuple[Any, ...] = (
 
 
 def _generate_probe_inputs(fn_name: str, source: str) -> List[Tuple[Any, ...]]:
-    """Build positional-argument tuples the target function can accept.
-
-    Returns tuples of real values, not source text, so the harness can call the
-    function directly. Where the arity cannot be determined a single-argument
-    probe is produced and the caller verifies that at least one actually ran.
-    """
+    """Build positional-argument tuples the target function can accept."""
     arity = _target_arity(source)
     n = arity[0] if arity and arity[0] > 0 else 1
     n = min(n, 2)  # beyond two arguments the shapes are too varied to guess
@@ -226,8 +237,10 @@ def _generate_probe_inputs(fn_name: str, source: str) -> List[Tuple[Any, ...]]:
 
 def _target_function(source: str) -> Optional[str]:
     """Return the name of the single top-level function, if there is exactly one."""
+    import textwrap
+
     try:
-        tree = ast.parse(source)
+        tree = ast.parse(textwrap.dedent(source))
     except SyntaxError:
         return None
     funcs = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
@@ -235,30 +248,38 @@ def _target_function(source: str) -> Optional[str]:
 
 
 def _behaviour_matches(original: str, refactored: str) -> Tuple[bool, str]:
-    """Execute both versions on generated inputs and compare their outputs.
-
-    Returns (matched, detail). Values are compared via ``repr`` so that lists,
-    floats and tuples all round-trip; a version that raises records the
-    exception type, so a refactor that breaks error behaviour is caught too.
-    """
-    fn = _target_function(original)
-    if not fn or _target_function(refactored) != fn:
-        return False, "target function could not be identified in both versions"
-
+    """Execute both versions on generated inputs (supporting sync, async, and `self` methods)."""
     import contextlib
     import io
+    import textwrap
 
-    probes = _generate_probe_inputs(fn, original)
+    orig_dedented = textwrap.dedent(original)
+    ref_dedented = textwrap.dedent(refactored)
 
-    # Probes are embedded as literals so the harness is a single, inspectable
-    # program rather than one that depends on injected globals.
+    fn = _target_function(orig_dedented)
+    if not fn or _target_function(ref_dedented) != fn:
+        return False, "target function could not be identified in both versions"
+
+    probes = _generate_probe_inputs(fn, orig_dedented)
+    needs_self = _takes_self_or_cls(orig_dedented)
+
     template = (
-        "import json\n"
+        "import asyncio, inspect, json\n"
+        "class _ProbeAttr(int):\n"
+        "    def __call__(self, *a, **kw):\n"
+        "        return a[0] if a else 2\n"
+        "class _ProbeSelf:\n"
+        "    def __getattr__(self, name):\n"
+        "        return _ProbeAttr(2)\n"
         "{body}\n"
         "_results = []\n"
+        "_self_arg = (_ProbeSelf(),) if {needs_self!r} else ()\n"
         "for _a in {probes!r}:\n"
         "    try:\n"
-        "        _results.append(['ok', repr({fn}(*_a))])\n"
+        "        _val = {fn}(*(_self_arg + tuple(_a)))\n"
+        "        if inspect.iscoroutine(_val):\n"
+        "            _val = asyncio.run(_val)\n"
+        "        _results.append(['ok', repr(_val)])\n"
         "    except Exception as _e:\n"
         "        _results.append(['err', type(_e).__name__])\n"
         "print('@@' + json.dumps(_results))\n"
@@ -266,10 +287,10 @@ def _behaviour_matches(original: str, refactored: str) -> Tuple[bool, str]:
 
     outputs: List[str] = []
     successes = 0
-    for body in (original, refactored):
+    for body in (orig_dedented, ref_dedented):
         buf = io.StringIO()
         try:
-            code = template.format(body=body, fn=fn, probes=probes)
+            code = template.format(body=body, fn=fn, probes=probes, needs_self=needs_self)
             compiled = compile(code, "<behaviour-check>", "exec")
             with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
                 exec(compiled, {"__name__": "__behaviour_check__"})
@@ -281,12 +302,9 @@ def _behaviour_matches(original: str, refactored: str) -> Tuple[bool, str]:
             return False, "no output produced"
         payload = text.split("@@", 1)[1].strip()
         outputs.append(payload)
-        if body is original:
+        if body is orig_dedented:
             successes = payload.count('"ok"')
 
-    # A comparison in which nothing actually ran proves nothing. Without this
-    # guard, a signature mismatch would make every probe raise identically and
-    # any rewrite would be reported as behaviour-preserving.
     if successes == 0:
         return False, "no probe input could be executed; behaviour unverified"
 

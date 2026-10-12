@@ -90,6 +90,48 @@ class TestBehaviourVerification(unittest.TestCase):
         matched, _ = _behaviour_matches(QUADRATIC, WRONG_BEHAVIOUR)
         self.assertFalse(matched)
 
+    def test_async_function_behaviour_verification(self):
+        orig_async = (
+            "async def async_sum_squares(items):\n"
+            "    total = 0\n"
+            "    for x in items:\n"
+            "        total += x * x\n"
+            "    return total\n"
+        )
+        ref_async_ok = (
+            "async def async_sum_squares(items):\n"
+            "    return sum(x * x for x in items)\n"
+        )
+        ref_async_bad = (
+            "async def async_sum_squares(items):\n"
+            "    return sum(x for x in items)\n"
+        )
+        matched_ok, detail_ok = _behaviour_matches(orig_async, ref_async_ok)
+        self.assertTrue(matched_ok, detail_ok)
+        matched_bad, _ = _behaviour_matches(orig_async, ref_async_bad)
+        self.assertFalse(matched_bad)
+
+    def test_class_method_with_self_verification(self):
+        orig_method = (
+            "    def scale_items(self, items):\n"
+            "        out = []\n"
+            "        for x in items:\n"
+            "            out.append(x * self.factor)\n"
+            "        return out\n"
+        )
+        ref_method_ok = (
+            "    def scale_items(self, items):\n"
+            "        return [x * self.factor for x in items]\n"
+        )
+        ref_method_bad = (
+            "    def scale_items(self, items):\n"
+            "        return [x + self.factor for x in items]\n"
+        )
+        matched_ok, detail_ok = _behaviour_matches(orig_method, ref_method_ok)
+        self.assertTrue(matched_ok, detail_ok)
+        matched_bad, _ = _behaviour_matches(orig_method, ref_method_bad)
+        self.assertFalse(matched_bad)
+
 
 
 class TestRefactorGate(unittest.TestCase):

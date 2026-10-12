@@ -232,10 +232,10 @@ export default function Profiler() {
           ) : (
             <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricCard title="Execution Time" value={`${result.duration_sec.toFixed(2)}s`} subtitle="Total run duration" icon={<Clock size={18} />} accentColor="#1e293b" />
-                <MetricCard title="CPU Load" value={`${result.avg_cpu_percent.toFixed(1)}%`} subtitle="Average processor usage" icon={<Cpu size={18} />} accentColor="#384C3B" />
-                <MetricCard title="Peak Memory (RAM)" value={`${result.peak_memory_mb.toFixed(1)} MB`} subtitle="Max memory footprint" icon={<MemoryStick size={18} />} accentColor="#384C3B" />
-                <MetricCard title="Energy Consumed" value={`${(result.energy_wh * 1000).toFixed(3)} mWh`} subtitle={`${result.energy_joules.toFixed(2)} Joules`} icon={<Zap size={18} />} accentColor="#384C3B" />
+                <MetricCard title="Execution Time" value={`${result.duration_sec.toFixed(2)}s`} subtitle="Total run duration" icon={<Clock size={16} />} />
+                <MetricCard title="CPU Load" value={`${result.avg_cpu_percent.toFixed(1)}%`} subtitle="Average processor usage" icon={<Cpu size={16} />} accentColor="#059669" />
+                <MetricCard title="Peak Memory (RAM)" value={`${result.peak_memory_mb.toFixed(1)} MB`} subtitle="Max memory footprint" icon={<MemoryStick size={16} />} />
+                <MetricCard title="Energy Consumed" value={`${(result.energy_wh * 1000).toFixed(3)} mWh`} subtitle={`${result.energy_joules.toFixed(2)} Joules`} icon={<Zap size={16} />} accentColor="#059669" />
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

@@ -117,24 +117,24 @@ export default function Overview() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 text-white shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              Multi-Tenant Isolated
+            <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              Tenant Isolated
             </span>
-            <span className="text-slate-400 text-xs">Org ID: 1</span>
+            <span className="text-zinc-400 text-xs font-mono">org_id: 1</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">{selectedOrg}</h1>
-          <p className="text-slate-400 text-sm mt-1">Software Energy, Carbon Budget & Workload Control Plane</p>
+          <h1 className="text-lg font-semibold tracking-tight text-zinc-100">{selectedOrg}</h1>
+          <p className="text-zinc-400 text-xs mt-0.5">Organization-wide software energy, carbon budget, and runtime workload control plane</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <select
             value={selectedTeam}
             onChange={(e) => setSelectedTeam(e.target.value)}
-            className="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+            className="bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
           >
             <option value="All Teams">All Teams</option>
             {teams.map((t) => (
@@ -144,74 +144,74 @@ export default function Overview() {
           <button
             onClick={handleScanLocalWorkspace}
             disabled={scanningLocal}
-            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-semibold px-3.5 py-2 rounded-lg text-sm transition-all flex items-center gap-1.5"
+            className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-100 font-medium px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
           >
-            <RefreshCw className={`w-4 h-4 ${scanningLocal ? 'animate-spin text-emerald-400' : 'text-emerald-400'}`} />
-            {scanningLocal ? 'Scanning Workspace...' : 'Scan Local Workspace'}
+            <RefreshCw className={`w-3.5 h-3.5 ${scanningLocal ? 'animate-spin text-emerald-400' : 'text-emerald-400'}`} />
+            {scanningLocal ? 'Scanning Workspace...' : 'Audit Workspace'}
           </button>
           <button
             onClick={handleExportDisclosure}
-            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition-all shadow-lg shadow-emerald-500/20"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-3.5 py-2 rounded-lg text-xs transition-all shadow-sm"
           >
-            Export SEC Disclosure
+            Export ESG JSON
           </button>
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex justify-between items-start text-slate-500 text-xs font-medium uppercase tracking-wider">
+        <div className="card p-4">
+          <div className="flex justify-between items-start text-zinc-500 text-xs font-medium">
             <span>Monthly Carbon Quota</span>
-            <Building2 className="w-4 h-4 text-emerald-600" />
+            <Building2 className="w-4 h-4 text-zinc-400" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">{quotaStats.consumed.toFixed(2)} / {quotaStats.limit.toFixed(0)} kg</div>
-          <div className="mt-3">
-            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${quotaPct}%` }}></div>
+          <div className="text-2xl font-semibold font-mono text-zinc-950 mt-2">{quotaStats.consumed.toFixed(2)} / {quotaStats.limit.toFixed(0)} kg</div>
+          <div className="mt-2.5">
+            <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-600 rounded-full" style={{ width: `${quotaPct}%` }}></div>
             </div>
-            <div className="flex justify-between text-xs text-slate-500 mt-1.5 font-medium">
-              <span>{quotaPct}% Consumed</span>
-              <span>{quotaRemaining.toFixed(2)} kg remaining</span>
+            <div className="flex justify-between text-[11px] font-mono text-zinc-500 mt-1.5">
+              <span>{quotaPct}% used</span>
+              <span>{quotaRemaining.toFixed(1)} kg free</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex justify-between items-start text-slate-500 text-xs font-medium uppercase tracking-wider">
-            <span>PR Gatekeeper Verdict</span>
-            <GitPullRequest className="w-4 h-4 text-emerald-600" />
+        <div className="card p-4">
+          <div className="flex justify-between items-start text-zinc-500 text-xs font-medium">
+            <span>PR Gatekeeper SLA</span>
+            <GitPullRequest className="w-4 h-4 text-zinc-400" />
           </div>
-          <div className="text-2xl font-bold text-emerald-600 mt-2 flex items-center gap-1.5">
-            <CheckCircle2 className="w-6 h-6" /> 15% Max SLA
+          <div className="text-2xl font-semibold font-mono text-emerald-600 mt-2 flex items-center gap-1.5">
+            <CheckCircle2 className="w-5 h-5" /> &le; 15% Δ
           </div>
-          <p className="text-xs text-slate-500 mt-3 font-medium">Blocking regressions before merge</p>
+          <p className="text-[11px] text-zinc-500 mt-2">Pre-merge complexity regression cap</p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex justify-between items-start text-slate-500 text-xs font-medium uppercase tracking-wider">
+        <div className="card p-4">
+          <div className="flex justify-between items-start text-zinc-500 text-xs font-medium">
             <span>Active Runtime Workloads</span>
-            <Activity className="w-4 h-4 text-blue-600" />
+            <Activity className="w-4 h-4 text-zinc-400" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">
+          <div className="text-2xl font-semibold font-mono text-zinc-950 mt-2">
             {workloadSummary.healthy} / {workloadSummary.total} Healthy
           </div>
-          <p className="text-xs text-emerald-600 mt-3 font-medium flex items-center gap-1">
-            <span>Source: {workloadSummary.source} (&gt;35% spike guard)</span>
+          <p className="text-[11px] font-mono text-emerald-700 mt-2">
+            source: {workloadSummary.source}
           </p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex justify-between items-start text-slate-500 text-xs font-medium uppercase tracking-wider">
-            <span>Monitored Runtime Power Cost</span>
-            <DollarSign className="w-4 h-4 text-emerald-600" />
+        <div className="card p-4">
+          <div className="flex justify-between items-start text-zinc-500 text-xs font-medium">
+            <span>Monitored Runtime Draw</span>
+            <DollarSign className="w-4 h-4 text-zinc-400" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">
-            ${workloadSummary.annualCostUsd.toFixed(2)} / yr
+          <div className="text-2xl font-semibold font-mono text-zinc-950 mt-2">
+            ${workloadSummary.annualCostUsd.toFixed(2)}/yr
           </div>
-          <p className="text-xs text-slate-500 mt-3 font-medium flex items-center gap-1">
+          <p className="text-[11px] font-mono text-zinc-500 mt-2 flex items-center gap-1">
             <TrendingDown className="w-3.5 h-3.5 text-emerald-600" />
-            <span>{workloadSummary.annualCo2Kg.toFixed(1)} kg CO2e / yr projected</span>
+            <span>{workloadSummary.annualCo2Kg.toFixed(1)} kg CO₂e/yr</span>
           </p>
         </div>
       </div>

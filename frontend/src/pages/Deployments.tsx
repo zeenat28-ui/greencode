@@ -101,26 +101,26 @@ export default function Deployments() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-zinc-200/80 pb-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900">Workload Health & Rollback Controller</h1>
-            <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-              Source: {telemetrySource}
+            <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Workload Health &amp; Rollback Controller</h1>
+            <span className="badge-olive">
+              source: {telemetrySource}
             </span>
           </div>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Live container and process power telemetry across CNCF Kepler, Docker Engine, and Host OS runtime
+          <p className="text-xs text-zinc-500 mt-0.5">
+            Live container and process power telemetry across Linux RAPL, cgroup v2, Docker, and host runtime
           </p>
         </div>
         <button
           onClick={fetchWorkloads}
           disabled={loading}
-          className="bg-slate-900 hover:bg-slate-800 text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-colors"
+          className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           {loading ? 'Sampling...' : 'Refresh Telemetry'}
         </button>
       </div>

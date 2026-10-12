@@ -142,19 +142,22 @@ export default function Budgets() {
   const totalPct = totalQuotaKg > 0 ? (totalConsumedKg / totalQuotaKg) * 100.0 : 0.0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header & Allocation Form */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+      <div className="card p-5 space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Team Carbon & Cost Budgets</h1>
-            <p className="text-sm text-slate-500">Allocate monthly carbon quotas (kg CO2e) and enforce pre-merge budget gates</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Team Carbon &amp; FinOps Budgets</h1>
+              <span className="badge-olive">FOCUS 1.4</span>
+            </div>
+            <p className="text-xs text-zinc-500 mt-0.5">Allocate monthly carbon quotas (kg CO₂e) and enforce pre-merge budget gates</p>
           </div>
         </div>
 
-        <form onSubmit={handleAllocateBudget} className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-slate-100 items-end">
+        <form onSubmit={handleAllocateBudget} className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-zinc-100 items-end">
           <div>
-            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-1">
+            <label className="text-xs font-semibold text-zinc-700 block mb-1">
               Team Identifier
             </label>
             <input
@@ -162,12 +165,12 @@ export default function Budgets() {
               value={newTeamName}
               onChange={(e) => setNewTeamName(e.target.value)}
               placeholder="e.g. core-infra, payments, ml-platform"
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-900 outline-none focus:border-emerald-500"
+              className="input font-mono"
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-1">
-              Monthly Carbon Quota (kg CO2e)
+            <label className="text-xs font-semibold text-zinc-700 block mb-1">
+              Monthly Carbon Quota (kg CO₂e)
             </label>
             <input
               type="number"
@@ -175,16 +178,16 @@ export default function Budgets() {
               min="1"
               value={newTeamQuotaKg}
               onChange={(e) => setNewTeamQuotaKg(Number(e.target.value))}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-900 outline-none focus:border-emerald-500"
+              className="input font-mono"
             />
           </div>
           <button
             type="submit"
             disabled={allocating}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-4 py-2.5 rounded-lg text-sm flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+            className="btn-primary text-xs py-2 px-4 flex items-center justify-center gap-1.5"
           >
-            <Plus className="w-4 h-4" />
-            {allocating ? 'Saving Quota...' : 'Allocate / Update Team Budget'}
+            <Plus className="w-3.5 h-3.5" />
+            {allocating ? 'Saving Quota...' : 'Allocate / Update Budget'}
           </button>
         </form>
 
@@ -198,20 +201,20 @@ export default function Budgets() {
 
       {/* Grid Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Monthly Quota</span>
-          <div className="text-2xl font-bold text-slate-900 mt-1">{totalQuotaKg.toFixed(1)} kg CO2e</div>
-          <span className="text-xs text-slate-500 font-medium mt-2 block">Allocated across {teamBudgets.length} engineering team(s)</span>
+        <div className="card p-4">
+          <span className="text-xs font-medium text-zinc-500">Total Monthly Quota</span>
+          <div className="text-2xl font-semibold font-mono text-zinc-950 mt-1.5">{totalQuotaKg.toFixed(1)} kg CO₂e</div>
+          <span className="text-[11px] text-zinc-500 mt-1.5 block">Allocated across {teamBudgets.length} engineering team(s)</span>
         </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Month Consumed</span>
-          <div className="text-2xl font-bold text-slate-900 mt-1">{totalConsumedKg.toFixed(2)} kg CO2e</div>
-          <span className="text-xs text-emerald-600 font-medium mt-2 block">{totalPct.toFixed(1)}% total tenant consumption</span>
+        <div className="card p-4">
+          <span className="text-xs font-medium text-zinc-500">Current Month Consumed</span>
+          <div className="text-2xl font-semibold font-mono text-zinc-950 mt-1.5">{totalConsumedKg.toFixed(2)} kg CO₂e</div>
+          <span className="text-[11px] font-mono text-emerald-700 mt-1.5 block">{totalPct.toFixed(1)}% total tenant consumption</span>
         </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Forecasted Month-End</span>
-          <div className="text-2xl font-bold text-amber-600 mt-1">{totalForecastKg.toFixed(2)} kg CO2e</div>
-          <span className="text-xs text-amber-600 font-medium mt-2 block">
+        <div className="card p-4">
+          <span className="text-xs font-medium text-zinc-500">Forecasted Month-End</span>
+          <div className="text-2xl font-semibold font-mono text-amber-600 mt-1.5">{totalForecastKg.toFixed(2)} kg CO₂e</div>
+          <span className="text-[11px] font-mono text-amber-700 mt-1.5 block">
             {totalForecastKg > totalQuotaKg
               ? `+${(totalForecastKg - totalQuotaKg).toFixed(2)} kg overrun projected`
               : `${Math.max(0, totalQuotaKg - totalForecastKg).toFixed(2)} kg under quota projected`}

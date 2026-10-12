@@ -34,6 +34,10 @@
     box-shadow: 0 1px 2px 0 rgba(9, 9, 11, 0.03), 0 1px 3px 0 rgba(9, 9, 11, 0.02);
   }
 
+  .card-inset {
+    @apply bg-zinc-50/80 rounded-xl border border-zinc-200/80;
+  }
+
   .card-hover {
     @apply hover:border-zinc-300 hover:shadow-md;
   }
@@ -51,14 +55,45 @@
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
-  .badge {
-    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium;
+  .btn-ghost {
+    @apply px-3 py-1.5 rounded-lg font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100
+           transition-all duration-150;
   }
 
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold;
+  }
+
+  .badge-olive {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium
+           bg-emerald-50 text-emerald-800 border border-emerald-200/80;
+  }
+
+  .badge-critical {
+    @apply bg-rose-50 text-rose-700 border border-rose-200;
+  }
+
+  .badge-high {
+    @apply bg-amber-50 text-amber-800 border border-amber-200;
+  }
+
+  .badge-medium {
+    @apply bg-zinc-100 text-zinc-700 border border-zinc-200;
+  }
+
+  .badge-low {
+    @apply bg-zinc-50 text-zinc-500 border border-zinc-200;
+  }
+
+  .input,
   .input-field {
-    @apply w-full px-3.5 py-2.5 bg-white border border-zinc-200 rounded-lg text-zinc-900 text-sm
+    @apply w-full px-3.5 py-2 bg-white border border-zinc-200 rounded-lg text-zinc-900 text-xs
            placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600
            transition-all duration-150;
+  }
+
+  .label {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-zinc-500;
   }
 
   .section-title {
@@ -80,3 +115,4 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #A1A1AA;
 }
+

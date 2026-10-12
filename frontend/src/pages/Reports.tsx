@@ -63,40 +63,43 @@ export default function Reports() {
   const operationalCostUsd = Number((totalKwh * 0.12).toFixed(2));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-zinc-200/80 pb-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">ESG Disclosures &amp; Audit Assurance</h1>
-          <p className="text-sm text-slate-500">
-            Corporate sustainability reporting conforming to SEC, CSRD ESRS E1, ISO 14064-1, and GHG Protocol
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">ESG Disclosures &amp; Audit Assurance</h1>
+            <span className="badge-olive">SHA-256 Ledger</span>
+          </div>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            Sustainability reporting aligned with CSRD ESRS E1, ISO 14064-1, and GHG Protocol
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           <button
             onClick={loadReportsData}
             disabled={loading}
-            className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium px-3 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-colors"
+            className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </button>
           <a
             href="/api/reports/esg/1/evidence-bundle"
-            className="bg-slate-900 hover:bg-slate-800 text-white font-medium px-3.5 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-colors shadow-sm"
+            className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5"
           >
-            <Archive className="w-3.5 h-3.5" /> Signed CSRD Bundle (.zip)
+            <Archive className="w-3.5 h-3.5" /> Signed Bundle (.zip)
           </a>
           <a
             href="/api/reports/esg/1/export/html"
             target="_blank"
             rel="noreferrer"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3.5 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-colors shadow-sm"
+            className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
           >
-            <Download className="w-3.5 h-3.5" /> HTML Report
+            <Download className="w-3.5 h-3.5 text-emerald-600" /> HTML Report
           </a>
           <a
             href="/api/reports/esg/1/csv"
-            className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium px-3.5 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-colors"
+            className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" /> CSV
           </a>
@@ -104,9 +107,9 @@ export default function Reports() {
             href="/api/reports/esg/1"
             target="_blank"
             rel="noreferrer"
-            className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium px-3.5 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-colors"
+            className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
           >
-            <ExternalLink className="w-3.5 h-3.5" /> SEC JSON
+            <ExternalLink className="w-3.5 h-3.5" /> JSON
           </a>
         </div>
       </div>

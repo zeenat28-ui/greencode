@@ -6,7 +6,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import {
   Search, Loader2, AlertCircle, RefreshCw, GitBranch, Star,
   Lock, Globe, ChevronDown, CheckCircle2, Cpu, ArrowRight,
-  Sparkles, Play, FileCode2
+  Play, FileCode2
 } from 'lucide-react';
 import { DEMO_SCAN_DATA } from '../utils/demoData';
 
@@ -250,14 +250,14 @@ export default function ScanRepository() {
   ];
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-5">
+      <div className="border-b border-zinc-200/80 pb-3">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Scan a Repository</h1>
-          <span className="badge bg-olive-100 text-olive-900 border border-olive-200">GreenCode Audit</span>
+          <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Repository Scanner</h1>
+          <span className="badge-olive">Polyglot AST &amp; Call-Graph</span>
         </div>
-        <p className="text-xs text-slate-500 mt-1">
-          Audit any local workspace directory, public GitHub URL, or connected GitHub repository for energy bottlenecks.
+        <p className="text-xs text-zinc-500 mt-0.5">
+          Audit a public GitHub repository, connected organization repo, or local workspace directory.
         </p>
       </div>
 
@@ -271,15 +271,15 @@ export default function ScanRepository() {
       {/* Direct Public GitHub URL / Local Path Scanner */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card p-4 space-y-2.5">
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-800">
-            Scan Any Public GitHub Repository (URL or owner/repo)
+          <label className="block text-xs font-semibold text-zinc-800">
+            Public GitHub Repository (URL or owner/repo)
           </label>
           <div className="flex gap-2">
             <input
               type="text"
               value={directSlug}
               onChange={(e) => setDirectSlug(e.target.value)}
-              placeholder="e.g. zeenat28-ui/greencode or https://github.com/..."
+              placeholder="e.g. zeenat28-ui/greencode"
               className="input text-xs font-mono flex-1"
             />
             <button
@@ -293,15 +293,15 @@ export default function ScanRepository() {
         </div>
 
         <div className="card p-4 space-y-2.5">
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-800">
-            Scan Local Workspace Subdirectory
+          <label className="block text-xs font-semibold text-zinc-800">
+            Local Workspace Subdirectory
           </label>
           <div className="flex gap-2">
             <input
               type="text"
               value={localSubpath}
               onChange={(e) => setLocalSubpath(e.target.value)}
-              placeholder="e.g. samples, app, frontend/src, scripts, ."
+              placeholder="e.g. samples, app, frontend/src, scripts"
               className="input text-xs font-mono flex-1"
             />
             <button
@@ -309,26 +309,23 @@ export default function ScanRepository() {
               disabled={isScanning}
               className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5 shrink-0"
             >
-              <Play size={11} /> Scan Local Path
+              <Play size={11} /> Scan Path
             </button>
           </div>
         </div>
       </div>
 
-      {/* Live Local Workspace & Benchmark Targets */}
-      <div className="card p-5 border-olive-200/90 bg-gradient-to-r from-olive-50/40 via-white to-slate-50/40">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2 border-b border-olive-100">
+      {/* Reference Workspace Targets */}
+      <div className="card p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2.5 border-b border-zinc-100">
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-olive-950 flex items-center gap-1.5">
-              <Sparkles size={13} className="text-olive-700" />
-              Live Workspace &amp; Benchmark Targets (1-Click Real Backend Scan)
-            </h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Executes real multi-language AST/Tree-sitter static analysis on disk and persists results to the database.
+            <h2 className="section-title">Reference Workspace Targets</h2>
+            <p className="text-[11px] text-zinc-500 mt-0.5">
+              Execute multi-language AST and call-graph static analysis against on-disk targets.
             </p>
           </div>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-olive-100 text-olive-900 border border-olive-200 w-fit">
-            Live AST Engine
+          <span className="badge-olive w-fit">
+            AST + Call-Graph Engine
           </span>
         </div>
 

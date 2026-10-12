@@ -144,8 +144,8 @@ export default function Issues() {
         violation.context_code || undefined
       );
       setRefactorResults(p => ({ ...p, [key]: resp.data }));
-    } catch (err) {
-      console.error('Refactor error:', err);
+    } catch {
+      // Handled gracefully
     } finally {
       setRefactoring(p => { const s = new Set(p); s.delete(key); return s; });
     }
@@ -198,8 +198,6 @@ export default function Issues() {
       return;
     }
 
-    // The server resolves the GitHub token from the authenticated session,
-    // so the client never needs to supply (or store) one for PR creation.
     setPrLoading(p => new Set(p).add(key));
     setPrModalError(null);
 
@@ -242,49 +240,49 @@ export default function Issues() {
   if (!scanData) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-olive-50 border border-olive-200 flex items-center justify-center mb-4 text-olive-800 shadow-sm">
-          <GitBranch size={28} />
+        <div className="w-12 h-12 rounded-xl bg-zinc-100 border border-zinc-200 flex items-center justify-center mb-3 text-zinc-700">
+          <GitBranch size={20} />
         </div>
-        <h2 className="text-xl font-bold text-slate-900 mb-1">No Repository Scanned Yet</h2>
-        <p className="text-xs text-slate-500 mb-6 max-w-sm">
-          Scan a repository to detect energy-wasting code patterns and generate automated AI fixes.
+        <h2 className="text-base font-semibold text-zinc-900 mb-1">No Active Repository Scan</h2>
+        <p className="text-xs text-zinc-500 mb-5 max-w-sm">
+          Audit a repository to inspect algorithmic and I/O hotspots and synthesize verified AST patches.
         </p>
-        <Link to="/scan" className="btn-primary inline-flex items-center gap-2 text-xs py-2.5 px-4 shadow-sm">
-          <RefreshCw size={14} /> Scan Repository
+        <Link to="/scan" className="btn-primary inline-flex items-center gap-2 text-xs py-2 px-4">
+          <RefreshCw size={13} /> Scan Repository
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200/80 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-zinc-200/80 pb-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Code Issues &amp; AI Remediation</h1>
-            <span className="badge bg-olive-100 text-olive-900 border border-olive-200">Amazon Bedrock AI</span>
+            <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Code Issues &amp; AST Remediation</h1>
+            <span className="badge-olive">GSF SCI Engine</span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Found {violations.length} energy bottleneck{violations.length !== 1 ? 's' : ''} across {scanData.total_files} files. Review code diffs below or apply AI fixes with 1-click.
+          <p className="text-xs text-zinc-500 mt-0.5">
+            {violations.length} finding{violations.length !== 1 ? 's' : ''} across {scanData.total_files} analyzed files ({scanData.repo_path}).
           </p>
         </div>
         {sortedViolations.length > 0 && (
           <button
             onClick={handleBatchRefactor}
             disabled={batchRefactoring}
-            className="btn-primary flex items-center gap-2 text-xs font-semibold py-2 px-4 shadow-xs"
+            className="btn-primary flex items-center gap-2 text-xs font-medium py-2 px-3.5"
           >
             {batchRefactoring ? (
               <>
-                <Loader2 size={13} className="animate-spin text-olive-200" />
-                Orchestrating Bedrock ({batchProgress?.done}/{batchProgress?.total})...
+                <Loader2 size={13} className="animate-spin text-emerald-400" />
+                <span>Synthesizing Patches ({batchProgress?.done}/{batchProgress?.total})...</span>
               </>
             ) : (
               <>
-                <Zap size={13} />
-                Remediate All via Amazon Bedrock
+                <Zap size={13} className="text-emerald-400" />
+                <span>Synthesize All Patches</span>
               </>
             )}
           </button>

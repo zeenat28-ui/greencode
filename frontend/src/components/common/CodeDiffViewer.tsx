@@ -24,71 +24,60 @@ export default function CodeDiffViewer({
     <div className="space-y-4 max-w-full overflow-hidden">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-full">
         {/* Original Code */}
-        <div className="min-w-0 max-w-full overflow-hidden">
-          <div className="flex items-center justify-between mb-2 px-3 py-2 bg-red-50 border-b border-red-200 rounded-t-lg">
-            <div className="flex items-center gap-2">
-              <XCircle className="w-4 h-4 text-red-600" />
-              <span className="font-semibold text-red-800 text-sm">Original Code</span>
+        <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-rose-200/90 bg-white">
+          <div className="flex items-center justify-between px-3 py-2 bg-rose-50/80 border-b border-rose-200/80">
+            <div className="flex items-center gap-1.5">
+              <XCircle className="w-3.5 h-3.5 text-rose-600" />
+              <span className="font-mono font-semibold text-rose-900 text-xs">Before (Baseline AST)</span>
             </div>
             <button
               onClick={() => handleCopy(originalCode)}
-              className="text-slate-400 hover:text-slate-600"
-              title="Copy"
+              className="text-zinc-400 hover:text-zinc-700 p-1 rounded"
+              title="Copy original snippet"
             >
-              <Copy size={14} />
+              <Copy size={13} />
             </button>
           </div>
-          <div className="border border-slate-200 rounded-b-lg overflow-hidden max-w-full">
-            <pre className="text-xs font-mono text-slate-700 p-4 bg-slate-50 overflow-x-auto m-0 max-w-full">
-              <code>{originalCode}</code>
-            </pre>
-          </div>
+          <pre className="text-xs font-mono text-zinc-800 p-3.5 bg-rose-50/20 overflow-x-auto m-0 leading-relaxed">
+            <code>{originalCode}</code>
+          </pre>
         </div>
 
         {/* Refactored Code */}
-        <div className="min-w-0 max-w-full overflow-hidden">
-          <div className="flex items-center justify-between mb-2 px-3 py-2 bg-olive-50 border-b border-olive-200 rounded-t-lg">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-olive-700" />
-              <span className="font-semibold text-olive-900 text-sm">Optimized Code</span>
+        <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-emerald-200/90 bg-white">
+          <div className="flex items-center justify-between px-3 py-2 bg-emerald-50/80 border-b border-emerald-200/80">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="font-mono font-semibold text-emerald-950 text-xs">After (Synthesized Patch)</span>
             </div>
             <button
               onClick={() => handleCopy(refactoredCode)}
-              className="text-slate-400 hover:text-slate-600"
-              title="Copy"
+              className="text-zinc-400 hover:text-zinc-700 p-1 rounded"
+              title="Copy optimized patch"
             >
-              <Copy size={14} />
+              <Copy size={13} />
             </button>
           </div>
-          <div className="border border-slate-200 rounded-b-lg overflow-hidden max-w-full">
-            <pre className="text-xs font-mono text-slate-700 p-4 bg-slate-50 overflow-x-auto m-0 max-w-full">
-              <code>{refactoredCode}</code>
-            </pre>
-          </div>
+          <pre className="text-xs font-mono text-zinc-900 p-3.5 bg-emerald-50/20 overflow-x-auto m-0 leading-relaxed">
+            <code>{refactoredCode}</code>
+          </pre>
         </div>
       </div>
 
       {showActions && onApply && (
-        <div className="flex justify-end pt-4 border-t border-slate-200 gap-3">
+        <div className="flex justify-end pt-3 border-t border-zinc-200 gap-2.5">
           <button
             onClick={() => handleCopy(refactoredCode)}
-            className="btn-secondary flex items-center gap-2"
+            className="btn-secondary text-xs flex items-center gap-1.5"
           >
-            Copy Fix
+            Copy Patch
           </button>
           <button
             onClick={onApply}
             disabled={isApplying}
-            className="btn-primary flex items-center gap-2"
+            className="btn-primary text-xs flex items-center gap-1.5"
           >
-            {isApplying ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Applying Fix...
-              </>
-            ) : (
-              'Apply This Fix'
-            )}
+            {isApplying ? 'Applying Patch...' : 'Apply Patch'}
           </button>
         </div>
       )}

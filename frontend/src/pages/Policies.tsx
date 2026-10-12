@@ -145,18 +145,21 @@ export default function Policies() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex justify-between items-center bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-zinc-200/80 pb-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Energy Policy &amp; Guardrail Engine</h1>
-          <p className="text-sm text-slate-500">Configure binding CI/CD gates, custom YAML rules, and IaC FinOps/GreenOps checks</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Policy &amp; Guardrail Engine</h1>
+            <span className="badge-olive">CI/CD &amp; IaC Rules</span>
+          </div>
+          <p className="text-xs text-zinc-500 mt-0.5">Configure pre-merge complexity gates, custom YAML rules, and IaC checks</p>
         </div>
         <button 
           onClick={handleSave}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-colors shadow-sm"
+          className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5"
         >
-          <Save className="w-4 h-4" /> Save Policy Rules
+          <Save className="w-3.5 h-3.5" /> Save Policy Rules
         </button>
       </div>
 

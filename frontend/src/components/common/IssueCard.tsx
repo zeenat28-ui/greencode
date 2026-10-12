@@ -34,57 +34,59 @@ export function IssueCard({ violation, onClick, isSelected = false }: IssueCardP
       onClick={onClick}
       className={`card p-4 cursor-pointer transition-all duration-150 overflow-hidden max-w-full ${
         isSelected
-          ? 'border-olive-500 ring-2 ring-olive-100 shadow-md'
-          : 'hover:border-slate-300 hover:shadow-md'
+          ? 'border-zinc-900 ring-1 ring-zinc-900/10 shadow-sm'
+          : 'hover:border-zinc-300'
       }`}
     >
       {/* Top row */}
-      <div className="flex items-start justify-between gap-3 mb-2.5">
+      <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <SeverityBadge severity={violation.severity} />
-          <code className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-mono font-bold">
+          <code className="px-1.5 py-0.5 bg-zinc-100 text-zinc-700 rounded text-[11px] font-mono font-semibold border border-zinc-200/80">
             {ruleCode}
           </code>
           {violation.language && (
-            <span className="px-1.5 py-0.5 bg-olive-50 text-olive-800 border border-olive-200 rounded text-xs font-semibold">
+            <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded text-[11px] font-mono font-medium">
               {violation.language}
             </span>
           )}
         </div>
-        <span className="text-xs font-bold text-red-500 shrink-0">
+        <span className="text-xs font-mono font-semibold text-rose-600 shrink-0">
           -{violation.deduction} pts
         </span>
       </div>
 
       {/* Title */}
-      <h3 className="font-bold text-sm text-slate-900 mb-1">{label}</h3>
+      <h3 className="font-semibold text-sm text-zinc-950 mb-1">{label}</h3>
 
       {/* Description */}
-      <p className="text-xs text-slate-500 mb-2.5 line-clamp-2 leading-relaxed">
+      <p className="text-xs text-zinc-600 mb-2.5 leading-relaxed">
         {violation.description}
       </p>
 
       {/* Location row */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 mb-2.5 font-mono">
-        <span>{violation.relative_path || violation.file_path}</span>
-        <span>Line {violation.line_number}</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500 mb-2.5 font-mono">
+        <span className="text-zinc-800 font-medium">{violation.relative_path || violation.file_path}:{violation.line_number}</span>
         {violation.gsf_pattern && (
-          <span className="font-sans text-slate-400">{violation.gsf_pattern}</span>
+          <>
+            <span>&middot;</span>
+            <span className="font-sans text-zinc-500">{violation.gsf_pattern}</span>
+          </>
         )}
       </div>
 
       {/* Code snippet */}
       {violation.snippet && (
-        <pre className="bg-[#f8f9fa] border border-slate-200 rounded-lg p-3 text-xs font-mono text-slate-600 overflow-x-auto mb-2.5 leading-relaxed">
+        <pre className="bg-[#0D1117] border border-zinc-800 rounded-lg p-3 text-xs font-mono text-zinc-200 overflow-x-auto mb-2.5 leading-relaxed">
           {violation.snippet}
         </pre>
       )}
 
       {/* Suggested fix */}
       {violation.suggested_fix && (
-        <div className="flex items-start gap-2 p-2.5 bg-olive-50 rounded-lg border border-olive-200">
-          <span className="text-olive-700 font-bold text-xs shrink-0 mt-px">Fix</span>
-          <span className="text-xs text-slate-600 leading-relaxed">{violation.suggested_fix}</span>
+        <div className="flex items-start gap-2 p-2.5 bg-emerald-50/60 rounded-lg border border-emerald-200/80">
+          <span className="text-emerald-800 font-mono font-semibold text-[11px] shrink-0 mt-px">Remediation:</span>
+          <span className="text-xs text-zinc-700 leading-relaxed">{violation.suggested_fix}</span>
         </div>
       )}
     </div>

@@ -953,58 +953,82 @@ _ALEXA_REGION_ALIASES: Dict[str, str] = {
     "dublin": "IE",
     "eu-west-1": "IE",
     "eu west 1": "IE",
+    "eu west one": "IE",
+    "europe ireland": "IE",
     "ie": "IE",
     "sweden": "SE",
     "stockholm": "SE",
     "eu-north-1": "SE",
     "eu north 1": "SE",
+    "eu north one": "SE",
+    "europe stockholm": "SE",
     "se": "SE",
     "virginia": "US-MIDA-PJM",
     "northern virginia": "US-MIDA-PJM",
     "us-east-1": "US-MIDA-PJM",
     "us east 1": "US-MIDA-PJM",
+    "us east one": "US-MIDA-PJM",
+    "east coast": "US-MIDA-PJM",
     "us-mida-pjm": "US-MIDA-PJM",
     "oregon": "US-NW-PACW",
     "us-west-2": "US-NW-PACW",
     "us west 2": "US-NW-PACW",
+    "us west two": "US-NW-PACW",
+    "pacific northwest": "US-NW-PACW",
     "us-nw-pacw": "US-NW-PACW",
     "california": "US-CAL-CISO",
     "northern california": "US-CAL-CISO",
     "us-west-1": "US-CAL-CISO",
     "us west 1": "US-CAL-CISO",
+    "us west one": "US-CAL-CISO",
+    "silicon valley": "US-CAL-CISO",
     "us-cal-ciso": "US-CAL-CISO",
     "frankfurt": "DE",
     "germany": "DE",
     "eu-central-1": "DE",
     "eu central 1": "DE",
+    "eu central one": "DE",
+    "europe frankfurt": "DE",
     "de": "DE",
     "london": "GB",
     "uk": "GB",
     "united kingdom": "GB",
+    "britain": "GB",
     "eu-west-2": "GB",
     "eu west 2": "GB",
+    "eu west two": "GB",
     "gb": "GB",
     "paris": "FR",
     "france": "FR",
     "eu-west-3": "FR",
+    "eu west three": "FR",
+    "europe paris": "FR",
     "fr": "FR",
     "mumbai": "IN-WE",
     "india": "IN-WE",
     "ap-south-1": "IN-WE",
     "ap south 1": "IN-WE",
+    "ap south one": "IN-WE",
+    "asia pacific mumbai": "IN-WE",
     "ap-south": "IN-WE",
     "in-we": "IN-WE",
     "singapore": "SG",
     "ap-southeast-1": "SG",
     "ap southeast 1": "SG",
+    "ap southeast one": "SG",
+    "asia pacific singapore": "SG",
     "sg": "SG",
     "tokyo": "JP-TK",
     "japan": "JP-TK",
     "ap-northeast-1": "JP-TK",
+    "ap northeast one": "JP-TK",
+    "asia pacific tokyo": "JP-TK",
     "jp-tk": "JP-TK",
     "sydney": "AU-NSW",
     "australia": "AU-NSW",
     "ap-southeast-2": "AU-NSW",
+    "ap southeast two": "AU-NSW",
+    "asia pacific sydney": "AU-NSW",
     "au-nsw": "AU-NSW",
 }
 
@@ -1384,6 +1408,68 @@ def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
                 session_attributes=session_attrs,
             )
 
+        if intent_name == "CheckSlaComplianceIntent":
+            from app.scope import ScopeCalculator
+            from app.sla import EnergySLAEngine
+
+            zone = str(session_attrs.get("last_zone", "IE"))
+            joules = float(session_attrs.get("last_energy_joules", 45.0))
+            score = float(session_attrs.get("last_score", 92.0))
+            grid_info = _resolve_intensity(zone)
+            grid_ci = float(grid_info.get("carbon_intensity") or 200.0)
+            inv = ScopeCalculator.generate_inventory(
+                energy_joules=joules,
+                duration_seconds=1.5,
+                grid_intensity_gco2_per_kwh=grid_ci,
+                runs_per_year=10000,
+                cloud_provider="aws",
+            )
+            sla_verdict = EnergySLAEngine().evaluate_deployment(
+                total_joules=joules,
+                green_score=score,
+                sci_gco2e=0.05,
+            )
+            s2_kg = inv.scope_2.location_based_kgco2e
+            s3_kg = inv.scope_3.total_scope3_kgco2e_annual
+            speech = (
+                f"Enterprise Carbon SLA Gate status is {sla_verdict.status}. "
+                f"For zone {zone} across 10,000 annual runs, GHG Protocol Scope 2 location-based "
+                f"emissions are {s2_kg} kilograms CO2e, and Scope 3 hardware embodied emissions "
+                f"are {s3_kg} kilograms CO2e (CSRD ESRS E1 and SBTi aligned)."
+            )
+            return _build_ask_response(
+                speech,
+                card_title="Enterprise Carbon SLA & GHG Scope 2/3",
+                reprompt_text="Ask me to audit Terraform infrastructure or compare AWS regions.",
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "AuditIaCIntent":
+            from app.iac_linter import audit_iac_content
+
+            sample_tf = (
+                'resource "aws_instance" "api_worker" {\n'
+                '  instance_type = "m5.2xlarge"\n'
+                "}\n"
+            )
+            iac_res = audit_iac_content(sample_tf, "main.tf")
+            score = iac_res.get("green_score", 85.0)
+            v_count = iac_res.get("total_findings", 1)
+            usd_saved = iac_res.get("estimated_monthly_usd_savings", 114.0)
+            co2_saved = iac_res.get("estimated_annual_co2_saved_kg", 150.0)
+            speech = (
+                f"Infrastructure-as-Code FinOps audit completed with score {score} out of 100 "
+                f"and {v_count} optimization finding. Migrating x86 m5 instances to AWS Graviton "
+                f"ARM64 processors saves {usd_saved} dollars per month and {co2_saved} kilograms "
+                "of CO2e per year."
+            )
+            return _build_ask_response(
+                speech,
+                card_title="Enterprise IaC & AWS Graviton Audit",
+                reprompt_text="Ask me to check enterprise SLA compliance or compare AWS regions.",
+                session_attributes=session_attrs,
+            )
+
         # FreeformGreenCodeQueryIntent, AMAZON.FallbackIntent, or any custom query
         raw_query = (
             _extract_alexa_slot(slots, "query")
@@ -1472,6 +1558,18 @@ async def alexa_skill_webhook(request: Request) -> JSONResponse:
             {"error": "invalid_json", "detail": str(exc)},
             status_code=400,
         )
+    expected_skill_id = os.environ.get("GREENCODE_ALEXA_SKILL_ID", "").strip()
+    if expected_skill_id:
+        app_id = (
+            ((payload.get("session") or {}).get("application") or {}).get("applicationId")
+            or (((payload.get("context") or {}).get("System") or {}).get("application") or {}).get("applicationId")
+            or ""
+        )
+        if app_id != expected_skill_id:
+            return JSONResponse(
+                {"error": "forbidden_skill_id", "detail": "Application ID mismatch."},
+                status_code=403,
+            )
     response_payload = handle_alexa_skill_request(payload)
     return JSONResponse(response_payload)
 

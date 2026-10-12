@@ -568,7 +568,7 @@ class TestAddonManifest(unittest.TestCase):
 class TestAlexaCustomSkillWebhook(unittest.TestCase):
     """Verify the Amazon Alexa Skills Kit (ASK) v1.0 Custom Skill webhook and interaction model."""
 
-    def test_interaction_model_has_all_9_custom_intents_and_slots(self):
+    def test_interaction_model_has_all_11_custom_intents_and_slots(self):
         path = REPO_ROOT / "alexa" / "interaction_model_en_US.json"
         model = json.loads(path.read_text(encoding="utf-8"))
         lang_model = model["interactionModel"]["languageModel"]
@@ -583,12 +583,46 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
             "MeasureEnergyIntent",
             "ExplainScoreIntent",
             "RefactorCodeIntent",
+            "CheckSlaComplianceIntent",
+            "AuditIaCIntent",
             "FreeformGreenCodeQueryIntent",
         }
         self.assertTrue(expected_custom.issubset(intent_names))
         slot_types = {t["name"] for t in lang_model["types"]}
         self.assertIn("AWS_REGION", slot_types)
         self.assertIn("CODE_LANGUAGE", slot_types)
+
+    def test_interaction_model_passes_amazon_ask_utterance_grammar_rules(self):
+        """Amazon ASK rejects sample utterances and slot synonyms that contain raw digits (0-9) or symbols like '+'."""
+        import re
+
+        path = REPO_ROOT / "alexa" / "interaction_model_en_US.json"
+        model = json.loads(path.read_text(encoding="utf-8"))
+        lang_model = model["interactionModel"]["languageModel"]
+        utterance_pattern = re.compile(r"^[a-zA-Z\s\.\_'\{\}\-]+$")
+        synonym_pattern = re.compile(r"^[a-zA-Z\s\.\_'\-]+$")
+
+        for intent in lang_model["intents"]:
+            for sample in intent.get("samples", []):
+                self.assertRegex(
+                    sample,
+                    utterance_pattern,
+                    f"Intent {intent['name']} sample '{sample}' violates Amazon ASK grammar (no digits or special symbols allowed)",
+                )
+        for slot_type in lang_model["types"]:
+            for entry in slot_type.get("values", []):
+                val = entry["name"]["value"]
+                self.assertRegex(
+                    val,
+                    synonym_pattern,
+                    f"Slot type {slot_type['name']} value '{val}' violates Amazon ASK grammar",
+                )
+                for syn in entry["name"].get("synonyms", []):
+                    self.assertRegex(
+                        syn,
+                        synonym_pattern,
+                        f"Slot type {slot_type['name']} synonym '{syn}' violates Amazon ASK grammar",
+                    )
 
     def test_launch_request_returns_valid_ask_envelope(self):
         resp = mcp_server.handle_alexa_skill_request(
@@ -607,8 +641,8 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
                 "intent": {
                     "name": "CompareRegionsIntent",
                     "slots": {
-                        "region_one": {"name": "region_one", "value": "Ireland"},
-                        "region_two": {"name": "region_two", "value": "Virginia"},
+                        "region_one": {"name": "region_one", "value": "eu west one"},
+                        "region_two": {"name": "region_two", "value": "us east one"},
                     },
                 },
             },
@@ -628,6 +662,8 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
             ("MeasureEnergyIntent", {}),
             ("ExplainScoreIntent", {}),
             ("RefactorCodeIntent", {"language": {"name": "language", "value": "python"}}),
+            ("CheckSlaComplianceIntent", {}),
+            ("AuditIaCIntent", {}),
             (
                 "FreeformGreenCodeQueryIntent",
                 {"query": {"name": "query", "value": "is Sweden cleaner than Frankfurt tonight"}},
@@ -648,7 +684,7 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
                 self.assertEqual(resp["response"]["outputSpeech"]["type"], "PlainText")
                 self.assertTrue(len(resp["response"]["outputSpeech"]["text"]) > 20)
 
-    def test_http_post_alexa_skill_endpoint(self):
+    def test_http_post_alexa_skill_endpoint_and_skill_id_guard(self):
         client = TestClient(mcp_server.create_app())
         r = client.post(
             "/alexa/skill",
@@ -668,7 +704,36 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
         self.assertEqual(body["version"], "1.0")
         self.assertIn("measurement_is_hardware", body["response"]["outputSpeech"]["text"])
 
+        with mock.patch.dict(
+            os.environ,
+            {"GREENCODE_ALEXA_SKILL_ID": "amzn1.ask.skill.fd2a8106-e7fb-4f05-83b9-74590f7df6b8"},
+        ):
+            r_denied = client.post(
+                "/alexa/skill",
+                json={
+                    "version": "1.0",
+                    "session": {"application": {"applicationId": "amzn1.ask.skill.wrong"}},
+                    "request": {"type": "LaunchRequest"},
+                },
+            )
+            self.assertEqual(r_denied.status_code, 403)
+
+            r_allowed = client.post(
+                "/alexa/skill",
+                json={
+                    "version": "1.0",
+                    "session": {
+                        "application": {
+                            "applicationId": "amzn1.ask.skill.fd2a8106-e7fb-4f05-83b9-74590f7df6b8"
+                        }
+                    },
+                    "request": {"type": "LaunchRequest"},
+                },
+            )
+            self.assertEqual(r_allowed.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

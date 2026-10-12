@@ -2372,6 +2372,14 @@ async def api_sync_aws_marketplace_usage(payload: Dict[str, Any]):
     )
 
 
+@app.post("/alexa/skill", tags=["Alexa Voice & MCP"])
+@app.post("/api/alexa/skill", tags=["Alexa Voice & MCP"])
+async def api_alexa_custom_skill_webhook(payload: Dict[str, Any]):
+    """Amazon Alexa Skills Kit (ASK) v1.0 Custom Skill HTTPS Webhook endpoint."""
+    from app.mcp_server import handle_alexa_skill_request
+    return handle_alexa_skill_request(payload)
+
+
 # has been built. Keeps "removed endpoint" behaviour identical in dev and prod.
 @app.api_route(
     "/api/{full_path:path}",

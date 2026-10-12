@@ -565,5 +565,110 @@ class TestAddonManifest(unittest.TestCase):
         self.assertTrue(endpoint["uri"].startswith("https://"))
 
 
+class TestAlexaCustomSkillWebhook(unittest.TestCase):
+    """Verify the Amazon Alexa Skills Kit (ASK) v1.0 Custom Skill webhook and interaction model."""
+
+    def test_interaction_model_has_all_9_custom_intents_and_slots(self):
+        path = REPO_ROOT / "alexa" / "interaction_model_en_US.json"
+        model = json.loads(path.read_text(encoding="utf-8"))
+        lang_model = model["interactionModel"]["languageModel"]
+        self.assertEqual(lang_model["invocationName"], "green code auditor")
+        intent_names = {i["name"] for i in lang_model["intents"]}
+        expected_custom = {
+            "CompareRegionsIntent",
+            "GetGridIntensityIntent",
+            "AuditCodeIntent",
+            "AuditRepositoryIntent",
+            "CalculateSciIntent",
+            "MeasureEnergyIntent",
+            "ExplainScoreIntent",
+            "RefactorCodeIntent",
+            "FreeformGreenCodeQueryIntent",
+        }
+        self.assertTrue(expected_custom.issubset(intent_names))
+        slot_types = {t["name"] for t in lang_model["types"]}
+        self.assertIn("AWS_REGION", slot_types)
+        self.assertIn("CODE_LANGUAGE", slot_types)
+
+    def test_launch_request_returns_valid_ask_envelope(self):
+        resp = mcp_server.handle_alexa_skill_request(
+            {"version": "1.0", "request": {"type": "LaunchRequest"}}
+        )
+        self.assertEqual(resp["version"], "1.0")
+        speech = resp["response"]["outputSpeech"]["text"]
+        self.assertIn("Welcome to GreenCode Auditor", speech)
+        self.assertFalse(resp["response"]["shouldEndSession"])
+
+    def test_compare_regions_intent_with_slots(self):
+        payload = {
+            "version": "1.0",
+            "request": {
+                "type": "IntentRequest",
+                "intent": {
+                    "name": "CompareRegionsIntent",
+                    "slots": {
+                        "region_one": {"name": "region_one", "value": "Ireland"},
+                        "region_two": {"name": "region_two", "value": "Virginia"},
+                    },
+                },
+            },
+        }
+        resp = mcp_server.handle_alexa_skill_request(payload)
+        speech = resp["response"]["outputSpeech"]["text"]
+        self.assertIn("IE", speech)
+        self.assertIn("US-MIDA-PJM", speech)
+        self.assertIn("percent", speech)
+
+    def test_all_other_intents_and_freeform_query(self):
+        intents_to_test = [
+            ("GetGridIntensityIntent", {"region": {"name": "region", "value": "Sweden"}}),
+            ("AuditCodeIntent", {"language": {"name": "language", "value": "python"}}),
+            ("AuditRepositoryIntent", {}),
+            ("CalculateSciIntent", {"region": {"name": "region", "value": "Ireland"}}),
+            ("MeasureEnergyIntent", {}),
+            ("ExplainScoreIntent", {}),
+            ("RefactorCodeIntent", {"language": {"name": "language", "value": "python"}}),
+            (
+                "FreeformGreenCodeQueryIntent",
+                {"query": {"name": "query", "value": "is Sweden cleaner than Frankfurt tonight"}},
+            ),
+        ]
+        for intent_name, slots in intents_to_test:
+            with self.subTest(intent=intent_name):
+                resp = mcp_server.handle_alexa_skill_request(
+                    {
+                        "version": "1.0",
+                        "request": {
+                            "type": "IntentRequest",
+                            "intent": {"name": intent_name, "slots": slots},
+                        },
+                    }
+                )
+                self.assertEqual(resp["version"], "1.0")
+                self.assertEqual(resp["response"]["outputSpeech"]["type"], "PlainText")
+                self.assertTrue(len(resp["response"]["outputSpeech"]["text"]) > 20)
+
+    def test_http_post_alexa_skill_endpoint(self):
+        client = TestClient(mcp_server.create_app())
+        r = client.post(
+            "/alexa/skill",
+            json={
+                "version": "1.0",
+                "request": {
+                    "type": "IntentRequest",
+                    "intent": {
+                        "name": "MeasureEnergyIntent",
+                        "slots": {},
+                    },
+                },
+            },
+        )
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["version"], "1.0")
+        self.assertIn("measurement_is_hardware", body["response"]["outputSpeech"]["text"])
+
+
 if __name__ == "__main__":
     unittest.main()
+

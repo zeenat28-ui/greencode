@@ -20,13 +20,62 @@
           "samples": []
         },
         {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
           "name": "CompareRegionsIntent",
-          "slots": [],
+          "slots": [
+            {
+              "name": "region_one",
+              "type": "AWS_REGION"
+            },
+            {
+              "name": "region_two",
+              "type": "AWS_REGION"
+            }
+          ],
           "samples": [
             "which aws region is cleanest tonight",
             "which aws region has the lowest carbon intensity",
             "compare aws regions for my batch job",
-            "should we run this job in ireland or virginia"
+            "compare {region_one} and {region_two}",
+            "compare {region_one} with {region_two}",
+            "should we run this job in {region_one} or {region_two}",
+            "is {region_one} cleaner than {region_two}",
+            "between {region_one} and {region_two} which is greener"
+          ]
+        },
+        {
+          "name": "GetGridIntensityIntent",
+          "slots": [
+            {
+              "name": "region",
+              "type": "AWS_REGION"
+            }
+          ],
+          "samples": [
+            "what is the carbon intensity in {region}",
+            "how clean is the grid in {region}",
+            "check grid carbon intensity for {region}",
+            "live grid intensity in {region}",
+            "carbon intensity of {region}"
+          ]
+        },
+        {
+          "name": "AuditCodeIntent",
+          "slots": [
+            {
+              "name": "language",
+              "type": "CODE_LANGUAGE"
+            }
+          ],
+          "samples": [
+            "audit my {language} code",
+            "scan my {language} snippet for energy waste",
+            "check {language} code for carbon anti patterns",
+            "find nested loops in my {language} code",
+            "audit and score my {language} code"
           ]
         },
         {
@@ -36,7 +85,35 @@
             "what is the green score of my repository",
             "audit my code for energy waste",
             "check software carbon intensity",
-            "run a green code audit"
+            "run a green code audit",
+            "scan my github repository",
+            "what are the top energy offenders in my repo"
+          ]
+        },
+        {
+          "name": "CalculateSciIntent",
+          "slots": [
+            {
+              "name": "region",
+              "type": "AWS_REGION"
+            }
+          ],
+          "samples": [
+            "calculate software carbon intensity",
+            "calculate sci for {region}",
+            "what is the sci score in {region}",
+            "compute gsf sci score"
+          ]
+        },
+        {
+          "name": "MeasureEnergyIntent",
+          "slots": [],
+          "samples": [
+            "measure hardware energy",
+            "check hardware energy sensors",
+            "are we using rapl or tdp model",
+            "measure cpu power in joules",
+            "what energy sensor is active on this host"
           ]
         },
         {
@@ -45,11 +122,127 @@
           "samples": [
             "explain this score",
             "was the energy measured by a hardware counter or estimated",
-            "how is the software carbon intensity calculated"
+            "how is the software carbon intensity calculated",
+            "what is the provenance of this green score",
+            "is this score hardware verified or modelled"
+          ]
+        },
+        {
+          "name": "RefactorCodeIntent",
+          "slots": [
+            {
+              "name": "language",
+              "type": "CODE_LANGUAGE"
+            }
+          ],
+          "samples": [
+            "refactor my {language} code to save energy",
+            "optimize my {language} loop with amazon bedrock",
+            "suggest a greener rewrite for {language}",
+            "fix energy anti patterns in my code"
+          ]
+        },
+        {
+          "name": "FreeformGreenCodeQueryIntent",
+          "slots": [
+            {
+              "name": "query",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "ask green code {query}",
+            "tell me {query}",
+            "check {query}",
+            "analyze {query}",
+            "evaluate {query}",
+            "help me with {query}"
           ]
         }
       ],
-      "types": []
+      "types": [
+        {
+          "name": "AWS_REGION",
+          "values": [
+            {
+              "id": "IE",
+              "name": {
+                "value": "Ireland",
+                "synonyms": ["eu west 1", "dublin", "ireland"]
+              }
+            },
+            {
+              "id": "SE",
+              "name": {
+                "value": "Sweden",
+                "synonyms": ["eu north 1", "stockholm", "sweden"]
+              }
+            },
+            {
+              "id": "US-MIDA-PJM",
+              "name": {
+                "value": "Virginia",
+                "synonyms": ["us east 1", "northern virginia", "virginia"]
+              }
+            },
+            {
+              "id": "US-NW-PACW",
+              "name": {
+                "value": "Oregon",
+                "synonyms": ["us west 2", "oregon"]
+              }
+            },
+            {
+              "id": "US-CAL-CISO",
+              "name": {
+                "value": "California",
+                "synonyms": ["us west 1", "northern california", "california"]
+              }
+            },
+            {
+              "id": "DE",
+              "name": {
+                "value": "Frankfurt",
+                "synonyms": ["eu central 1", "germany", "frankfurt"]
+              }
+            },
+            {
+              "id": "GB",
+              "name": {
+                "value": "London",
+                "synonyms": ["eu west 2", "uk", "united kingdom", "london"]
+              }
+            },
+            {
+              "id": "AP-SOUTH",
+              "name": {
+                "value": "Mumbai",
+                "synonyms": ["ap south 1", "india", "mumbai"]
+              }
+            },
+            {
+              "id": "SG",
+              "name": {
+                "value": "Singapore",
+              "synonyms": ["ap southeast 1", "singapore"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CODE_LANGUAGE",
+          "values": [
+            { "name": { "value": "python" } },
+            { "name": { "value": "javascript" } },
+            { "name": { "value": "typescript" } },
+            { "name": { "value": "java" } },
+            { "name": { "value": "go" } },
+            { "name": { "value": "rust" } },
+            { "name": { "value": "c plus plus", "synonyms": ["cpp", "c++"] } },
+            { "name": { "value": "solidity" } }
+          ]
+        }
+      ]
     }
   }
 }

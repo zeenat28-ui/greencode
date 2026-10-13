@@ -9,7 +9,6 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   connectGitHub: (githubToken: string) => Promise<User>;
-  exploreAsAuditor: () => void;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -39,20 +38,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
 
     const restore = async () => {
-      const stored = localStorage.getItem('greencode_user_session');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (parsed && parsed.username) {
-            setUser(parsed);
-            setIsLoading(false);
-            return;
-          }
-        } catch {
-          localStorage.removeItem('greencode_user_session');
-        }
-      }
-
       const refreshToken = getRefreshToken();
       if (!refreshToken) {
         setIsLoading(false);
@@ -78,7 +63,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // The axios interceptor fires this when a refresh cannot recover the session.
     const handleForcedLogout = () => {
-      localStorage.removeItem('greencode_user_session');
       clearSession();
       setUser(null);
       setIsLoading(false);
@@ -94,27 +78,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const connectGitHub = useCallback(async (githubToken: string) => {
     const res = await authService.signInWithGitHub(githubToken);
     setUser(res.data.user);
-    localStorage.removeItem('greencode_user_session');
     return res.data.user;
   }, []);
-
-  const exploreAsAuditor = useCallback(() => {
-    const auditorUser: User = {
-      id: 1,
-      email: 'auditor@greencode.io',
-      username: 'cloud_auditor',
-      full_name: 'Lead Sustainability Engineer',
-      avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80',
-      github_username: 'zeenat28-ui',
-      has_github_token: false,
-      role: 'admin',
-      is_verified: true,
-      created_at: new Date().toISOString(),
-    };
-    setUser(auditorUser);
-    localStorage.setItem('greencode_user_session', JSON.stringify(auditorUser));
-    navigate('/dashboard', { replace: true });
-  }, [navigate]);
 
   const logout = useCallback(async () => {
     try {
@@ -122,7 +87,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch {
       // Best effort - the local session is cleared regardless.
     }
-    localStorage.removeItem('greencode_user_session');
     clearSession();
     setUser(null);
     navigate('/login', { replace: true });
@@ -141,7 +105,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: !!user,
         isLoading,
         connectGitHub,
-        exploreAsAuditor,
         logout,
         refreshUser,
       }}
@@ -150,4 +113,3 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     </AuthContext.Provider>
   );
 };
-

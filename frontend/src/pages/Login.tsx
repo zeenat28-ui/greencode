@@ -15,8 +15,10 @@ import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
 
 /**
- * Standard Centered Authentication Screen (GitHub / Shadcn UI Pattern)
- * Vertically & horizontally locked layout — consistent scale across all laptop screens.
+ * Enterprise Login Screen
+ * - Viewport-locked: no scroll, no zoom, no pinch
+ * - Centered card with fixed max-width
+ * - Works on all laptop/desktop screens without layout shift
  */
 export default function Login() {
   const { connectGitHub } = useAuth();
@@ -54,11 +56,56 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen min-h-[100dvh] w-full flex items-center justify-center bg-slate-50 text-slate-900 p-4 sm:p-6 font-sans">
-      {/* Locked Centered Column (No vertical drifting or stretch) */}
-      <div className="w-full max-w-[420px] flex flex-col items-center">
-        {/* Brand Header — Fixed above the card */}
-        <div className="mb-6 flex flex-col items-center text-center">
+    <div
+      className="font-sans"
+      style={{
+        /* Hard-lock to the exact viewport — no scroll, no overflow, no bounce */
+        position: 'fixed',
+        inset: 0,
+        width: '100vw',
+        height: '100dvh',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#fafafa',
+        /* Prevent ALL touch gestures (pinch, pan, double-tap) */
+        touchAction: 'none',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+      }}
+    >
+      {/* Subtle background gradient matching the brand */}
+      <div
+        className="pointer-events-none"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: [
+            'radial-gradient(1200px 600px at 100% -10%, rgba(5, 150, 105, 0.05), transparent 60%)',
+            'radial-gradient(900px 500px at -10% 110%, rgba(5, 150, 105, 0.04), transparent 55%)',
+            'linear-gradient(180deg, #fbfbfb 0%, #f6f7f6 100%)',
+          ].join(', '),
+        }}
+      />
+
+      {/* Centered Column — locked, no vertical drift */}
+      <div
+        className="relative z-10"
+        style={{
+          width: '100%',
+          maxWidth: '420px',
+          padding: '0 24px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          /* Allow text selection inside inputs */
+          userSelect: 'text',
+          WebkitUserSelect: 'text',
+        }}
+      >
+        {/* ─── Brand Header ─── */}
+        <div className="mb-6 flex flex-col items-center text-center select-none">
           <div className="w-12 h-12 rounded-xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-center mb-3">
             <BrandLogo size="md" />
           </div>
@@ -73,7 +120,7 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Locked Card Box */}
+        {/* ─── Login Card ─── */}
         <div className="w-full bg-white rounded-2xl border border-slate-200/90 shadow-xl shadow-slate-900/[0.04] p-7 sm:p-8 space-y-5">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 tracking-tight">
@@ -127,13 +174,14 @@ export default function Login() {
                   value={githubToken}
                   onChange={(e) => setGithubToken(e.target.value)}
                   placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  style={{ touchAction: 'auto' }}
                   className="w-full pl-9 pr-9 py-2.5 text-xs font-mono bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowToken((s) => !s)}
                   aria-label={showToken ? 'Hide token' : 'Show token'}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded transition-colors"
                 >
                   {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
@@ -172,16 +220,16 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Locked Footer Links & Specifications */}
-        <div className="mt-6 flex flex-col items-center gap-2 text-xs text-slate-400 font-mono">
-          <div className="flex items-center gap-3">
+        {/* ─── Footer ─── */}
+        <div className="mt-6 flex flex-col items-center gap-2 text-xs text-slate-400 font-mono select-none">
+          <div className="flex items-center gap-3 flex-wrap justify-center">
             <span>ISO/IEC 21031:2024</span>
             <span>&middot;</span>
             <span>FinOps FOCUS 1.4</span>
             <span>&middot;</span>
             <span>Apache-2.0</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-center">
             <a
               href="https://github.com/zeenat28-ui/greencode"
               target="_blank"

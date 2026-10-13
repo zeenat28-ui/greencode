@@ -4,10 +4,6 @@
 
 @layer base {
   html {
-    /* Lock viewport — prevent any scroll or zoom on the entire page shell */
-    overflow: hidden;
-    height: 100%;
-    width: 100%;
     -webkit-text-size-adjust: 100%;
     -ms-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -16,10 +12,7 @@
   html, body {
     overflow-x: hidden;
     max-width: 100vw;
-    /* Prevent pull-to-refresh and overscroll bounce */
-    overscroll-behavior: none;
-    /* Disable pinch-zoom and double-tap zoom on touch */
-    touch-action: manipulation;
+    min-height: 100%;
   }
 
   body {

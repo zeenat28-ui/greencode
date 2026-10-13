@@ -149,6 +149,7 @@ def get_github_token() -> str:
     return os.environ.get("GITHUB_TOKEN", "")
 
 
+@circuit_breaker("github-api", failure_threshold=3, timeout=60)
 def get_authenticated_user(token: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Verify a GitHub token and retrieve the authenticated user profile."""
     tok = token or get_github_token()

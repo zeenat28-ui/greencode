@@ -1,5 +1,10 @@
 import { useState } from 'react';
 import { scopeService, mlService, awsService } from '../services/greencodeApi';
+import { Button } from '../components/primitives/Button';
+import { Badge } from '../components/primitives/Badge';
+import { Card } from '../components/primitives/Card';
+import { Input } from '../components/primitives/Input';
+import { Select } from '../components/primitives/Select';
 import {
   Cpu,
   Cloud,
@@ -320,7 +325,8 @@ def predict(input_tensor):
       {/* TAB 1: SCOPE 1-3 GHG INVENTORY */}
       {activeTab === 'scope' && (
         <div className="grid lg:grid-cols-12 gap-6 max-w-full overflow-hidden">
-          <div className="lg:col-span-5 card p-5 space-y-4">
+          <div className="lg:col-span-5">
+            <Card padding="lg" className="space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Sliders size={16} className="text-slate-500" />
@@ -332,145 +338,147 @@ def predict(input_tensor):
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="label block mb-1">Cloud Provider</label>
-                <select
+                <Select
                   value={scopeForm.cloud_provider}
                   onChange={(e) => setScopeForm({ ...scopeForm, cloud_provider: e.target.value })}
-                  className="input py-1.5"
+                  className="text-xs font-mono"
                 >
                   <option value="aws">Amazon Web Services (AWS)</option>
                   <option value="gcp">Google Cloud Platform (GCP)</option>
                   <option value="azure">Microsoft Azure</option>
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label className="label block mb-1">vCPU Allocation</label>
-                <input
+                <Input
                   type="number"
                   value={scopeForm.vcpu_count}
                   onChange={(e) => setScopeForm({ ...scopeForm, vcpu_count: Number(e.target.value) })}
-                  className="input py-1.5 font-mono"
+                  className="text-xs font-mono"
                 />
               </div>
 
               <div>
                 <label className="label block mb-1">Grid Intensity (gCO₂e/kWh)</label>
-                <input
+                <Input
                   type="number"
                   value={scopeForm.grid_intensity}
                   onChange={(e) => setScopeForm({ ...scopeForm, grid_intensity: Number(e.target.value) })}
-                  className="input py-1.5 font-mono"
+                  className="text-xs font-mono"
                 />
               </div>
 
               <div>
                 <label className="label block mb-1">Annual Runs / Invocations</label>
-                <input
+                <Input
                   type="number"
                   value={scopeForm.runs_per_year}
                   onChange={(e) => setScopeForm({ ...scopeForm, runs_per_year: Number(e.target.value) })}
-                  className="input py-1.5 font-mono"
+                  className="text-xs font-mono"
                 />
               </div>
 
               <div>
                 <label className="label block mb-1">Egress Data Transfer (GB)</label>
-                <input
+                <Input
                   type="number"
                   value={scopeForm.data_transfer_gb}
                   onChange={(e) => setScopeForm({ ...scopeForm, data_transfer_gb: Number(e.target.value) })}
-                  className="input py-1.5 font-mono"
+                  className="text-xs font-mono"
                 />
               </div>
 
               <div>
                 <label className="label block mb-1">Dev Team Size (FTE)</label>
-                <input
+                <Input
                   type="number"
                   value={scopeForm.team_size}
                   onChange={(e) => setScopeForm({ ...scopeForm, team_size: Number(e.target.value) })}
-                  className="input py-1.5 font-mono"
+                  className="text-xs font-mono"
                 />
               </div>
             </div>
 
-            <button
+            <Button
               onClick={handleRunScope}
               disabled={scopeLoading}
-              className="btn-primary w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-2"
+              variant="primary"
+              className="w-full py-2.5 text-xs font-semibold"
             >
               {scopeLoading ? <RefreshCw size={14} className="animate-spin" /> : <FileCheck size={14} />}
               Compute Audit-Ready GHG Inventory
-            </button>
-          </div>
+            </Button>
+          </Card>
+        </div>
 
-          <div className="lg:col-span-7 space-y-4">
-            {scopeResult ? (
-              <div className="space-y-4">
-                <div className="grid sm:grid-cols-3 gap-3">
-                  <div className="card p-4 border-l-4 border-l-slate-400">
-                    <p className="label">Scope 1 (Direct)</p>
-                    <p className="text-xl font-bold font-mono text-slate-900 mt-1">
-                      {scopeResult.scope_1.total_emissions_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-1">Development Team Overhead</p>
-                  </div>
+        <div className="lg:col-span-7 space-y-4">
+             {scopeResult ? (
+               <div className="space-y-4">
+                 <div className="grid sm:grid-cols-3 gap-3">
+                    <Card className="border-l-4 border-l-slate-400 p-4">
+                      <p className="label">Scope 1 (Direct)</p>
+                     <p className="text-xl font-bold font-mono text-slate-900 mt-1">
+                       {scopeResult.scope_1.total_emissions_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
+                     </p>
+                     <p className="text-[11px] text-slate-500 mt-1">Development Team Overhead</p>
+                   </Card>
 
-                  <div className="card p-4 border-l-4 border-l-emerald-600">
-                    <p className="label">Scope 2 (Electricity)</p>
-                    <p className="text-xl font-bold font-mono text-emerald-700 mt-1">
-                      {scopeResult.scope_2.location_based_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-1">AWS Compute Grid Footprint</p>
-                  </div>
+                <Card className="border-l-4 border-l-emerald-600 p-4">
+                     <p className="label">Scope 2 (Electricity)</p>
+                     <p className="text-xl font-bold font-mono text-emerald-700 mt-1">
+                       {scopeResult.scope_2.location_based_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
+                     </p>
+                     <p className="text-[11px] text-slate-500 mt-1">AWS Compute Grid Footprint</p>
+                   </Card>
 
-                  <div className="card p-4 border-l-4 border-l-cyan-600">
-                    <p className="label">Scope 3 (Supply Chain)</p>
-                    <p className="text-xl font-bold font-mono text-cyan-800 mt-1">
-                      {scopeResult.scope_3.total_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-1">Hardware LCA &amp; Data Egress</p>
-                  </div>
+                  <Card className="border-l-4 border-l-cyan-600 p-4">
+                      <p className="label">Scope 3 (Supply Chain)</p>
+                     <p className="text-xl font-bold font-mono text-cyan-800 mt-1">
+                       {scopeResult.scope_3.total_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
+                     </p>
+                     <p className="text-[11px] text-slate-500 mt-1">Hardware LCA &amp; Data Egress</p>
+                   </Card>
                 </div>
 
-                <div className="card p-5">
+                <Card padding="lg">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
                       Organizational Carbon Breakdown
                     </h3>
-                    <span className="badge bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <Badge variant="success">
                       Total: {scopeResult.total_organizational_carbon_kg_co2e.toFixed(2)} kg CO₂e / yr
-                    </span>
-                  </div>
+                </Badge>
+                </div>
 
-                  <div className="space-y-2.5 text-xs">
-                    <div className="flex justify-between py-1 border-b border-slate-100">
-                      <span className="text-slate-600">AWS Datacenter PUE Coefficient</span>
-                      <span className="font-mono font-semibold">{scopeResult.cloud_pue}</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-100">
-                      <span className="text-slate-600">Operational Energy Consumption</span>
-                      <span className="font-mono font-semibold">{scopeResult.scope_2.annual_energy_kwh.toFixed(2)} kWh / year</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-100">
-                      <span className="text-slate-600">Hardware Manufacturing LCA Amortization</span>
-                      <span className="font-mono font-semibold">{scopeResult.scope_3.hardware_embodied_kg_co2e.toFixed(2)} kg CO₂e</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-100">
-                      <span className="text-slate-600">Regulatory Framework Compliance</span>
-                      <span className="font-medium text-emerald-700">CSRD ESRS-E1 &middot; GHG Protocol &middot; SBTi ICT</span>
-                    </div>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-600">AWS Datacenter PUE Coefficient</span>
+                    <span className="font-mono font-semibold">{scopeResult.cloud_pue}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-600">Operational Energy Consumption</span>
+                    <span className="font-mono font-semibold">{scopeResult.scope_2.annual_energy_kwh.toFixed(2)} kWh / year</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-600">Hardware Manufacturing LCA Amortization</span>
+                    <span className="font-mono font-semibold">{scopeResult.scope_3.hardware_embodied_kg_co2e.toFixed(2)} kg CO₂e</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-600">Regulatory Framework Compliance</span>
+                    <span className="font-medium text-emerald-700">CSRD ESRS-E1 &middot; GHG Protocol &middot; SBTi ICT</span>
                   </div>
                 </div>
+              </Card>
               </div>
             ) : (
-              <div className="card p-12 text-center text-slate-500 space-y-3">
+              <Card padding="none" className="p-12 text-center text-slate-500 space-y-3">
                 <Cloud size={36} className="mx-auto text-slate-300" />
                 <p className="text-sm font-semibold text-slate-700">No Inventory Generated</p>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto">
                   Click &ldquo;Compute Audit-Ready GHG Inventory&rdquo; to calculate certified Scope 1, Scope 2, and Scope 3 enterprise carbon metrics.
                 </p>
-              </div>
+              </Card>
             )}
           </div>
         </div>
@@ -507,45 +515,45 @@ def predict(input_tensor):
           </div>
 
           <div className="lg:col-span-6 space-y-4">
-            {mlAuditResult ? (
-              <div className="space-y-3">
-                <div className="card p-4 flex items-center justify-between">
-                  <div>
-                    <p className="label">AI Workload Status</p>
-                    <p className="text-lg font-bold text-slate-900 mt-0.5">
-                      {mlAuditResult.detected_patterns.length} Inefficiencies Detected
-                    </p>
-                  </div>
-                  <span className={`badge ${mlAuditResult.detected_patterns.length > 0 ? 'badge-critical' : 'badge-pass'}`}>
-                    {mlAuditResult.detected_patterns.length > 0 ? 'GPU Optimization Required' : 'Optimal'}
-                  </span>
-                </div>
+        {mlAuditResult ? (
+          <div className="space-y-3">
+            <Card padding="lg" className="flex items-center justify-between">
+              <div>
+                <p className="label">AI Workload Status</p>
+                <p className="text-lg font-bold text-slate-900 mt-0.5">
+                  {mlAuditResult.detected_patterns.length} Inefficiencies Detected
+                </p>
+              </div>
+              <Badge variant={mlAuditResult.detected_patterns.length > 0 ? 'critical' : 'success'}>
+                {mlAuditResult.detected_patterns.length > 0 ? 'GPU Optimization Required' : 'Optimal'}
+              </Badge>
+            </Card>
 
                 <div className="space-y-2.5">
                   {mlAuditResult.detected_patterns.map((p: any, idx: number) => (
-                    <div key={idx} className="card p-4 border-l-4 border-l-amber-500 space-y-2">
+                    <Card key={idx} className="border-l-4 border-l-amber-500 p-4 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold font-mono text-slate-900">{p.rule_id}</span>
-                        <span className="badge badge-high text-[10px]">{p.severity}</span>
+                        <Badge variant="high" size="sm" className="text-[10px]">{p.severity}</Badge>
                       </div>
                       <p className="text-xs font-semibold text-slate-800">{p.title}</p>
                       <p className="text-[11px] text-slate-600">{p.description}</p>
                       <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
                         <span className="text-slate-500 font-mono">Line {p.line_number}</span>
                         <span className="text-emerald-700 font-medium">Estimated savings: {p.estimated_energy_savings_pct}% Joules</span>
-                      </div>
-                    </div>
+                </div>
+              </Card>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="card p-12 text-center text-slate-500 space-y-3">
+              <Card padding="none" className="p-12 text-center text-slate-500 space-y-3">
                 <Cpu size={36} className="mx-auto text-slate-300" />
                 <p className="text-sm font-semibold text-slate-700">Awaiting ML Workload Scan</p>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto">
                   Click &ldquo;Scan for AI &amp; GPU Energy Anti-Patterns&rdquo; to analyze the Python model for unquantized inference, missing KV-cache, and GPU sync bottlenecks.
                 </p>
-              </div>
+              </Card>
             )}
           </div>
         </div>
@@ -554,7 +562,8 @@ def predict(input_tensor):
       {/* TAB 3: LLM TOKEN ENERGY MODELING */}
       {activeTab === 'tokens' && (
         <div className="grid lg:grid-cols-12 gap-6 max-w-full overflow-hidden">
-          <div className="lg:col-span-5 card p-5 space-y-4">
+            <div className="lg:col-span-5">
+            <Card padding="lg" className="space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Zap size={16} className="text-slate-500" />
@@ -566,24 +575,24 @@ def predict(input_tensor):
             <div className="space-y-3 text-xs">
               <div>
                 <label className="label block mb-1">Model Parameters</label>
-                <select
+                <Select
                   value={tokenForm.parameter_count_b}
                   onChange={(e) => setTokenForm({ ...tokenForm, parameter_count_b: Number(e.target.value) })}
-                  className="input py-1.5"
+                  className="text-xs font-mono"
                 >
                   <option value={7.0}>7 Billion Parameters (Llama-3-8B / Mistral-7B)</option>
                   <option value={13.0}>13 Billion Parameters (Standard Mid-tier)</option>
                   <option value={70.0}>70 Billion Parameters (Llama-3-70B / Enterprise)</option>
                   <option value={405.0}>405 Billion Parameters (Frontier Scale)</option>
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label className="label block mb-1">Target Accelerator Hardware</label>
-                <select
+                <Select
                   value={tokenForm.hardware}
                   onChange={(e) => setTokenForm({ ...tokenForm, hardware: e.target.value })}
-                  className="input py-1.5"
+                  className="text-xs font-mono"
                 >
                   <option value="aws_inferentia2">AWS Inferentia2 (inf2 &middot; 190W TDP &middot; BF16/FP8 NeuronCore-v2)</option>
                   <option value="aws_trainium">AWS Trainium1 (trn1 &middot; 500W TDP &middot; High-Efficiency Training)</option>
@@ -593,46 +602,48 @@ def predict(input_tensor):
                   <option value="rtx_4090">NVIDIA RTX 4090 (450W TDP &middot; Edge Workstation)</option>
                   <option value="cpu">x86_64 Datacenter CPU (Xeon / EPYC)</option>
                   <option value="npu">Dedicated NPU / Apple Neural Engine</option>
-                </select>
+                </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label block mb-1">Tokens / Request</label>
-                  <input
+                  <Input
                     type="number"
                     value={tokenForm.token_count}
                     onChange={(e) => setTokenForm({ ...tokenForm, token_count: Number(e.target.value) })}
-                    className="input py-1.5 font-mono"
+                    className="text-xs font-mono"
                   />
                 </div>
                 <div>
                   <label className="label block mb-1">Grid Intensity (g/kWh)</label>
-                  <input
+                  <Input
                     type="number"
                     value={tokenForm.grid_intensity}
                     onChange={(e) => setTokenForm({ ...tokenForm, grid_intensity: Number(e.target.value) })}
-                    className="input py-1.5 font-mono"
+                    className="text-xs font-mono"
                   />
                 </div>
               </div>
             </div>
 
-            <button
+            <Button
               onClick={handleRunTokenCalc}
               disabled={tokenLoading}
-              className="btn-primary w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-2"
+              variant="primary"
+              className="w-full py-2.5 text-xs font-semibold"
             >
               {tokenLoading ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
               Model Token Energy &amp; Carbon Impact
-            </button>
+            </Button>
+            </Card>
           </div>
 
-          <div className="lg:col-span-7 space-y-4">
-            {tokenResult ? (
+            <div className="lg:col-span-7 space-y-4">
+             {tokenResult ? (
               <div className="space-y-4">
                 <div className="grid sm:grid-cols-2 gap-3">
-                  <div className="card p-4">
+                  <Card className="p-4">
                     <p className="label">Inference Energy</p>
                     <p className="text-xl font-bold font-mono text-slate-900 mt-1">
                       {tokenResult.joules_per_run.toFixed(3)} <span className="text-xs text-slate-500 font-normal">Joules</span>
@@ -640,18 +651,18 @@ def predict(input_tensor):
                     <p className="text-[11px] text-slate-500 mt-1">
                       {(tokenResult.joules_per_run / 3600).toFixed(6)} Wh per {tokenForm.token_count} tokens
                     </p>
-                  </div>
+                  </Card>
 
-                  <div className="card p-4">
+                  <Card className="p-4">
                     <p className="label">Inference Carbon</p>
                     <p className="text-xl font-bold font-mono text-emerald-700 mt-1">
                       {tokenResult.gco2e_per_run.toFixed(6)} <span className="text-xs text-slate-500 font-normal">gCO₂e</span>
                     </p>
                     <p className="text-[11px] text-slate-500 mt-1">Direct operational footprint</p>
-                  </div>
+                  </Card>
                 </div>
 
-                <div className="card p-5 space-y-3">
+                <Card padding="lg" className="space-y-3">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 pb-2 border-b border-slate-100">
                     Annual Scale Projection (1M Invocations)
                   </h3>
@@ -675,19 +686,19 @@ def predict(input_tensor):
                       {tokenResult.aws_silicon_recommendation}
                     </div>
                   )}
+                  </Card>
                 </div>
-              </div>
-            ) : (
-              <div className="card p-12 text-center text-slate-500 space-y-3">
-                <Zap size={36} className="mx-auto text-slate-300" />
-                <p className="text-sm font-semibold text-slate-700">Token Model Uncomputed</p>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                  Simulate energy consumption across AWS Inferentia2, Trainium, Graviton4, and NVIDIA H100/A100 architectures.
-                </p>
-              </div>
-            )}
-          </div>
+              ) : (
+            <Card padding="none" className="p-12 text-center text-slate-500 space-y-3">
+              <Zap size={36} className="mx-auto text-slate-300" />
+              <p className="text-sm font-semibold text-slate-700">Token Model Uncomputed</p>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                Simulate energy consumption across AWS Inferentia2, Trainium, Graviton4, and NVIDIA H100/A100 architectures.
+              </p>
+            </Card>
+          )}
         </div>
+      </div>
       )}
 
       {/* TAB 4: AWS FinOps & Carbon - every value is a live /api/aws/* response */}
@@ -696,7 +707,8 @@ def predict(input_tensor):
           {/* Row A: Region carbon intensity + migration advisor */}
           <div className="grid lg:grid-cols-12 gap-6">
             {/* Region carbon intensity */}
-            <div className="lg:col-span-5 card p-5 space-y-4">
+            <div className="lg:col-span-5">
+            <Card padding="lg" className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Cloud size={16} className="text-slate-500" />
@@ -706,23 +718,25 @@ def predict(input_tensor):
               <div>
                 <label className="label block mb-1">AWS Region</label>
                 <div className="flex gap-2">
-                  <select
+                  <Select
                     value={awsRegion}
                     onChange={(e) => setAwsRegion(e.target.value)}
-                    className="input py-1.5 font-mono flex-1"
+                    className="text-xs font-mono flex-1"
                   >
                     {(awsRegions?.regions || ['us-east-1', 'eu-west-1', 'eu-north-1']).map((r: string) => (
                       <option key={r} value={r}>{r}</option>
                     ))}
-                  </select>
-                  <button
+                  </Select>
+                  <Button
                     onClick={() => loadAwsCarbon(awsRegion)}
                     disabled={awsCarbonLoading}
-                    className="btn-secondary px-3 py-1.5 text-xs flex items-center gap-1.5"
+                    variant="secondary"
+                    size="sm"
+                    className="text-xs"
                   >
                     {awsCarbonLoading ? <RefreshCw size={13} className="animate-spin" /> : <Activity size={13} />}
                     Resolve
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -745,9 +759,11 @@ def predict(input_tensor):
                   Select a region and press Resolve to read live grid intensity (Electricity Maps) or the cited Ember 2024 reference.
                 </p>
               )}
+            </Card>
             </div>
             {/* Migration advisor */}
-            <div className="lg:col-span-7 card p-5 space-y-4">
+            <div className="lg:col-span-7">
+            <Card padding="lg" className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <TrendingDown size={16} className="text-slate-500" />
@@ -757,47 +773,48 @@ def predict(input_tensor):
               <div className="grid grid-cols-3 gap-3 text-xs">
                 <div>
                   <label className="label block mb-1">Current Region</label>
-                  <select
+                  <Select
                     value={migrationForm.current_region}
                     onChange={(e) => setMigrationForm({ ...migrationForm, current_region: e.target.value })}
-                    className="input py-1.5 font-mono"
+                    className="text-xs font-mono"
                   >
                     {(awsRegions?.regions || ['us-east-1']).map((r: string) => (
                       <option key={r} value={r}>{r}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label className="label block mb-1">Monthly kWh</label>
-                  <input
+                  <Input
                     type="number"
                     value={migrationForm.monthly_kwh}
                     onChange={(e) => setMigrationForm({ ...migrationForm, monthly_kwh: Number(e.target.value) })}
-                    className="input py-1.5 font-mono"
+                    className="text-xs font-mono"
                   />
                 </div>
                 <div>
                   <label className="label block mb-1">Data Residency</label>
-                  <select
+                  <Select
                     value={migrationForm.data_residency}
                     onChange={(e) => setMigrationForm({ ...migrationForm, data_residency: e.target.value })}
-                    className="input py-1.5 font-mono"
+                    className="text-xs font-mono"
                   >
                     <option value="GLOBAL">Global</option>
                     <option value="EU_STRICT">EU only</option>
                     <option value="US_STRICT">US/CA only</option>
                     <option value="APAC_STRICT">APAC only</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
-              <button
+              <Button
                 onClick={handleMigration}
                 disabled={migrationLoading}
-                className="btn-primary w-full py-2 text-xs font-semibold flex items-center justify-center gap-2"
+                variant="primary"
+                className="w-full py-2 text-xs font-semibold"
               >
                 {migrationLoading ? <RefreshCw size={14} className="animate-spin" /> : <TrendingDown size={14} />}
                 Rank Cleaner Regions
-              </button>
+              </Button>
 
               {migrationResult && (
                 <div className="space-y-2">
@@ -805,9 +822,9 @@ def predict(input_tensor):
                     <span className="font-mono text-slate-500">Recommended:</span>
                     <span className="font-mono font-bold text-emerald-700">{migrationResult.recommended_region}</span>
                     {Number(migrationResult.max_carbon_reduction_pct) > 0 && (
-                      <span className="badge bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <Badge variant="success">
                         -{Number(migrationResult.max_carbon_reduction_pct).toFixed(1)}% · {Number(migrationResult.max_annual_co2_saved_kg).toFixed(1)} kg CO₂e/yr
-                      </span>
+                      </Badge>
                     )}
                   </div>
                   <div className="overflow-x-auto">
@@ -836,12 +853,14 @@ def predict(input_tensor):
                   </div>
                 </div>
               )}
+            </Card>
             </div>
           </div>
-          {/* Row B: Link account form + linked accounts list */}
-          <div className="grid lg:grid-cols-12 gap-6">
+            {/* Row B: Link account form + linked accounts list */}
+            <div className="grid lg:grid-cols-12 gap-6">
             {/* Link account form */}
-            <div className="lg:col-span-5 card p-5 space-y-4">
+            <div className="lg:col-span-5">
+            <Card padding="lg" className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Link2 size={16} className="text-slate-500" />
@@ -855,69 +874,72 @@ def predict(input_tensor):
               <div className="space-y-2.5 text-xs">
                 <div>
                   <label className="label block mb-1">Account ID (12 digits)</label>
-                  <input
+                  <Input
                     value={linkForm.account_id}
                     onChange={(e) => setLinkForm({ ...linkForm, account_id: e.target.value })}
                     placeholder="123456789012"
-                    className="input py-1.5 font-mono"
+                    className="text-xs font-mono"
                   />
                 </div>
                 <div>
                   <label className="label block mb-1">Role ARN</label>
-                  <input
+                  <Input
                     value={linkForm.role_arn}
                     onChange={(e) => setLinkForm({ ...linkForm, role_arn: e.target.value })}
                     placeholder="arn:aws:iam::123456789012:role/GreenCodeReadOnly"
-                    className="input py-1.5 font-mono"
+                    className="text-xs font-mono"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="label block mb-1">Name</label>
-                    <input
+                    <Input
                       value={linkForm.account_name}
                       onChange={(e) => setLinkForm({ ...linkForm, account_name: e.target.value })}
-                      className="input py-1.5"
+                      className="text-xs"
                     />
                   </div>
                   <div>
                     <label className="label block mb-1">Region</label>
-                    <select
+                    <Select
                       value={linkForm.region}
                       onChange={(e) => setLinkForm({ ...linkForm, region: e.target.value })}
-                      className="input py-1.5 font-mono"
+                      className="text-xs font-mono"
                     >
                       {(awsRegions?.regions || ['us-east-1']).map((r: string) => (
                         <option key={r} value={r}>{r}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
               </div>
-              <button
+              <Button
                 onClick={handleLinkAccount}
                 disabled={linkLoading || !linkForm.account_id.trim() || !linkForm.role_arn.trim()}
-                className="btn-primary w-full py-2 text-xs font-semibold flex items-center justify-center gap-2"
+                variant="primary"
+                className="w-full py-2 text-xs font-semibold"
               >
                 {linkLoading ? <RefreshCw size={14} className="animate-spin" /> : <Link2 size={14} />}
                 Link Account
-              </button>
+              </Button>
               {linkMsg && (
                 <p className={`text-[11px] font-mono ${linkMsg.startsWith('Linked') ? 'text-emerald-700' : 'text-rose-700'}`}>
                   {linkMsg}
                 </p>
               )}
+            </Card>
             </div>
             {/* Linked accounts list */}
-            <div className="lg:col-span-7 card p-5 space-y-3">
+            <div className="lg:col-span-7">
+            <Card padding="lg" className="space-y-3">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <ShieldCheck size={16} className="text-slate-500" />
                   Linked Accounts ({awsAccounts.length})
                 </h2>
-                <button onClick={loadAwsAccounts} className="btn-ghost text-[11px] flex items-center gap-1">
+                <Button onClick={loadAwsAccounts} variant="ghost" size="sm" className="text-[11px]">
                   <RefreshCw size={12} /> Refresh
-                </button>
+                </Button>
               </div>
               {awsAccounts.length > 0 ? (
                 <div className="overflow-x-auto">
@@ -938,21 +960,25 @@ def predict(input_tensor):
                           <td className="py-2 pr-3 font-mono text-slate-600">{a.account_id}</td>
                           <td className="py-2 pr-3 font-mono text-slate-600">{a.region}</td>
                           <td className="py-2 pr-3">
-                            <span className="badge bg-emerald-50 text-emerald-800 border border-emerald-200">{a.status}</span>
+                            <Badge variant="success">{a.status}</Badge>
                           </td>
-                          <td className="py-2 text-right space-x-1">
-                            <button
-                              onClick={() => setCostCarbonAccount(a.account_id)}
-                              className="text-[11px] font-medium text-slate-600 hover:text-slate-900 px-2 py-1 rounded border border-slate-200 hover:border-slate-300"
-                            >
-                              Cost &amp; Carbon
-                            </button>
-                            <button
-                              onClick={() => handleUnlinkAccount(a.account_id)}
-                              className="text-[11px] font-medium text-rose-600 hover:text-rose-700 px-2 py-1 rounded border border-rose-200 hover:border-rose-300"
-                            >
-                              Unlink
-                            </button>
+                            <td className="py-2 text-right space-x-1">
+                              <Button
+                                onClick={() => setCostCarbonAccount(a.account_id)}
+                                variant="ghost"
+                                size="xs"
+                                className="text-[11px]"
+                              >
+                                Cost &amp; Carbon
+                              </Button>
+                              <Button
+                                onClick={() => handleUnlinkAccount(a.account_id)}
+                                variant="ghost-danger"
+                                size="xs"
+                                className="text-[11px]"
+                              >
+                                Unlink
+                              </Button>
                           </td>
                         </tr>
                       ))}
@@ -964,34 +990,37 @@ def predict(input_tensor):
                   No AWS accounts linked yet. Link one to read live AWS Budgets spend and calibrated carbon.
                 </p>
               )}
-            </div>
+            </Card>
+          </div>
           </div>
           {/* Row C: Month-to-date cost & carbon for the selected account */}
-          <div className="card p-5 space-y-4">
+          <Card padding="lg" className="space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Server size={16} className="text-slate-500" />
                 Month-to-Date Cost &amp; Carbon
               </h2>
               <div className="flex items-center gap-2">
-                <select
+                <Select
                   value={costCarbonAccount}
                   onChange={(e) => setCostCarbonAccount(e.target.value)}
-                  className="input py-1.5 text-xs font-mono"
+                  className="text-xs font-mono"
                 >
                   <option value="">Select account…</option>
                   {awsAccounts.map((a) => (
                     <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.account_id})</option>
                   ))}
-                </select>
-                <button
+                </Select>
+                <Button
                   onClick={handleCostCarbon}
                   disabled={costCarbonLoading || !costCarbonAccount}
-                  className="btn-secondary px-3 py-1.5 text-xs flex items-center gap-1.5"
+                  variant="secondary"
+                  size="sm"
+                  className="text-xs"
                 >
                   {costCarbonLoading ? <RefreshCw size={13} className="animate-spin" /> : <Activity size={13} />}
                   Fetch
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -999,36 +1028,36 @@ def predict(input_tensor):
               <p className="text-xs text-rose-700 font-mono">{costCarbon.error}</p>
             ) : costCarbon ? (
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="card-inset p-4">
+                <Card variant="inset" padding="md">
                   <p className="label">MTD Spend (AWS Budgets)</p>
                   <p className="text-xl font-bold font-mono text-slate-900 mt-1">${Number(costCarbon.cost_usd ?? 0).toFixed(2)}</p>
                   <p className="text-[11px] text-slate-500 mt-1">source: {costCarbon.cost_source} · {costCarbon.cost_tier}</p>
-                </div>
-                <div className="card-inset p-4">
+                </Card>
+                <Card variant="inset" padding="md">
                   <p className="label">Grid Intensity</p>
                   <p className="text-xl font-bold font-mono text-slate-900 mt-1">{Number(costCarbon.carbon_intensity_gco2_kwh ?? 0).toFixed(1)}</p>
                   <p className="text-[11px] text-slate-500 mt-1">gCO₂/kWh · {costCarbon.grid_zone} · {costCarbon.carbon_tier}</p>
-                </div>
-                <div className="card-inset p-4">
+                </Card>
+                <Card variant="inset" padding="md">
                   <p className="label">Calibrated Energy</p>
                   <p className="text-xl font-bold font-mono text-slate-900 mt-1">{Number(costCarbon.estimated_energy_kwh ?? 0).toFixed(2)}</p>
                   <p className="text-[11px] text-slate-500 mt-1">kWh · {costCarbon.instance_type} @ {costCarbon.region}</p>
-                </div>
-                <div className="card-inset p-4">
+                </Card>
+                <Card variant="inset" padding="md">
                   <p className="label">Estimated CO₂e</p>
                   <p className="text-xl font-bold font-mono text-emerald-700 mt-1">{Number(costCarbon.estimated_co2e_kg ?? 0).toFixed(3)}</p>
                   <p className="text-[11px] text-slate-500 mt-1">kg CO₂e · {costCarbon.period_start} → {costCarbon.period_end}</p>
-                </div>
+                </Card>
               </div>
             ) : (
               <p className="text-xs text-slate-400">
                 Select a linked account and press Fetch to read month-to-date AWS Budgets spend and its physics-calibrated carbon footprint.
               </p>
             )}
-          </div>
+          </Card>
         </div>
       )}
-    </div>
+     </div>
   );
 }
 

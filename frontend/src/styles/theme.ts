@@ -1,45 +1,21 @@
+import { tokens } from '../styles/tokens';
+
+export { tokens, GRID_ZONES } from '../styles/tokens';
+
 export const theme = {
   colors: {
-    primary: '#059669',
-    primaryHover: '#047857',
-    primaryDark: '#064e3b',
+    primary: tokens.colors.primary[600],
+    primaryHover: tokens.colors.primary[700],
+    primaryDark: tokens.colors.primary[950],
     dark: '#0f172a',
-    amber: '#d97706',
-    amberLight: '#fbbf24',
-    red: '#dc2626',
-    green: '#10b981',
-    slate: {
-      50: '#f8fafc',
-      100: '#f1f5f9',
-      200: '#e2e8f0',
-      300: '#cbd5e1',
-      400: '#94a3b8',
-      500: '#64748b',
-      600: '#475569',
-      700: '#334155',
-      800: '#1e293b',
-      900: '#0f172a',
-    },
+    amber: tokens.colors.warning.DEFAULT,
+    amberLight: tokens.colors.warning[50],
+    red: tokens.colors.error.DEFAULT,
+    green: tokens.colors.success.DEFAULT,
+    slate: tokens.colors.neutral,
   },
   gradients: {
     primary: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
     light: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
   },
 } as const;
-
-export const GRID_ZONES = [
-  { value: 'US-CAL-CISO', label: 'United States (California)' },
-  { value: 'US-MIDW-MISO', label: 'United States (Midwest)' },
-  { value: 'US-MIDA-PJM', label: 'United States (Mid-Atlantic)' },
-  { value: 'US-TEX-ERCO', label: 'United States (Texas)' },
-  { value: 'US-NE-ISNE', label: 'United States (New England)' },
-  { value: 'CA-QC', label: 'Canada (Quebec)' },
-  { value: 'DE', label: 'Germany' },
-  { value: 'FR', label: 'France' },
-  { value: 'GB', label: 'Great Britain' },
-  { value: 'SE', label: 'Sweden' },
-  { value: 'JP-TK', label: 'Japan' },
-  { value: 'SG', label: 'Singapore' },
-  { value: 'IN-WE', label: 'India (Western)' },
-  { value: 'BR-CS', label: 'Brazil' },
-];

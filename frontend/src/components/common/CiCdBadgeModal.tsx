@@ -3,6 +3,7 @@ import {
   ShieldCheck, Copy, Check, X, GitPullRequest, Terminal, 
   Code2 
 } from 'lucide-react';
+import { Modal } from '../primitives/Modal';
 
 interface CiCdBadgeModalProps {
   isOpen: boolean;
@@ -66,11 +67,15 @@ jobs:
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div 
-        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      showCloseButton={false}
+      size="lg"
+      overlayClassName="items-center bg-slate-900/60"
+      className="!max-w-2xl border-slate-200 overflow-hidden"
+      contentClassName="p-0 overflow-visible"
+    >
         {/* Header */}
         <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -173,8 +178,7 @@ jobs:
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </Modal>
   );
 }
 

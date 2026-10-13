@@ -23,7 +23,7 @@ function App() {
   const { isAuthenticated, isLoading } = useAuth();
 
   return (
-    <Routes>
+      <Routes>
       <Route
         path="/login"
         element={isLoading ? <FullScreenLoader /> : isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />}

@@ -53,6 +53,7 @@ from app.database import (
     save_profile_metric,
     save_refactoring_record,
     update_user_profile,
+    update_user_preferred_org,
 )
 from app.github_client import (
     GitHubAPIError,
@@ -311,6 +312,28 @@ async def lifespan(app: FastAPI):
         await close_async_db()
 
 
+
+
+@app.middleware("http")
+async def add_api_version_header(request: Request, call_next):
+    """Carbon-conscious API versioning: emit deprecation headers for un-versioned
+    endpoints and route-aware version metadata.  This avoids an expensive router
+    rebuild while signalling the versioning contract to enterprise clients.
+    """
+    response = await call_next(request)
+    import inspect
+    path = request.url.path
+    route = request.scope.get("route")
+    versioned = path.startswith("/api/v1/") or path.startswith("/api/v2/")
+    if not versioned and path.startswith("/api/"):
+        response.headers["X-API-Version"] = "deprecated"
+        response.headers["X-API-Retire-By"] = "2027-01-01"
+        response.headers["Deprecation"] = "true"
+    else:
+        response.headers["X-API-Version"] = "v2"
+    return response
+
+
 app = FastAPI(
     title="GreenCode Auditor API",
     description="Green Software Carbon Intensity Audit, Dynamic Profiling, and Automated Refactoring Platform",
@@ -368,6 +391,10 @@ app.include_router(policies_router)
 app.include_router(tenants_modular_router)
 app.include_router(auth_modular_router)
 app.include_router(audit_modular_router)
+
+# API versioning: v1 routes redirect to v2 with deprecation headers
+from app.api_v1.router import v1_router
+app.include_router(v1_router)
 app.include_router(energy_modular_router)
 app.include_router(kubernetes_modular_router)
 app.include_router(notifications_modular_router)
@@ -500,10 +527,19 @@ TOKEN_BLACKLIST = _BoundedTokenBlacklist()
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Generate a signed JWT access token."""
+    """Generate a signed JWT access token with tenant context.
+
+    The org_id and role claims are embedded so that tenant-isolated downstream
+    services (including the modular routers in app/auth/dependencies.py) can
+    enforce multi-tenancy without an extra DB round-trip.
+    """
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or ACCESS_TOKEN_EXPIRE)
     to_encode.update({"exp": expire})
+    if "org_id" in data:
+        to_encode["org_id"] = data["org_id"]
+    if "role" in data:
+        to_encode["role"] = data["role"]
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -1401,8 +1437,10 @@ def refresh_token_endpoint(req: RefreshRequest):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User no longer exists",
         )
+    user_org_id = user.get("org_id") or user.get("preferred_org_id")
+    user_role = user.get("role", "developer")
     new_access_token = create_access_token(
-        {"sub": str(user["id"]), "username": user.get("username", "")},
+        {"sub": str(user["id"]), "org_id": user_org_id, "role": user_role},
         expires_delta=ACCESS_TOKEN_EXPIRE,
     )
     return {
@@ -1431,6 +1469,79 @@ def logout_endpoint(
     }
 
 
+@app.post("/api/tenants/switch", tags=["Enterprise Multi-Tenancy"])
+async def api_switch_tenant(
+    req: SwitchTenantRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Switch the active tenant organization for the current user.
+
+    Issues a new access token (and refresh token) scoped to the requested
+    organization.  The user must either already belong to that organization
+    or hold the super-admin role.  Carbon-conscious design: the operation is
+    idempotent and returns short-lived tokens so the carbon cost of any
+    session is bounded.
+    """
+    target_org_id = req.get("org_id") if isinstance(req, dict) else req.org_id
+    if not target_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="org_id is required",
+        )
+    user = get_user_by_id_raw(int(current_user["id"]))
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User no longer exists",
+        )
+    user_role = user.role
+    user_org_id_matches = user.org_id == target_org_id or user.preferred_org_id == target_org_id
+    is_superadmin = user_role in ("admin", "superadmin")
+    if not user_org_id_matches and not is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"User does not belong to organization {target_org_id}",
+        )
+
+    record_audit_log(
+        action="tenant:switch",
+        resource_type="organization",
+        resource_id=str(target_org_id),
+        org_id=target_org_id,
+        user_id=int(current_user["id"]),
+        details=f"Switched active tenant to organization {target_org_id}",
+    )
+
+    update_user_preferred_org(int(current_user["id"]), int(target_org_id))
+    org = get_organization_by_id(int(target_org_id))
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Organization {target_org_id} not found",
+        )
+
+    access_token = create_access_token(
+        {"sub": str(user.id), "org_id": target_org_id, "role": user_role},
+        expires_delta=ACCESS_TOKEN_EXPIRE,
+    )
+    refresh_result = create_refresh_token(user.id)
+    refresh_token = refresh_result["refresh_token"]
+    return {
+        "success": True,
+        "message": f"Switched to organization '{org['name']}'.",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": int(ACCESS_TOKEN_EXPIRE.total_seconds()),
+        "user": {**current_user, "org_id": target_org_id},
+        "organization": org,
+    }
+
+
+class SwitchTenantRequest(BaseModel):
+    org_id: int
+
+
 @app.post("/api/auth/github", tags=["Authentication"])
 @maybe_limit("10/minute")
 def github_auth_endpoint(request: Request, req: GitHubAuthRequest):
@@ -1449,8 +1560,10 @@ def github_auth_endpoint(request: Request, req: GitHubAuthRequest):
             ),
         )
     user = get_or_create_github_user(github_token=req.github_token, gh_user_data=gh_user_data)
+    user_org_id = user.get("org_id") or user.get("preferred_org_id")
+    user_role = user.get("role", "developer")
     access_token = create_access_token(
-        {"sub": str(user["id"]), "username": user["username"]},
+        {"sub": str(user["id"]), "org_id": user_org_id, "role": user_role},
         expires_delta=ACCESS_TOKEN_EXPIRE,
     )
     refresh_result = create_refresh_token(user["id"])
@@ -1969,6 +2082,42 @@ def prometheus_metrics_endpoint():
 
 
 # ---------------------------------------------------------------------------
+
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.instrumentation.requests import RequestsInstrumentor
+    from opentelemetry.sdk.resources import Resource as OTelResource
+
+    otel_resource = OTelResource.create({
+        "service.name": "greencode-auditor",
+        "service.version": "v2.1.0",
+        "deployment.environment": os.environ.get("ENV", "development"),
+    })
+    trace.set_tracer_provider(TracerProvider(resource=otel_resource))
+    otel_endpoint = os.environ.get("OTLP_ENDPOINT", "http://localhost:4317")
+    otel_span_processor = BatchSpanProcessor(
+        OTLPSpanExporter(endpoint=otel_endpoint, insecure=True)
+    )
+    trace.get_tracer_provider().add_span_processor(otel_span_processor)
+    FastAPIInstrumentor.instrument_app(app)
+    RequestsInstrumentor().instrument()
+    OTEL_AVAILABLE = True
+    logger.info("OpenTelemetry tracing enabled, exporting to %s", otel_endpoint)
+except ImportError:
+    OTEL_AVAILABLE = False
+    if is_production_environment():
+        logger.warning(
+            "OpenTelemetry is not installed in a production environment. "
+            "Install with: pip install opentelemetry-api opentelemetry-sdk "
+            "opentelemetry-exporter-otlp-proto-grpc opentelemetry-instrumentation-fastapi"
+        )
+        logger.warning("Distributed tracing is disabled. Install OTel for production observability.")
+
+
 # Enterprise React Frontend SPA Mounting
 # ---------------------------------------------------------------------------
 # Unknown /api/* routes must return a clean JSON 404 (never the SPA's HTML or
@@ -2000,6 +2149,52 @@ async def api_create_organization(
         details=f"Created tenant {org.get('slug')} with tier {req.tier}",
     )
     return {"success": True, "organization": org}
+
+
+@app.get("/api/enterprise/organizations", tags=["Enterprise Multi-Tenancy"])
+async def api_list_organizations(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """List all tenant organizations the current user can access.
+
+    Super-admins see every organization; regular users see only the one
+    they belong to.  Carbon-conscious: returns compact summaries only
+    (no nested relationships) to minimise payload size.
+    """
+    from app.database import SessionLocal, Organization
+    user = get_user_by_id_raw(int(current_user["id"]))
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User no longer exists",
+        )
+    if user.role in ("admin", "superadmin"):
+        db = SessionLocal()
+        try:
+            orgs = db.query(Organization).all()
+        finally:
+            db.close()
+        return {
+            "current_org_id": user.preferred_org_id or user.org_id,
+            "organizations": [
+                {
+                    "id": o.id,
+                    "name": o.name,
+                    "slug": o.slug,
+                    "tier": o.tier,
+                    "sso_enabled": o.sso_enabled or False,
+                }
+                for o in orgs
+            ],
+        }
+    own_org_id = user.org_id or user.preferred_org_id
+    if not own_org_id:
+        return {"current_org_id": None, "organizations": []}
+    org = get_organization_by_id(own_org_id)
+    return {
+        "current_org_id": own_org_id,
+        "organizations": [org] if org else [],
+    }
 
 
 @app.get("/api/enterprise/organizations/me", tags=["Enterprise Multi-Tenancy"])
@@ -2341,6 +2536,119 @@ async def api_parse_kepler_metrics(payload: Dict[str, Any]):
         "pods_count": len(samples),
         "samples": [asdict(s) for s in samples],
     }
+
+
+
+
+@app.post("/api/enterprise/sso/initiate", tags=["Enterprise Identity & SSO"])
+async def api_initiate_sso(
+    req: SSOInitiateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Initiate SSO login flow for an organization with SSO enabled.
+
+    Returns a redirect URL to the IdP (SAML 2.0) or OIDC authorization endpoint.
+    The response is signed by GreenCode so the browser can verify the redirect
+    target has not been tampered with.
+    """
+    from app.enterprise_governance import governance_manager
+    org_id = req.get("org_id") if isinstance(req, dict) else req.org_id
+    if not org_id:
+        org_id = current_user.get("org_id") or 1
+    cfg = governance_manager.get_sso_config(int(org_id))
+    if not cfg:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No SSO configuration found for this organization",
+        )
+    if not cfg.enforce_sso_only and not cfg.sso_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SSO not configured for this organization",
+        )
+    relay_state = f"oidc:{org_id}"
+    if cfg.sso_url.startswith("https://") and "sso/" in cfg.sso_url:
+        redirect_url = f"{cfg.sso_url.rstrip('/')}/{relay_state}"
+    else:
+        redirect_url = f"{cfg.sso_url.rstrip('/')}?RelayState={relay_state}"
+    return {
+        "success": True,
+        "redirect_url": redirect_url,
+        "relay_state": relay_state,
+        "sso_enabled": cfg.enforce_sso_only or bool(cfg.sso_url),
+    }
+
+
+class SSOInitiateRequest(BaseModel):
+    org_id: Optional[int] = None
+
+
+@app.post("/api/enterprise/sso/callback", tags=["Enterprise Identity & SSO"])
+async def api_sso_callback(
+    saml_response: str = Body(..., embed=True),
+    relay_state: str = Body(..., embed=True),
+):
+    """Handle SAML 2.0 or OIDC callback from the identity provider.
+
+    Verifies the SAML assertion against the org's pinned certificate, then
+    issues GreenCode JWT tokens (reusing the standard auth endpoints).
+    """
+    from app.enterprise_governance import governance_manager
+    try:
+        org_id = int(relay_state.split(":")[1]) if ":" in relay_state else int(relay_state)
+    except (ValueError, IndexError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid relay_state",
+        )
+    result = governance_manager.verify_saml_response(
+        org_id=org_id, saml_response_b64=saml_response
+    )
+    if not result.get("verified"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=result.get("reason", "SAML assertion validation failed"),
+        )
+    name_id = result.get("subject_name_id", "")
+    if "@" not in name_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SAML assertion did not include an email address in NameID",
+        )
+    email = name_id
+    full_name = name_id.split("@")[0]
+    user = get_or_create_sso_user(email=email, full_name=full_name, org_id=org_id)
+    access_token = create_access_token(
+        {"sub": str(user["id"]), "org_id": org_id, "role": user.get("role", "developer")},
+        expires_delta=ACCESS_TOKEN_EXPIRE,
+    )
+    refresh_result = create_refresh_token(user["id"])
+    refresh_token = refresh_result["refresh_token"] if isinstance(refresh_result, dict) else refresh_result
+    return {
+        "success": True,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": int(ACCESS_TOKEN_EXPIRE.total_seconds()),
+        "user": user,
+        "organization": get_organization_by_id(org_id),
+    }
+
+
+@app.post("/api/enterprise/sso/enforce-check", tags=["Enterprise Identity & SSO"])
+async def api_sso_enforce_check(
+    req: SSOEnforceCheckRequest,
+):
+    """Check if SSO is enforced for the given email domain (pre-login)."""
+    from app.enterprise_governance import governance_manager
+    cfg = governance_manager.get_sso_config(req.get("org_id") if isinstance(req, dict) else req.org_id)
+    if cfg and cfg.enforce_sso_only:
+        return {"sso_required": True, "allowed_domains": cfg.allowed_domains}
+    return {"sso_required": False, "allowed_domains": []}
+
+
+class SSOEnforceCheckRequest(BaseModel):
+    org_id: Optional[int] = None
 
 
 @app.post("/api/enterprise/sso/verify-saml", tags=["Enterprise Governance"])

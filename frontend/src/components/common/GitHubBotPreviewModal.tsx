@@ -3,6 +3,7 @@ import {
   GitPullRequest, CheckCircle2, AlertTriangle, 
   Sparkles, X, Bot, Copy, Check 
 } from 'lucide-react';
+import { Modal } from '../primitives/Modal';
 
 interface GitHubBotPreviewModalProps {
   isOpen: boolean;
@@ -36,8 +37,6 @@ export default function GitHubBotPreviewModal({
     gateVerdict: string;
   } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-
-  if (!isOpen) return null;
 
   const handleApplyBotPatch = async () => {
     setIsPatching(true);
@@ -119,14 +118,18 @@ export default function GitHubBotPreviewModal({
 -    for item in order_items:
 -        for stock in warehouse_records:  # <-- WARNING: O(N^2) quadratic nested loop
 -            if stock.sku == item.sku:
--                matches.append(stock)`;
+-                matches.append(stock}`;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div 
-        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      showCloseButton={false}
+      size="lg"
+      overlayClassName="items-center bg-slate-900/60"
+      className="!max-w-3xl border-slate-200 overflow-hidden"
+      contentClassName="p-0 overflow-visible"
+    >
         {/* Header */}
         <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -338,8 +341,7 @@ export default function GitHubBotPreviewModal({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </Modal>
   );
 }
 

@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { scanService, githubService, gridService } from '../services/greencodeApi';
 import { GitHubRepo, ScanResult, TaskStatus, ZoneData } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { Button } from '../components/primitives/Button';
+import { Badge } from '../components/primitives/Badge';
+import { Card } from '../components/primitives/Card';
+import { Input } from '../components/primitives/Input';
+import { Select } from '../components/primitives/Select';
 import {
   Search, Loader2, AlertCircle, RefreshCw, GitBranch, Star,
   Lock, Globe, ChevronDown, CheckCircle2, Cpu, ArrowRight,
@@ -239,9 +244,9 @@ export default function ScanRepository() {
     <div className="space-y-5">
       <div className="border-b border-zinc-200/80 pb-3">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Repository Scanner</h1>
-          <span className="badge-olive">Polyglot AST &amp; Call-Graph</span>
-        </div>
+           <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Repository Scanner</h1>
+           <Badge variant="olive">Polyglot AST &amp; Call-Graph</Badge>
+         </div>
         <p className="text-xs text-zinc-500 mt-0.5">
           Audit a public GitHub repository, connected organization repo, or local workspace directory.
         </p>
@@ -256,53 +261,57 @@ export default function ScanRepository() {
 
       {/* Direct Public GitHub URL / Local Path Scanner */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card p-4 space-y-2.5">
+        <Card padding="lg" className="space-y-2.5">
           <label className="block text-xs font-semibold text-zinc-800">
             Public GitHub Repository (URL or owner/repo)
           </label>
           <div className="flex gap-2">
-            <input
+            <Input
               type="text"
               value={directSlug}
               onChange={(e) => setDirectSlug(e.target.value)}
               placeholder="e.g. zeenat28-ui/greencode"
-              className="input text-xs font-mono flex-1"
+              className="text-xs font-mono flex-1"
             />
-            <button
+            <Button
               onClick={handleDirectGitHubScan}
               disabled={isScanning || !directSlug.trim()}
-              className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5 shrink-0"
+              variant="primary"
+              size="sm"
+              className="text-xs px-3.5 py-2"
             >
               <Play size={11} /> Scan GitHub
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
 
-        <div className="card p-4 space-y-2.5">
+        <Card padding="lg" className="space-y-2.5">
           <label className="block text-xs font-semibold text-zinc-800">
             Local Workspace Subdirectory
           </label>
           <div className="flex gap-2">
-            <input
+            <Input
               type="text"
               value={localSubpath}
               onChange={(e) => setLocalSubpath(e.target.value)}
               placeholder="e.g. app, frontend/src, scripts"
-              className="input text-xs font-mono flex-1"
+              className="text-xs font-mono flex-1"
             />
-            <button
+            <Button
               onClick={() => handleScanLocalSubpath(localSubpath.trim() || '.', `greencode-org/${(localSubpath.trim() || 'workspace').replace(/[^a-zA-Z0-9_-]/g, '-')}`)}
               disabled={isScanning}
-              className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5 shrink-0"
+              variant="primary"
+              size="sm"
+              className="text-xs px-3.5 py-2"
             >
               <Play size={11} /> Scan Path
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Reference Workspace Targets */}
-      <div className="card p-5">
+      <Card padding="lg">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2.5 border-b border-zinc-100">
           <div>
             <h2 className="section-title">Reference Workspace Targets</h2>
@@ -310,9 +319,9 @@ export default function ScanRepository() {
               Execute multi-language AST and call-graph static analysis against on-disk targets.
             </p>
           </div>
-          <span className="badge-olive w-fit">
+          <Badge variant="olive" className="w-fit">
             AST + Call-Graph Engine
-          </span>
+          </Badge>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -338,37 +347,39 @@ export default function ScanRepository() {
                 </p>
               </div>
 
-              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-[10px] font-mono text-slate-400">
                   path: {target.subpath}
                 </span>
-                <button
+                <Button
                   onClick={() => handleScanLocalSubpath(target.subpath, target.repo_name)}
                   disabled={isScanning}
-                  className="btn-primary text-xs px-2.5 py-1 flex items-center gap-1 text-[11px]"
+                  variant="primary"
+                  size="sm"
+                  className="text-xs px-2.5 py-1"
                 >
                   <Play size={10} />
                   Run Live Audit
-                </button>
+                </Button>
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 card p-5">
+        <Card padding="lg" className="lg:col-span-2">
           <div className="flex items-center justify-between gap-3 mb-3 pb-2 border-b border-slate-100">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">Your GitHub Repositories</h2>
-            <button onClick={loadRepos} disabled={reposLoading} className="btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5">
+            <Button onClick={loadRepos} disabled={reposLoading} variant="secondary" size="sm" className="text-xs px-2.5 py-1">
               <RefreshCw size={11} className={reposLoading ? 'animate-spin' : ''} />
               Refresh
-            </button>
+            </Button>
           </div>
 
           <div className="relative mb-3">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by repository name..." className="input pl-9 text-xs py-2 bg-white" />
+            <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by repository name..." className="pl-9 text-xs py-2 bg-white" />
           </div>
 
           {reposLoading ? (
@@ -380,7 +391,7 @@ export default function ScanRepository() {
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <AlertCircle size={22} className="text-rose-500 mb-2" />
               <p className="text-xs text-slate-600 max-w-sm">{reposError}</p>
-              <button onClick={loadRepos} className="btn-secondary text-xs mt-3 px-3 py-1.5">Retry Sync</button>
+              <Button onClick={loadRepos} variant="secondary" size="sm" className="text-xs mt-3 px-3 py-1.5">Retry Sync</Button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -404,7 +415,7 @@ export default function ScanRepository() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs font-bold text-slate-900 font-mono truncate">{repo.full_name}</span>
                             {repo.private ? <Lock size={10} className="text-amber-500 shrink-0" /> : <Globe size={10} className="text-slate-300 shrink-0" />}
-                            {repo.archived && <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 font-mono">ARCHIVED</span>}
+                            {repo.archived && <Badge variant="default" className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 font-mono">ARCHIVED</Badge>}
                           </div>
                           {repo.description && <p className="text-[11px] text-slate-500 truncate mt-0.5">{repo.description}</p>}
                           <div className="flex items-center gap-2.5 mt-1 text-[10px] text-slate-400 font-mono">
@@ -422,10 +433,10 @@ export default function ScanRepository() {
               })}
             </ul>
           )}
-        </div>
+        </Card>
 
         <div className="space-y-4">
-          <div className="card p-5">
+          <Card padding="lg">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 mb-3 pb-2 border-b border-slate-100">
               Audit Configuration
             </h2>
@@ -438,17 +449,17 @@ export default function ScanRepository() {
                 <div>
                   <label className="label mb-1 block" htmlFor="ref-select">Target Branch</label>
                   <div className="relative">
-                    <select id="ref-select" value={ref} onChange={(e) => setRef(e.target.value)} className="input appearance-none pr-8 text-xs font-mono py-1.5 bg-white">
+                    <Select id="ref-select" value={ref} onChange={(e) => setRef(e.target.value)} className="appearance-none pr-8 text-xs font-mono py-1.5 bg-white">
                       {branches.length === 0 && <option value={ref}>{ref || selected.default_branch}</option>}
                       {branches.map((b) => <option key={b} value={b}>{b}</option>)}
-                    </select>
+                    </Select>
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   </div>
                   {branchesLoading && <p className="text-[10px] font-mono text-slate-400 mt-1 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Fetching branches...</p>}
                 </div>
-                <button onClick={handleScan} disabled={isScanning} className="btn-primary w-full flex items-center justify-center gap-2 py-2.5 shadow-sm">
+                <Button onClick={handleScan} disabled={isScanning} variant="primary" className="w-full flex items-center justify-center gap-2 py-2.5 shadow-sm">
                   {isScanning ? (<><Loader2 size={14} className="animate-spin text-white" /> Auditing Code...</>) : (<><ArrowRight size={14} /> Start Code Audit</>)}
-                </button>
+                </Button>
               </div>
             ) : (
               <div className="text-center py-8">
@@ -456,10 +467,10 @@ export default function ScanRepository() {
                 <p className="text-xs text-slate-500">Select a repository from the list to audit</p>
               </div>
             )}
-          </div>
+          </Card>
 
           {isScanning && (
-            <div className="card p-4 border-olive-300 bg-olive-50/70">
+            <Card padding="sm" className="border-olive-300 bg-olive-50/70">
               <div className="flex items-start gap-3">
                 <Loader2 size={15} className="animate-spin text-olive-700 shrink-0 mt-0.5" />
                 <div className="min-w-0">
@@ -467,10 +478,10 @@ export default function ScanRepository() {
                   <p className="text-[11px] text-slate-600 mt-0.5 break-words">{statusMessage || 'Analyzing source files and checking energy patterns...'}</p>
                 </div>
               </div>
-            </div>
+            </Card>
           )}
 
-          <div className="card p-5">
+          <Card padding="lg">
             <h3 className="text-xs font-bold text-slate-900 mb-2">What GreenCode Checks:</h3>
             <ul className="space-y-2 text-xs text-slate-600">
               <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> High-complexity nested loops and recursive calls</li>
@@ -478,7 +489,7 @@ export default function ScanRepository() {
               <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> Heavy uncompressed payloads and blocking network I/O</li>
               <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> Carbon emissions calculated for active grid: {activeZone}</li>
             </ul>
-          </div>
+          </Card>
         </div>
       </div>
     </div>

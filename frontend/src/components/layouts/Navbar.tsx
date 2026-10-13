@@ -10,6 +10,7 @@ import { gridService } from '../../services/greencodeApi';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
+import TenantSwitcher from '../primitives/TenantSwitcher';
 
 const NAV_ITEMS = [
   { name: 'Dashboard',   path: '/dashboard',   icon: LayoutDashboard },
@@ -120,6 +121,8 @@ export default function Navbar() {
               <ShieldCheck size={13} className="text-emerald-600" />
               <span>Gate &ge; {threshold}</span>
             </div>
+
+            <TenantSwitcher />
 
             <div className="relative" ref={menuRef}>
               <button

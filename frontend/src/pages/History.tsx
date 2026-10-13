@@ -4,6 +4,10 @@ import { scanService } from '../services/greencodeApi';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { RepositoryRecord, RepositoryPage, ScanResult } from '../types';
 import ScoreBadge from '../components/common/ScoreBadge';
+import { Button } from '../components/primitives/Button';
+import { Badge } from '../components/primitives/Badge';
+import { Card } from '../components/primitives/Card';
+import { Input } from '../components/primitives/Input';
 import {
   Calendar, ExternalLink, RefreshCw, GitBranch, Search,
   Eye, RotateCw, Leaf, Zap, AlertTriangle, FolderGit2,
@@ -157,7 +161,7 @@ export default function History() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="badge-olive">Audit History</span>
+            <Badge variant="olive">Audit History</Badge>
             <span className="text-[11px] font-mono font-medium text-slate-500">Repository Archives</span>
           </div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">Audit History &amp; Reports</h1>
@@ -166,18 +170,22 @@ export default function History() {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <button
+          <Button
             onClick={() => loadHistory(true)}
             disabled={refreshing || loading}
-            className="btn-secondary flex items-center gap-2 text-xs font-semibold px-3 py-2 disabled:opacity-50 shadow-sm"
+            variant="secondary"
+            size="sm"
+            className="text-xs font-semibold shadow-sm"
           >
             <RefreshCw size={13} className={refreshing ? 'animate-spin text-olive-700' : ''} />
             {refreshing ? 'Refreshing...' : 'Refresh List'}
-          </button>
-          <Link to="/scan" className="btn-primary flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 shadow-sm">
-            <GitBranch size={13} />
-            New Audit
-          </Link>
+          </Button>
+          <Button asChild variant="primary" size="sm" className="text-xs font-semibold shadow-sm">
+            <Link to="/scan">
+              <GitBranch size={13} />
+              New Audit
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -200,28 +208,24 @@ export default function History() {
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="card p-4">
+        <Card padding="lg">
           <p className="label mb-1">Repositories Audited</p>
           <p className="text-2xl font-black text-slate-900">{records.length}</p>
           <p className="text-xs text-slate-500 mt-1">Archived audits</p>
-        </div>
-        <div className="card p-4">
+        </Card>
+        <Card padding="lg">
           <p className="label mb-1">Average Green Score</p>
           <div className="flex items-center gap-2">
             <p className="text-2xl font-black text-olive-800">{records.length ? avgScore : '—'}</p>
             {records.length > 0 && (
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  avgScore >= threshold ? 'bg-olive-100 text-olive-900 border border-olive-200' : 'bg-red-100 text-red-800 border border-red-200'
-                }`}
-              >
+              <Badge variant={avgScore >= threshold ? 'success' : 'critical'} className="text-[10px] px-2 py-0.5 rounded-full">
                 {avgScore >= threshold ? 'Passed' : 'Needs Review'}
-              </span>
+              </Badge>
             )}
           </div>
           <p className="text-xs text-slate-500 mt-1">Pass threshold: &ge; {threshold}/100</p>
-        </div>
-        <div className="card p-4">
+        </Card>
+        <Card padding="lg">
           <p className="label mb-1">Carbon Abated</p>
           <p className="text-2xl font-black text-olive-800 flex items-center gap-1.5">
             <Leaf size={18} className="text-olive-700" />
@@ -230,8 +234,8 @@ export default function History() {
               : '0.0 g'}
           </p>
           <p className="text-xs text-slate-500 mt-1">Estimated savings per 10k runs</p>
-        </div>
-        <div className="card p-4">
+        </Card>
+        <Card padding="lg">
           <p className="label mb-1">AI Fixes Applied</p>
           <p className="text-2xl font-black text-blue-700 flex items-center gap-1.5">
             <Zap size={18} className="text-blue-600" />
@@ -242,11 +246,11 @@ export default function History() {
               ? `${cumulative.average_energy_reduction_pct.toFixed(0)}% average energy cut`
               : 'Bedrock optimizations'}
           </p>
-        </div>
+        </Card>
       </div>
 
       {records.length === 0 ? (
-        <div className="card p-14 text-center">
+        <Card padding="none" className="p-14 text-center">
           <div className="w-14 h-14 rounded-2xl bg-olive-50 border border-olive-200 flex items-center justify-center mx-auto mb-4 text-olive-800 shadow-sm">
             <FolderGit2 size={26} />
           </div>
@@ -254,22 +258,24 @@ export default function History() {
           <p className="text-sm text-slate-500 max-w-sm mx-auto mb-6">
             Repositories and archives you scan will be recorded here with complete audit reports, violation counts, and Green Scores.
           </p>
-          <Link to="/scan" className="btn-primary inline-flex items-center gap-2">
-            <GitBranch size={15} /> Run First Audit
-          </Link>
-        </div>
+          <Button asChild variant="primary" className="inline-flex items-center gap-2">
+            <Link to="/scan">
+              <GitBranch size={15} /> Run First Audit
+            </Link>
+          </Button>
+        </Card>
       ) : (
-        <div className="card overflow-hidden max-w-full">
+        <Card padding="none" className="overflow-hidden max-w-full">
           {/* Table Toolbar */}
           <div className="p-4 border-b border-slate-200/80 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="relative w-full sm:w-80">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
+              <Input
                 type="text"
                 placeholder="Search audit records by repo name or slug..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="input pl-9 py-2 text-xs w-full bg-white focus:ring-olive-600 focus:border-olive-600"
+                className="pl-9 py-2 text-xs w-full bg-white focus:ring-olive-600 focus:border-olive-600"
               />
             </div>
             <span className="text-xs text-slate-600 font-medium">
@@ -360,24 +366,28 @@ export default function History() {
                           {record.created_at ? new Date(record.created_at).toLocaleDateString() : '—'}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleViewRecord(record)}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg transition-colors shadow-sm"
-                            title="Load this audit into Dashboard"
-                          >
-                            <Eye size={12} />
-                            Inspect
-                          </button>
-                          <button
-                            onClick={() => handleRescan(record)}
-                            disabled={isRescanning}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-olive-900 hover:text-olive-950 bg-olive-50 hover:bg-olive-100 border border-olive-300 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
-                          >
-                            <RotateCw size={12} className={isRescanning ? 'animate-spin text-olive-800' : ''} />
-                            {isRescanning ? 'Re-Auditing...' : 'Re-Audit'}
-                          </button>
+                        <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              onClick={() => handleViewRecord(record)}
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs text-slate-700"
+                              title="Load this audit into Dashboard"
+                            >
+                              <Eye size={12} />
+                              Inspect
+                            </Button>
+                            <Button
+                              onClick={() => handleRescan(record)}
+                              disabled={isRescanning}
+                              variant="secondary"
+                              size="sm"
+                              className="text-xs text-olive-900 border border-olive-300"
+                            >
+                              <RotateCw size={12} className={isRescanning ? 'animate-spin text-olive-800' : ''} />
+                              {isRescanning ? 'Re-Auditing...' : 'Re-Audit'}
+                            </Button>
                         </div>
                       </td>
                     </tr>
@@ -386,7 +396,7 @@ export default function History() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );

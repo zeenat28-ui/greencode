@@ -44,6 +44,7 @@ import os
 import time
 from dataclasses import dataclass, field, asdict, replace
 from datetime import datetime, timezone
+from app.core.circuit_breaker import circuit_breaker, CircuitBreakerError
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
@@ -158,6 +159,7 @@ def _key_for(env_var: str, override: Optional[Dict[str, str]] = None) -> str:
 # "free and unauthenticated" is what makes the default tier genuinely zero-cost.
 # ---------------------------------------------------------------------------
 
+@circuit_breaker('uk-eso-provider', failure_threshold=3, timeout=30)
 def _fetch_uk_eso(zone: str, key_override: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
     """UK National Grid ESO carbon intensity.
 
@@ -356,6 +358,7 @@ def _fetch_us_eia(zone: str, key_override: Optional[Dict[str, str]] = None) -> O
 # what turns a per-country cost into a feature.
 # ---------------------------------------------------------------------------
 
+@circuit_breaker('electricity-maps-provider', failure_threshold=3, timeout=60)
 def _fetch_electricity_maps(zone: str, key_override: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
     """Electricity Maps, authenticated with the operator's own key.
 

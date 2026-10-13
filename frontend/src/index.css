@@ -2,6 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ========================================================================
+   Design Tokens — single source of truth for the SaaS design system.
+   These CSS custom properties drive every color, spacing and shadow
+   decision across the product.  The Tailwind `theme()` extension
+   (see tailwind.config.js) reads back the same values so utility
+   classes and component primitives stay in lock-step.
+   ======================================================================== */
+:root {
+  /* --- Brand palette (green is core) --- */
+  --gc-primary-50:    #ecfdf5;
+  --gc-primary-100:   #d1fae5;
+  --gc-primary-200:   #a7f3d0;
+  --gc-primary-300:   #6ee7b7;
+  --gc-primary-400:   #34d399;
+  --gc-primary-500:   #10b981;
+  --gc-primary-600:   #059669;
+  --gc-primary-700:   #047857;
+  --gc-primary-800:   #065f46;
+  --gc-primary-900:   #064e3b;
+  --gc-primary-950:   #022c22;
+
+  /* --- Neutrals (zinc) --- */
+  --gc-neutral-50:     #fafafa;
+  --gc-neutral-100:    #f4f4f5;
+  --gc-neutral-200:    #e4e4e7;
+  --gc-neutral-300:    #d4d4d8;
+  --gc-neutral-400:    #a1a1aa;
+  --gc-neutral-500:    #71717a;
+  --gc-neutral-600:    #52525b;
+  --gc-neutral-700:    #3f3f46;
+  --gc-neutral-800:    #27272a;
+  --gc-neutral-900:    #18181b;
+  --gc-neutral-950:    #09090b;
+
+  /* --- Semantic state colors --- */
+  --gc-success:        #16a34a;
+  --gc-success-bg:     #dcfce7;
+  --gc-warning:        #d97706;
+  --gc-warning-bg:     #ffedd5;
+  --gc-error:          #dc2626;
+  --gc-error-bg:       #fee2e2;
+  --gc-info:           #2563eb;
+
+  /* --- Text colors (semantic) --- */
+  --gc-text-primary:   #09090b;
+  --gc-text-secondary: #52525b;
+  --gc-text-tertiary:  #71717a;
+  --gc-text-inverse:   #fafafa;
+
+  /* --- Surface colors --- */
+  --gc-bg-canvas:      #fafafa;
+  --gc-bg-default:     #ffffff;
+  --gc-bg-subtle:      #f4f4f5;
+  --gc-bg-elevated:    #ffffff;
+  --gc-border-default: #e4e4e7;
+  --gc-border-subtle:  #f4f4f5;
+
+  /* --- Shadows --- */
+  --gc-shadow-xs:   0 1px 2px 0 rgba(9, 9, 11, 0.05);
+  --gc-shadow-sm:   0 1px 2px 0 rgba(9, 9, 11, 0.04), 0 1px 3px 0 rgba(9, 9, 11, 0.03);
+  --gc-shadow-md:   0 4px 8px -2px rgba(9, 9, 11, 0.08), 0 12px 28px -16px rgba(9, 9, 11, 0.18);
+  --gc-shadow-lg:   0 10px 25px -5px rgba(9, 9, 11, 0.12), 0 4px 6px -2px rgba(9, 9, 11, 0.05);
+
+  /* --- Spacing scale --- */
+  --gc-space-3xs:  0.25rem;  /* 4px  */
+  --gc-space-2xs:  0.5rem;   /* 8px  */
+  --gc-space-xs:   0.75rem;  /* 12px */
+  --gc-space-sm:   1rem;     /* 16px */
+  --gc-space-md:   1.25rem;  /* 20px */
+  --gc-space-lg:   1.5rem;   /* 24px */
+  --gc-space-xl:   2rem;     /* 32px */
+  --gc-space-2xl:  2.5rem;   /* 40px */
+  --gc-space-3xl:  3rem;     /* 48px */
+
+  /* --- Typography --- */
+  --gc-font-size-xs:    0.75rem;   /* 12px */
+  --gc-font-size-sm:    0.875rem;  /* 14px */
+  --gc-font-size-base:  1rem;      /* 16px */
+  --gc-font-size-md:    1.125rem;  /* 18px */
+  --gc-font-size-lg:    1.25rem;   /* 20px */
+  --gc-font-size-xl:    1.5rem;    /* 24px */
+  --gc-font-size-2xl:   1.875rem;  /* 30px */
+  --gc-font-size-3xl:   2.25rem;   /* 36px */
+
+  /* --- Border radius --- */
+  --gc-radius-sm:    0.375rem;  /* 6px  */
+  --gc-radius-md:    0.5rem;    /* 8px  */
+  --gc-radius-lg:    0.75rem;   /* 12px */
+  --gc-radius-xl:    1rem;      /* 16px */
+  --gc-radius-2xl:   1.5rem;    /* 24px */
+  --gc-radius-full:  9999px;
+
+  /* --- Focus ring --- */
+  --gc-focus-ring:   #059669;
+  --gc-focus-width:  2px;
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
@@ -26,30 +123,30 @@
   }
 
   body {
-    /* Subtle enterprise canvas: faint radial glows + a soft vertical gradient so
-       large empty areas read as a real product, not a toy. */
-    background-color: #fafafa;
+    background-color: var(--gc-bg-canvas);
     background-image:
       radial-gradient(1200px 600px at 100% -10%, rgba(5, 150, 105, 0.05), transparent 60%),
       radial-gradient(900px 500px at -10% 110%, rgba(5, 150, 105, 0.04), transparent 55%),
       linear-gradient(180deg, #fbfbfb 0%, #f6f7f6 100%);
     background-attachment: fixed;
-    color: #09090b;
+    color: var(--gc-text-primary);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-size: 0.9375rem; /* 15px — comfortable reading size */
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     letter-spacing: -0.011em;
   }
 
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
+  h1, h2, h3, h4, h5, h6 {
     letter-spacing: -0.024em;
+    font-weight: 600;
   }
+
+  h1 { font-size: var(--gc-font-size-3xl); line-height: 1.2; }
+  h2 { font-size: var(--gc-font-size-2xl); line-height: 1.2; }
+  h3 { font-size: var(--gc-font-size-xl); line-height: 1.3; }
 
   code,
   pre,
@@ -60,9 +157,151 @@
 
   /* Visible, on-brand focus ring for keyboard users (WCAG 2.4.7). */
   :focus-visible {
-    outline: 2px solid #059669;
+    outline: var(--gc-focus-width) solid var(--gc-focus-ring);
     outline-offset: 2px;
     border-radius: 4px;
+  }
+}
+
+/* ========================================================================
+   Component-style layer — utility classes for backward compatibility
+   with existing markup.  New code should use the React primitives in
+   src/components/primitives/ instead of these raw classes.
+   ======================================================================== */
+@layer components {
+  /* --- Surfaces --- */
+  .card {
+    @apply bg-white rounded-xl border border-zinc-200/90 transition-all duration-150;
+    box-shadow: var(--gc-shadow-sm);
+  }
+
+  .card-elevated {
+    @apply bg-white rounded-2xl border border-zinc-200/90 transition-all duration-150;
+    box-shadow: var(--gc-shadow-md);
+  }
+
+  .card-inset {
+    @apply bg-zinc-50/80 rounded-xl border border-zinc-200/80;
+  }
+
+  .card-hover {
+    @apply hover:border-zinc-300 hover:-translate-y-0.5;
+    box-shadow: var(--gc-shadow-sm);
+  }
+  .card-hover:hover {
+    box-shadow: var(--gc-shadow-md);
+  }
+
+  /* Frosted glass for sticky bars and the sidebar. */
+  .glass {
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+  }
+
+  .glass-dark {
+    background: rgba(9, 9, 11, 0.72);
+    backdrop-filter: saturate(160%) blur(12px);
+    -webkit-backdrop-filter: saturate(160%) blur(12px);
+  }
+
+  /* --- Buttons --- */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-all duration-150
+           bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-600 hover:to-emerald-800 active:from-emerald-700 active:to-emerald-800
+           ring-1 ring-inset ring-emerald-700/40 shadow-sm hover:shadow
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-zinc-700 bg-white
+           border border-zinc-200 hover:bg-zinc-50 hover:text-zinc-900 hover:border-zinc-300
+           transition-all duration-150 shadow-sm
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100
+           transition-all duration-150;
+  }
+
+  .btn-dark {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-all duration-150
+           bg-zinc-900 hover:bg-zinc-800 active:bg-zinc-950 shadow-sm ring-1 ring-inset ring-white/10
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* --- Badges --- */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold;
+  }
+
+  .badge-olive {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium
+           bg-emerald-50 text-emerald-800 border border-emerald-200/80;
+  }
+
+  .badge-critical {
+    @apply bg-rose-50 text-rose-700 border border-rose-200;
+  }
+
+  .badge-high {
+    @apply bg-amber-50 text-amber-800 border border-amber-200;
+  }
+
+  .badge-medium {
+    @apply bg-zinc-100 text-zinc-700 border border-zinc-200;
+  }
+
+  .badge-low {
+    @apply bg-zinc-50 text-zinc-500 border border-zinc-200;
+  }
+
+  /* --- Inputs --- */
+  .input,
+  .input-field {
+    @apply w-full px-3.5 py-2 bg-white border border-zinc-200 rounded-lg text-zinc-900 text-xs
+           placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-600/25 focus:border-emerald-600
+           transition-all duration-150 shadow-xs;
+  }
+
+  .label {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-zinc-500;
+  }
+
+  .section-title {
+    @apply text-sm font-semibold text-zinc-900 tracking-tight;
+  }
+
+  /* --- Sidebar navigation --- */
+  .sidebar-link {
+    @apply relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-zinc-600
+           transition-all duration-150 cursor-pointer select-none;
+  }
+  .sidebar-link:hover {
+    @apply bg-zinc-100 text-zinc-900;
+  }
+  .sidebar-link-active {
+    @apply bg-emerald-50 text-emerald-900;
+  }
+  .sidebar-link-active:hover {
+    @apply bg-emerald-50 text-emerald-900;
+  }
+  /* Left active indicator bar. */
+  .sidebar-link-active::before {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 18px;
+    border-radius: 9999px;
+    background: #059669;
+  }
+
+  .sidebar-group-label {
+    @apply px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400;
   }
 }
 

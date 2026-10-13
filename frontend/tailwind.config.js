@@ -2,8 +2,61 @@
 module.exports = {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
+    container: {
+      center: true,
+      padding: {
+        DEFAULT: '1rem',
+        sm: '1.5rem',
+        lg: '2rem',
+      },
+    },
     extend: {
       colors: {
+        /* ---- Brand ---- */
+        primary: {
+          50: '#ecfdf5',
+          100: '#d1fae5',
+          200: '#a7f3d0',
+          300: '#6ee7b7',
+          400: '#34d399',
+          500: '#10b981',
+          600: '#059669',
+          700: '#047857',
+          800: '#065f46',
+          900: '#064e3b',
+          950: '#022c22',
+        },
+        /* ---- Neutrals (zinc) ---- */
+        neutral: {
+          50: '#fafafa',
+          100: '#f4f4f5',
+          200: '#e4e4e7',
+          300: '#d4d4d8',
+          400: '#a1a1aa',
+          500: '#71717a',
+          600: '#52525b',
+          700: '#3f3f46',
+          800: '#27272a',
+          900: '#18181b',
+          950: '#09090b',
+        },
+        /* ---- Semantic state ---- */
+        success: {
+          DEFAULT: '#16a34a',
+          50: '#dcfce7',
+          100: '#dcfce7',
+          500: '#16a34a',
+          600: '#16a34a',
+        },
+        warning: {
+          DEFAULT: '#d97706',
+          50: '#ffedd5',
+        },
+        error: {
+          DEFAULT: '#dc2626',
+          50: '#fee2e2',
+        },
+        /* ---- Legacy aliases (kept for backward compatibility) ---- */
         olive: {
           50: '#ecfdf5',
           100: '#d1fae5',
@@ -72,9 +125,33 @@ module.exports = {
         sans: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
+      fontSize: {
+        xs: ['0.75rem', { lineHeight: '1rem' }],
+        sm: ['0.875rem', { lineHeight: '1.25rem' }],
+        base: ['1rem', { lineHeight: '1.5rem' }],
+        md: ['1.125rem', { lineHeight: '1.4rem' }],
+        lg: ['1.25rem', { lineHeight: '1.3rem' }],
+        xl: ['1.5rem', { lineHeight: '1.2rem' }],
+        '2xl': ['1.875rem', { lineHeight: '1.2rem' }],
+        '3xl': ['2.25rem', { lineHeight: '1.2rem' }],
+      },
       boxShadow: {
-        // Extra-small surface shadow for inputs and inline controls (not in TW 3.4 by default).
         xs: '0 1px 2px 0 rgba(9, 9, 11, 0.05)',
+        sm: 'var(--gc-shadow-sm)',
+        md: 'var(--gc-shadow-md)',
+        lg: 'var(--gc-shadow-lg)',
+      },
+      borderRadius: {
+        sm: 'var(--gc-radius-sm)',
+        md: 'var(--gc-radius-md)',
+        lg: 'var(--gc-radius-lg)',
+        xl: 'var(--gc-radius-xl)',
+        '2xl': 'var(--gc-radius-2xl)',
+        full: 'var(--gc-radius-full)',
+      },
+      spacing: {
+        '3xs': '0.25rem',
+        '2xs': '0.5rem',
       },
     },
   },

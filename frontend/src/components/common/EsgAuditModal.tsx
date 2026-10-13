@@ -4,6 +4,7 @@ import {
   Leaf, Zap, DollarSign, Award
 } from 'lucide-react';
 import { ScanResult } from '../../types';
+import { Modal } from '../primitives/Modal';
 
 interface EsgAuditModalProps {
   isOpen: boolean;
@@ -21,8 +22,6 @@ export default function EsgAuditModal({
   marginalRate = 215,
 }: EsgAuditModalProps) {
   const [copied, setCopied] = useState(false);
-
-  if (!isOpen) return null;
 
   const score = scanData.green_score ?? 0;
   const violations = scanData.total_violations ?? 0;
@@ -78,11 +77,15 @@ export default function EsgAuditModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 print:p-0 print:bg-white">
-      <div 
-        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden print:border-none print:shadow-none print:max-w-full"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      showCloseButton={false}
+      size="lg"
+      overlayClassName="items-center bg-slate-900/60 print:p-0 print:bg-white"
+      className="!max-w-3xl border-slate-200 overflow-hidden print:border-none print:shadow-none print:max-w-full"
+      contentClassName="p-0 overflow-visible"
+    >
         {/* Modal Action Bar (Hidden when printing) */}
         <div className="bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-300">
@@ -266,7 +269,6 @@ export default function EsgAuditModal({
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
+      </Modal>
+    );
 }

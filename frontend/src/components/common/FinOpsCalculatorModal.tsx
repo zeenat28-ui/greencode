@@ -4,6 +4,7 @@ import {
   DollarSign, Leaf, Zap, 
   X, TrendingDown, Sparkles, ArrowRight 
 } from 'lucide-react';
+import { Modal } from '../primitives/Modal';
 
 interface FinOpsCalculatorModalProps {
   isOpen: boolean;
@@ -118,9 +119,6 @@ export default function FinOpsCalculatorModal({
     };
   }, [isOpen, selectedInstance, selectedRegion, nodeCount]);
 
-  if (!isOpen) return null;
-
-  // Monthly hours: 730 hours / month
   const hoursPerMonth = 730;
   const baselineMonthlySpend = nodeCount * selectedInstance.hourlyRate * hoursPerMonth;
   // Compute savings proportional to algorithmic speedup & instance rightsizing potential
@@ -137,12 +135,16 @@ export default function FinOpsCalculatorModal({
     (annualKwhSaved * gridIntensity) / 1000 / 1000 +
     (gravitonData?.annual_co2_saved_kg || 0) / 1000;
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div 
-        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+   return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      showCloseButton={false}
+      size="lg"
+      overlayClassName="items-center bg-slate-900/60"
+      className="!max-w-3xl border-slate-200 overflow-hidden"
+      contentClassName="p-0 overflow-visible"
+    >
         {/* Modal Header */}
         <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -364,8 +366,7 @@ export default function FinOpsCalculatorModal({
             </Link>
           </div>
         </div>
-      </div>
-    </div>
-  );
+      </Modal>
+    );
 }
 

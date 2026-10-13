@@ -4,6 +4,11 @@ import { gridService, githubService, authService } from '../services/greencodeAp
 import { useAuth } from '../context/AuthContext';
 import { ZoneData } from '../types';
 import { GRID_ZONES } from '../styles/theme';
+import { Button } from '../components/primitives/Button';
+import { Badge } from '../components/primitives/Badge';
+import { Card } from '../components/primitives/Card';
+import { Input } from '../components/primitives/Input';
+import { Select } from '../components/primitives/Select';
 import {
   Globe, CheckCircle, ShieldCheck, Github, Loader2, RefreshCw,
   AlertCircle, Key, Leaf,
@@ -153,7 +158,7 @@ export default function Settings() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Workspace Settings</h1>
-            <span className="badge-olive">Configuration</span>
+            <Badge variant="olive">Configuration</Badge>
           </div>
           <p className="text-xs text-zinc-500 mt-0.5">
             Configure quality gate thresholds, default grid carbon zones, and GitHub authentication.
@@ -172,7 +177,7 @@ export default function Settings() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         <div className="lg:col-span-7 space-y-5">
           {/* GitHub connection */}
-          <div className="card p-5 space-y-4">
+          <Card padding="lg" className="space-y-4">
             <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white flex items-center justify-center">
@@ -183,10 +188,10 @@ export default function Settings() {
                   <p className="text-[11px] text-zinc-500">Repository read access and automated pull request creation</p>
                 </div>
               </div>
-              <button onClick={testGitHub} disabled={ghTesting} className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5">
+              <Button onClick={testGitHub} disabled={ghTesting} variant="secondary" size="sm" className="text-xs">
                 {ghTesting ? <Loader2 size={11} className="animate-spin text-emerald-600" /> : <RefreshCw size={11} />}
                 Test Connection
-              </button>
+              </Button>
             </div>
 
             {ghError && (
@@ -202,7 +207,7 @@ export default function Settings() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-xs font-semibold text-zinc-900 truncate">{ghUser.login}</p>
-                    <span className="badge-olive">Active</span>
+                    <Badge variant="olive">Active</Badge>
                   </div>
                   <p className="text-[11px] text-emerald-800 mt-0.5">Verified via GitHub REST API v3</p>
                 </div>
@@ -218,19 +223,19 @@ export default function Settings() {
                 Rotate Personal Access Token
               </label>
               <div className="flex gap-2">
-                <input
+                <Input
                   id="rotate-token"
                   type="password"
                   value={newToken}
                   onChange={(e) => { setNewToken(e.target.value); setRotateError(null); setRotateMsg(null); }}
                   placeholder={user?.github_token_masked ? `Stored: ${user.github_token_masked}` : 'ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx'}
-                  className="input text-xs font-mono flex-1"
+                  className="text-xs font-mono flex-1"
                   autoComplete="off"
                 />
-                <button onClick={handleRotateToken} disabled={rotating || !newToken.trim()} className="btn-secondary text-xs px-3.5 py-1.5 flex items-center gap-1.5">
+                <Button onClick={handleRotateToken} disabled={rotating || !newToken.trim()} variant="secondary" size="sm" className="text-xs">
                   {rotating ? <Loader2 size={11} className="animate-spin" /> : <Key size={11} />}
                   Update Token
-                </button>
+                </Button>
               </div>
               {rotateError && <p className="text-xs text-red-600 mt-1.5 font-medium">{rotateError}</p>}
               {rotateMsg && <p className="text-xs text-emerald-800 mt-1.5 font-medium">{rotateMsg}</p>}
@@ -238,35 +243,35 @@ export default function Settings() {
                 Encrypted at rest using Fernet symmetric encryption. Used strictly for repository analysis and pull request creation.
               </p>
             </div>
+          </Card>
+
+        {/* Grid zone */}
+        <Card padding="lg" className="space-y-4">
+          <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+            <div className="w-8 h-8 rounded-xl bg-olive-50 text-olive-800 border border-olive-200 flex items-center justify-center">
+              <Globe size={16} />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Regional Power Grid</h2>
+              <p className="text-[11px] text-slate-500">Determines carbon emissions per kilowatt-hour of electricity consumed</p>
+            </div>
           </div>
 
-          {/* Grid zone */}
-          <div className="card p-6 space-y-4">
-            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-              <div className="w-8 h-8 rounded-xl bg-olive-50 text-olive-800 border border-olive-200 flex items-center justify-center">
-                <Globe size={16} />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">Regional Power Grid</h2>
-                <p className="text-[11px] text-slate-500">Determines carbon emissions per kilowatt-hour of electricity consumed</p>
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="zone" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Default Grid Region
-              </label>
-              <select
-                id="zone"
-                value={selectedZone}
-                onChange={(e) => setSelectedZone(e.target.value)}
-                className="input text-sm focus:ring-olive-600 focus:border-olive-600"
-              >
-                {GRID_ZONES.map((z) => (
-                  <option key={z.value} value={z.value}>{z.label} &mdash; {z.value}</option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label htmlFor="zone" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+              Default Grid Region
+            </label>
+            <Select
+              id="zone"
+              value={selectedZone}
+              onChange={(e) => setSelectedZone(e.target.value)}
+              className="text-sm focus:ring-olive-600 focus:border-olive-600"
+            >
+              {GRID_ZONES.map((z) => (
+                <option key={z.value} value={z.value}>{z.label} &mdash; {z.value}</option>
+              ))}
+            </Select>
+          </div>
 
             {gridLoading ? (
               <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -294,13 +299,13 @@ export default function Settings() {
                   </dd>
                 </div>
               </dl>
-            ) : null}
-          </div>
+              ) : null}
+          </Card>
         </div>
 
         {/* Quality gate */}
         <div className="lg:col-span-5 space-y-5">
-          <div className="card p-6 space-y-4">
+          <Card padding="lg" className="space-y-4">
             <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
               <div className="w-8 h-8 rounded-xl bg-olive-50 text-olive-800 border border-olive-200 flex items-center justify-center">
                 <ShieldCheck size={16} />
@@ -344,9 +349,9 @@ export default function Settings() {
             <p className="text-[11px] text-zinc-500 leading-relaxed">
               This threshold is enforced across GitHub Actions SARIF gates and the MCP server.
             </p>
-          </div>
+          </Card>
 
-          <div className="card p-5 space-y-4">
+          <Card padding="lg" className="space-y-4">
             <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center">
@@ -358,9 +363,9 @@ export default function Settings() {
                 </div>
               </div>
               {usageData?.tier && (
-                <span className="badge-olive uppercase">
+                <Badge variant="olive" className="uppercase">
                   {usageData.tier}
-                </span>
+                </Badge>
               )}
             </div>
 
@@ -386,30 +391,32 @@ export default function Settings() {
                 License Key
               </label>
               <div className="flex gap-2">
-                <input
+                <Input
                   id="license-key-input"
                   type="text"
                   value={licenseKey}
                   onChange={(e) => { setLicenseKey(e.target.value); setLicenseError(null); setLicenseMsg(null); }}
                   placeholder="GC-LIC-eyJvcmdfaWQiOjEsInRpZXIiOiJwcm8ifQ..."
-                  className="input text-xs font-mono flex-1"
+                  className="text-xs font-mono flex-1"
                   autoComplete="off"
                 />
-                <button
+                <Button
                   onClick={handleActivateLicense}
                   disabled={activatingLicense || !licenseKey.trim()}
-                  className="btn-primary text-xs px-3.5 py-1.5 flex items-center gap-1.5"
+                  variant="primary"
+                  size="sm"
+                  className="text-xs"
                 >
                   {activatingLicense ? <Loader2 size={11} className="animate-spin" /> : <Key size={11} />}
                   Activate
-                </button>
+                </Button>
               </div>
               {licenseError && <p className="text-xs text-red-600 mt-1.5 font-medium">{licenseError}</p>}
               {licenseMsg && <p className="text-xs text-emerald-800 mt-1.5 font-medium">{licenseMsg}</p>}
             </div>
-          </div>
+          </Card>
 
-          <div className="card p-5">
+          <Card padding="lg">
             <div className="flex items-start gap-3">
               <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0 mt-0.5">
                 <Leaf size={14} />
@@ -421,7 +428,7 @@ export default function Settings() {
                 </p>
               </div>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     </div>

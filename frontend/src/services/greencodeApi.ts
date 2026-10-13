@@ -23,6 +23,29 @@ import {
 // ---------------------------------------------------------------------------
 // Authentication - GitHub Personal Access Token is the only supported method.
 // ---------------------------------------------------------------------------
+export const ssoService = {
+  /** Check if SSO is required for the org with the given email domain. */
+  enforceCheck: (orgId?: number) =>
+    api.post<{ sso_required: boolean; allowed_domains: string[] }>(
+      '/api/enterprise/sso/enforce-check',
+      { org_id: orgId },
+    ),
+
+  /** Initiate SSO login flow - returns redirect URL to IdP. */
+  initiate: (orgId?: number) =>
+    api.post<{ success: boolean; redirect_url: string; relay_state: string; sso_enabled: boolean }>(
+      '/api/enterprise/sso/initiate',
+      { org_id: orgId },
+    ),
+
+  /** Handle SAML/OIDC callback from IdP. */
+  callback: (samlResponse: string, relayState: string) =>
+    api.post<AuthResponse>(
+      '/api/enterprise/sso/callback',
+      { saml_response: samlResponse, relay_state: relayState },
+    ),
+};
+
 export const authService = {
   signInWithGitHub: (githubToken: string) =>
     api.post<AuthResponse>('/api/auth/github', { github_token: githubToken }),
@@ -208,6 +231,141 @@ export const scopeService = {
     grid_zone?: string;
     renewable_rec_pct?: number;
   }) => api.post('/api/scope/inventory', params),
+
+  /**
+   * Enterprise overview: repositories, budgets, workloads, and org details.
+   * These replace raw fetch() calls that previously bypassed the auth interceptor.
+   */
+  getRepositories: (params?: { limit?: number }) =>
+    api.get<{ repositories: RepositoryRecord[]; total: number }>('/api/repositories', {
+      params: { limit: params?.limit ?? 15 },
+    }),
+
+  getWorkloads: (params?: { limit?: number }) =>
+    api.get<{ workloads: any[]; telemetry_source: string; total_workloads: number; healthy_workloads: number; total_annual_cost_usd: number; total_annual_co2_kg: number }>(
+      '/api/energy/workloads',
+      { params: { limit: params?.limit ?? 12 } }
+    ),
+
+  getOrganization: () => api.get<{ organization: { name: string; id: number } }>('/api/enterprise/organizations/me'),
+};
+
+// ---------------------------------------------------------------------------
+// Energy Budget & FinOps
+// ---------------------------------------------------------------------------
+export const budgetService = {
+  getBudgets: () => api.get<{ budgets: any[] }>('/api/energy/budgets'),
+
+  allocateBudget: (params: {
+    org_id: number;
+    team_id: string;
+    monthly_budget_kg: number;
+  }) => api.post<{ budgets: any[] }>('/api/energy/budgets/allocate', params),
+
+  evaluatePR: (params: {
+    team_name?: string;
+    team_id?: string;
+    additional_projected_kg_co2e: number;
+    pr_delta_gco2e?: number;
+  }) => api.post<{
+    verdict: string;
+    reason: string;
+    projected_consumption_pct: number;
+  }>('/api/energy/budgets/evaluate-pr', params),
+
+  rollback: (params: {
+    namespace: string;
+    deployment_name: string;
+    current_power_w: number;
+    baseline_power_w: number;
+    auto_trigger: boolean;
+  }) =>
+    api.post<{
+      verdict: string;
+      spike_pct: number;
+      rollback_status: { execution_mode: string };
+    }>('/api/energy/rollback', params),
+
+  updateBaseline: (params: {
+    namespace: string;
+    deployment_name: string;
+    baseline_power_w: number;
+  }) => api.post('/api/energy/workloads/baseline', params),
+};
+
+// ---------------------------------------------------------------------------
+// Policy Engine & Governance
+// ---------------------------------------------------------------------------
+export const policyService = {
+  getPolicy: (policyId: number = 1) => api.get<any>(`/api/policies/${policyId}`),
+
+  savePolicy: (params: {
+    org_id: number;
+    name: string;
+    max_regression_pct: number;
+    max_sci_score: number;
+    auto_block_deploy: boolean;
+    auto_rollback_k8s: boolean;
+    dirty_grid_threshold_gco2e: number;
+  }) => api.post<{ success: boolean; message: string }>('/api/policies', params),
+
+  getCustomRules: () => api.get<{ rules: any[] }>('/api/policies/custom-rules'),
+
+  evaluateCustomRules: (params: {
+    source_code: string;
+    language: string;
+    file_path: string;
+  }) =>
+    api.post<{
+      violations_count: number;
+      green_score: number;
+      violations: any[];
+    }>('/api/policies/custom-rules/evaluate', params),
+
+  iacAudit: (params: { content: string; file_path: string }) =>
+    api.post<{ green_score: number; estimated_monthly_usd_savings: number; estimated_annual_co2_saved_kg: number; findings: any[] }>(
+      '/api/kubernetes/iac-audit',
+      params
+    ),
+};
+
+// ---------------------------------------------------------------------------
+// ESG Reporting & Audit Assurance
+// ---------------------------------------------------------------------------
+export const reportService = {
+  getEsgReport: () => api.get<any>('/api/reports/esg/1'),
+  getEvidenceManifest: () => api.get<any>('/api/reports/esg/1/evidence-manifest'),
+  getCompliance: () => api.get<any>('/api/reports/compliance/1'),
+  getAuditLogs: (limit: number = 8) =>
+    api.get<{ entries: any[] }>('/api/reports/audit-logs/1', { params: { limit } }),
+  getImpactFrameworkManifest: () => api.get<any>('/api/reports/impact-framework-manifest'),
+  verifyAuditLogs: () => api.post<{ status: string; valid: boolean; checked_records: number }>('/api/reports/audit-logs/1/verify'),
+};
+
+// ---------------------------------------------------------------------------
+// Billing & Commercial Licensing
+// ---------------------------------------------------------------------------
+export const billingService = {
+  getUsage: (params?: { org_id?: number }) =>
+    api.get<any>('/api/billing/usage', { params: { org_id: params?.org_id ?? 1 } }),
+  activateLicense: (params: { org_id: number; license_key: string }) =>
+    api.post<{ license?: { tier: string; seats: number } }>('/api/billing/license/activate', params),
+};
+
+// ---------------------------------------------------------------------------
+// Local Workspace Scanning
+// ---------------------------------------------------------------------------
+export const localScanService = {
+  scanWorkspace: (params: { subpath?: string; repo_name?: string; team_id?: string }) =>
+    api.post<ScanResult>('/api/scan/local-workspace', params),
+};
+
+// ---------------------------------------------------------------------------
+// Voice / Alexa Integration
+// ---------------------------------------------------------------------------
+export const voiceService = {
+  ask: (params: { query: string }) =>
+    api.post<{ response: string; intent?: string }>('/api/voice/ask', params),
 };
 
 // ---------------------------------------------------------------------------
@@ -308,10 +466,38 @@ export const awsService = {
     }),
 };
 
+export const tenantService = {
+  getOrganizations: () =>
+    api.get<{ current_org_id?: number | null; organizations: Array<{
+      id: number;
+      name: string;
+      slug: string;
+      tier: string;
+      sso_enabled: boolean;
+    }> }>('/api/enterprise/organizations'),
+
+  getMyOrganization: () =>
+    api.get<{ is_tenant: boolean; organization: { id: number; name: string; slug: string; tier: string } | null; message?: string }>('/api/enterprise/organizations/me'),
+
+  switchOrganization: (org_id: number) =>
+    api.post<{
+      success: boolean;
+      message: string;
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+      expires_in: number;
+      user: User;
+      organization: { id: number; name: string; slug: string; tier: string };
+    }>('/api/tenants/switch', { org_id }),
+};
+
+
 export default {
   authService,
-  scanService,
+  ssoService,
   githubService,
+  scanService,
   gridService,
   profilerService,
   refactorService,
@@ -322,6 +508,12 @@ export default {
   slaService,
   pricingService,
   awsService,
+  budgetService,
+  policyService,
+  reportService,
+  billingService,
+  localScanService,
+  voiceService,
 };
 
 

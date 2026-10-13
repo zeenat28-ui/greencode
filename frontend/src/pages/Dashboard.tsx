@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { gridService } from '../services/greencodeApi';
 import { ScanResult, ZoneData } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { Button } from '../components/primitives/Button';
+import { Badge } from '../components/primitives/Badge';
+import { Card } from '../components/primitives/Card';
 import ScoreBadge from '../components/common/ScoreBadge';
 import MetricCard from '../components/common/MetricCard';
 import ViolationChart from '../components/charts/ViolationChart';
@@ -101,73 +104,83 @@ export default function Dashboard() {
 
         {/* Clean Single-Row Action Bar */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {scanData && (
-            <>
-              <button
-                onClick={() => setShowFinOpsModal(true)}
-                className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 whitespace-nowrap"
-                title="FinOps FOCUS 1.4 Cloud Cost Attribution"
-              >
-                <DollarSign size={13} className="text-emerald-600" />
-                <span>FinOps ROI</span>
-              </button>
-              <button
-                onClick={() => setShowBotModal(true)}
-                className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 whitespace-nowrap"
-                title="Preview Automated PR Diff Comment"
-              >
-                <Bot size={13} className="text-zinc-600" />
-                <span>PR Bot</span>
-              </button>
-              <button
-                onClick={() => setShowEsgModal(true)}
-                className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 whitespace-nowrap"
-                title="Export GSF SCI Audit Certificate"
-              >
-                <FileText size={13} className="text-zinc-600" />
-                <span>ESG Report</span>
-              </button>
-              <button
-                onClick={() => setShowCiCdModal(true)}
-                className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 whitespace-nowrap"
-                title="GitHub Actions & SARIF 2.1.0 Gate"
-              >
-                <ShieldCheck size={13} className="text-zinc-600" />
-                <span>CI/CD Gate</span>
-              </button>
-            </>
-          )}
-          <Link
-            to="/scan"
-            className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 whitespace-nowrap"
+           {scanData && (
+             <>
+               <Button
+                 variant="secondary"
+                 size="sm"
+                 className="whitespace-nowrap"
+                 title="FinOps FOCUS 1.4 Cloud Cost Attribution"
+                 onClick={() => setShowFinOpsModal(true)}
+               >
+                 <DollarSign size={13} className="text-emerald-600" />
+                 <span>FinOps ROI</span>
+               </Button>
+               <Button
+                 variant="secondary"
+                 size="sm"
+                 className="whitespace-nowrap"
+                 title="Preview Automated PR Diff Comment"
+                 onClick={() => setShowBotModal(true)}
+               >
+                 <Bot size={13} className="text-zinc-600" />
+                 <span>PR Bot</span>
+               </Button>
+               <Button
+                 variant="secondary"
+                 size="sm"
+                 className="whitespace-nowrap"
+                 title="Export GSF SCI Audit Certificate"
+                 onClick={() => setShowEsgModal(true)}
+               >
+                 <FileText size={13} className="text-zinc-600" />
+                 <span>ESG Report</span>
+               </Button>
+               <Button
+                 variant="secondary"
+                 size="sm"
+                 className="whitespace-nowrap"
+                 title="GitHub Actions & SARIF 2.1.0 Gate"
+                 onClick={() => setShowCiCdModal(true)}
+               >
+                 <ShieldCheck size={13} className="text-zinc-600" />
+                 <span>CI/CD Gate</span>
+               </Button>
+             </>
+           )}
+          <Button
+            asChild
+            variant="primary"
+            size="sm"
+            className="whitespace-nowrap"
           >
-            <GitBranch size={13} />
-            <span>Scan Repository</span>
-          </Link>
+            <Link to="/scan">
+              <GitBranch size={13} />
+              <span>Scan Repository</span>
+            </Link>
+          </Button>
         </div>
       </div>
 
       {/* Row 2: Above-the-Fold Quality Gate Hero + 4 Core Engineering KPIs */}
       {scanData ? (
         <>
-          <div className="card p-5 flex flex-col md:flex-row md:items-center justify-between gap-5">
-            <div className="flex items-center gap-5 min-w-0">
+        <Card variant="default" padding="lg" className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+             <div className="flex items-center gap-5 min-w-0">
               <div className="shrink-0">
                 <ScoreBadge score={greenScore} size="md" />
               </div>
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span
-                    className={`inline-flex items-center gap-1 text-[11px] font-mono font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
-                      isPass
-                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                        : 'bg-rose-50 text-rose-800 border border-rose-200'
-                    }`}
+                  <Badge
+                    variant={isPass ? 'success' : 'critical'}
+                    size="sm"
+                    className="uppercase tracking-wider text-[10px] px-2 py-0.5"
                   >
                     {isPass ? <ShieldCheck size={12} /> : <ShieldX size={12} />}
                     {isPass ? 'Quality Gate Passed' : 'Gate Failed'}
-                  </span>
+                  </Badge>
                   <span className="text-xs text-zinc-400 font-mono">
                     Threshold &ge; {threshold}/100
                   </span>
@@ -196,24 +209,23 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="shrink-0 flex items-center gap-2">
-              {totalViolations > 0 ? (
-                <Link
-                  to="/issues"
-                  className="btn-primary flex items-center gap-1.5 text-xs px-3.5 py-2 whitespace-nowrap"
-                >
-                  <AlertTriangle size={13} className="text-amber-400" />
-                  <span>Inspect &amp; Patch {totalViolations} Findings</span>
-                  <ArrowRight size={13} />
-                </Link>
-              ) : (
+             <div className="shrink-0 flex items-center gap-2">
+               {totalViolations > 0 ? (
+                 <Button asChild variant="primary" size="sm" className="whitespace-nowrap text-xs">
+                   <Link to="/issues" className="flex items-center gap-1.5">
+                     <AlertTriangle size={13} className="text-amber-400" />
+                     <span>Inspect &amp; Patch {totalViolations} Findings</span>
+                     <ArrowRight size={13} />
+                   </Link>
+                  </Button>
+                ) : (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-900 text-xs font-medium border border-emerald-200 font-mono">
                   <CheckCircle2 size={14} className="text-emerald-600" />
                   <span>100% Optimal</span>
                 </div>
               )}
             </div>
-          </div>
+          </Card>
 
           {/* 4 High-Precision Engineering Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -247,14 +259,14 @@ export default function Dashboard() {
           {/* Row 3: Two-Column Engineering Workspace (Findings Table + Rule Breakdown) */}
           <div className="grid lg:grid-cols-12 gap-5 items-start">
             {/* Left 7 Cols: Active Code Efficiency Findings Table */}
-            <div className="lg:col-span-7 card overflow-hidden">
+            <Card variant="default" className="lg:col-span-7 overflow-hidden border-0 shadow-none">
               <div className="px-5 py-3.5 border-b border-zinc-200/80 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Code2 size={15} className="text-zinc-500" />
                   <h3 className="section-title">Detected Code Hotspots</h3>
-                  <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600">
+                  <Badge variant="outline" size="sm" className="text-zinc-600 bg-zinc-100 border-zinc-200/80 font-mono">
                     {scanData.violations?.length || 0}
-                  </span>
+                  </Badge>
                 </div>
                 <Link
                   to="/issues"
@@ -269,12 +281,7 @@ export default function Dashboard() {
                 <div className="divide-y divide-zinc-100">
                   {scanData.violations.slice(0, 5).map((v, idx) => {
                     const sev = (v.severity || 'MEDIUM').toUpperCase();
-                    const sevBadge =
-                      sev === 'CRITICAL'
-                        ? 'bg-rose-50 text-rose-700 border-rose-200'
-                        : sev === 'HIGH'
-                        ? 'bg-amber-50 text-amber-800 border-amber-200'
-                        : 'bg-zinc-100 text-zinc-700 border-zinc-200';
+                    const sevVariant = sev === 'CRITICAL' ? 'critical' : sev === 'HIGH' ? 'high' : sev === 'MEDIUM' ? 'medium' : 'low';
                     return (
                       <div
                         key={`${v.file_path}-${v.line_number}-${idx}`}
@@ -282,11 +289,9 @@ export default function Dashboard() {
                       >
                         <div className="min-w-0 space-y-1">
                           <div className="flex items-center gap-2">
-                            <span
-                              className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border ${sevBadge}`}
-                            >
+                            <Badge variant={sevVariant as any} size="sm" className="text-[10px] font-mono font-semibold uppercase tracking-wider">
                               {sev}
-                            </span>
+                            </Badge>
                             <span className="text-xs font-semibold text-zinc-900 truncate">
                               {v.title || v.violation_type}
                             </span>
@@ -295,12 +300,9 @@ export default function Dashboard() {
                             {v.file_path}:{v.line_number}
                           </div>
                         </div>
-                        <Link
-                          to="/issues"
-                          className="shrink-0 text-[11px] font-mono font-medium text-zinc-600 hover:text-zinc-950 px-2.5 py-1 rounded border border-zinc-200 hover:border-zinc-300 bg-white transition-colors"
-                        >
-                          Patch &rarr;
-                        </Link>
+                        <Button asChild variant="ghost" size="sm" className="text-[11px] font-mono font-medium text-zinc-600 border border-zinc-200 hover:border-zinc-300 hover:bg-white">
+                          <Link to="/issues">Patch &rarr;</Link>
+                        </Button>
                       </div>
                     );
                   })}
@@ -310,11 +312,11 @@ export default function Dashboard() {
                   No efficiency violations detected in this repository scan.
                 </div>
               )}
-            </div>
+            </Card>
 
             {/* Right 5 Cols: Algorithmic Breakdown & Language Distribution */}
             <div className="lg:col-span-5 space-y-5">
-              <div className="card p-5">
+              <Card variant="default" padding="lg">
                 <div className="mb-3">
                   <h3 className="section-title">Algorithmic Rule Breakdown</h3>
                   <p className="text-[11px] text-zinc-500 mt-0.5">
@@ -322,10 +324,10 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <ViolationChart breakdown={scanData.violation_breakdown} />
-              </div>
+              </Card>
 
               {scanData.file_results && scanData.file_results.length > 0 && (
-                <div className="card p-5">
+                <Card variant="default" padding="lg">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="section-title">Language Telemetry</h3>
                     <span className="text-[11px] font-mono text-zinc-500">
@@ -334,14 +336,14 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <LanguageBreakdown fileResults={scanData.file_results} />
-                </div>
+                </Card>
               )}
             </div>
           </div>
         </>
       ) : (
         /* Empty State */
-        <div className="card p-10 text-center">
+        <Card variant="default" padding="lg" className="text-center">
           <div className="w-11 h-11 rounded-xl bg-zinc-100 border border-zinc-200 flex items-center justify-center mx-auto mb-3 text-zinc-700">
             <GitBranch size={20} />
           </div>
@@ -350,12 +352,14 @@ export default function Dashboard() {
             Audit a local directory, upload a source archive, or connect a GitHub repository to compute GSF SCI metrics and synthesize AST remediations.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
-            <Link to="/scan" className="btn-primary flex items-center gap-2 text-xs px-4 py-2">
-              <GitBranch size={13} />
-              <span>Scan Repository</span>
-            </Link>
+            <Button asChild variant="primary" size="md" className="text-xs">
+              <Link to="/scan" className="flex items-center gap-2">
+                <GitBranch size={13} />
+                <span>Scan Repository</span>
+              </Link>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Row 4: Compact MCP 2025-11-25 & Voice Command Console */}

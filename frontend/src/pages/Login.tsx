@@ -17,6 +17,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { ssoService } from '../services/greencodeApi';
 import BrandLogo from '../components/common/BrandLogo';
 
 /**
@@ -298,6 +299,32 @@ export default function Login() {
               )}
             </button>
           </form>
+
+          {/* SSO Divider */}
+          <div className="mt-4 mb-3 flex items-center gap-2 text-slate-300">
+            <div className="flex-1 h-px bg-slate-200"></div>
+            <span className="text-[10px] font-medium uppercase tracking-wider">Or</span>
+            <div className="flex-1 h-px bg-slate-200"></div>
+          </div>
+
+          {/* SSO Login Button */}
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await ssoService.initiate();
+                if (res.data.sso_enabled && res.data.redirect_url) {
+                  window.location.href = res.data.redirect_url;
+                }
+              } catch (e) {
+                console.error('SSO initiate failed:', e);
+              }
+            }}
+            className="w-full flex justify-center items-center gap-2 py-2.5 px-4 rounded-xl shadow-sm text-xs sm:text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer"
+          >
+            <ShieldCheck size={16} className="text-slate-600" />
+            <span>Continue with SSO / SAML</span>
+          </button>
 
           {/* Institutional Ephemeral Session Notice */}
           <div className="mt-6 pt-5 border-t border-slate-100 flex items-start gap-2.5 text-[11px] text-slate-500 leading-relaxed">

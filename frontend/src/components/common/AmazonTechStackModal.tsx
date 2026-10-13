@@ -3,6 +3,7 @@ import {
   X, Layers
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Modal } from '../primitives/Modal';
 
 interface AmazonTechStackModalProps {
   isOpen: boolean;
@@ -84,20 +85,22 @@ export default function AmazonTechStackModal({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const connectedAccounts = health?.connected_accounts;
   const headerStatus =
     health === null
       ? 'Checking…'
       : `${health.status || 'UNKNOWN'} · ${connectedAccounts ?? 0} account${connectedAccounts === 1 ? '' : 's'} linked`;
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div
-        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+   return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      showCloseButton={false}
+      size="lg"
+      overlayClassName="items-center bg-slate-900/60"
+      className="!max-w-3xl border-slate-200 overflow-hidden"
+      contentClassName="p-0 overflow-visible"
+    >
         {/* Header */}
         <div className="bg-[#131921] text-white px-6 py-4 flex items-center justify-between border-b border-[#232F3E]">
           <div className="flex items-center gap-3">
@@ -203,8 +206,7 @@ export default function AmazonTechStackModal({
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
+      </Modal>
+    );
 }
 

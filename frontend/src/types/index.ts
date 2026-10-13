@@ -245,6 +245,14 @@ export interface User {
   last_login_at?: string;
 }
 
+export interface Organization {
+  id: number;
+  name: string;
+  slug: string;
+  tier: string;
+  sso_enabled?: boolean;
+}
+
 export interface AuthResponse {
   success: boolean;
   message: string;

@@ -1,21 +1,21 @@
 import { Severity, ViolationType, VIOLATION_LABEL_MAP, VIOLATION_RULE_MAP } from '../../types';
+import { Badge } from '../primitives/Badge';
+import type { BadgeVariant } from '../primitives/Badge';
+import { Card } from '../primitives/Card';
+import { cn } from '../../lib/utils';
 
-interface SeverityBadgeProps {
-  severity: Severity;
-}
-
-const SEV_STYLES: Record<Severity, string> = {
-  CRITICAL: 'badge badge-critical',
-  HIGH:     'badge badge-high',
-  MEDIUM:   'badge badge-medium',
-  LOW:      'badge badge-low',
+const SEVERITY_BADGE_VARIANT: Record<Severity, BadgeVariant> = {
+  CRITICAL: 'critical',
+  HIGH: 'high',
+  MEDIUM: 'medium',
+  LOW: 'low',
 };
 
-function SeverityBadge({ severity }: SeverityBadgeProps) {
+function SeverityBadge({ severity }: { severity: Severity }) {
   return (
-    <span className={SEV_STYLES[severity] ?? 'badge badge-low'}>
+    <Badge variant={SEVERITY_BADGE_VARIANT[severity] ?? 'low'}>
       {severity}
-    </span>
+    </Badge>
   );
 }
 
@@ -30,13 +30,16 @@ export function IssueCard({ violation, onClick, isSelected = false }: IssueCardP
   const label    = VIOLATION_LABEL_MAP[violation.violation_type as ViolationType] || violation.title;
 
   return (
-    <div
+    <Card
       onClick={onClick}
-      className={`card p-4 cursor-pointer transition-all duration-150 overflow-hidden max-w-full ${
+      variant="default"
+      padding="md"
+      className={cn(
+        'cursor-pointer overflow-hidden max-w-full',
         isSelected
           ? 'border-zinc-900 ring-1 ring-zinc-900/10 shadow-sm'
           : 'hover:border-zinc-300'
-      }`}
+      )}
     >
       {/* Top row */}
       <div className="flex items-start justify-between gap-3 mb-2">
@@ -46,9 +49,9 @@ export function IssueCard({ violation, onClick, isSelected = false }: IssueCardP
             {ruleCode}
           </code>
           {violation.language && (
-            <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded text-[11px] font-mono font-medium">
+            <Badge variant="olive" size="sm" className="text-[11px] px-1.5 py-0.5 font-medium">
               {violation.language}
-            </span>
+            </Badge>
           )}
         </div>
         <span className="text-xs font-mono font-semibold text-rose-600 shrink-0">
@@ -89,8 +92,8 @@ export function IssueCard({ violation, onClick, isSelected = false }: IssueCardP
           <span className="text-xs text-zinc-700 leading-relaxed">{violation.suggested_fix}</span>
         </div>
       )}
-    </div>
-  );
-}
+      </Card>
+    );
+  }
 
 export default SeverityBadge;

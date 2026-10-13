@@ -581,6 +581,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    preferred_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     username = Column(String(100), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
@@ -1407,6 +1408,7 @@ def user_to_dict(user: Optional[User], include_sensitive: bool = False) -> Optio
     return {
         "id": user.id,
         "org_id": getattr(user, "org_id", None),
+        "preferred_org_id": getattr(user, "preferred_org_id", None),
         "email": user.email,
         "username": user.username,
         "full_name": user.full_name or user.username,
@@ -1645,6 +1647,23 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     try:
         user = db.query(User).filter(User.id == user_id).first()
         return user_to_dict(user, include_sensitive=False) if user else None
+    finally:
+        db.close()
+
+
+def update_user_preferred_org(user_id: int, org_id: int) -> bool:
+    """Update the user's preferred/active organization for tenant switching."""
+    init_db()
+    db = SessionLocal()
+    try:
+        result = db.query(User).filter(User.id == user_id).update(
+            {"preferred_org_id": org_id}, synchronize_session=False
+        )
+        db.commit()
+        return result > 0
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 

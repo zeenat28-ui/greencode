@@ -10,14 +10,13 @@ import {
   EyeOff,
   ExternalLink,
   Lock,
-  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
 
 /**
- * Standard Industry Authentication Page (Shadcn UI / Tailwind UI Pattern)
- * Clean, centered, responsive, zero dummy data.
+ * Standard Centered Authentication Screen (GitHub / Shadcn UI Pattern)
+ * Vertically & horizontally locked layout — consistent scale across all laptop screens.
  */
 export default function Login() {
   const { connectGitHub } = useAuth();
@@ -55,47 +54,36 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col justify-between bg-slate-50 text-slate-900 px-4 py-8 sm:py-12 selection:bg-emerald-100 selection:text-emerald-900 font-sans">
-      {/* Top Header */}
-      <header className="w-full max-w-md mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <BrandLogo size="sm" />
-          <span className="font-semibold text-base tracking-tight text-slate-900">
-            GreenCode
-          </span>
-          <span className="text-[11px] font-mono font-medium text-slate-500 bg-slate-200/70 border border-slate-300/60 px-2 py-0.5 rounded-md">
-            v2.1.0
-          </span>
+    <div className="min-h-screen min-h-[100dvh] w-full flex items-center justify-center bg-slate-50 text-slate-900 p-4 sm:p-6 font-sans">
+      {/* Locked Centered Column (No vertical drifting or stretch) */}
+      <div className="w-full max-w-[420px] flex flex-col items-center">
+        {/* Brand Header — Fixed above the card */}
+        <div className="mb-6 flex flex-col items-center text-center">
+          <div className="w-12 h-12 rounded-xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-center mb-3">
+            <BrandLogo size="md" />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-bold tracking-tight text-slate-900">GreenCode</span>
+            <span className="text-[10px] font-mono font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+              v2.1.0
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1 max-w-xs leading-relaxed">
+            Software Carbon Intensity &amp; Cloud FinOps Engine
+          </p>
         </div>
-        <a
-          href="https://github.com/zeenat28-ui/greencode"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-600 hover:text-slate-900 transition-colors"
-        >
-          <Github size={13} />
-          <span>GitHub</span>
-          <ExternalLink size={10} className="text-slate-400" />
-        </a>
-      </header>
 
-      {/* Main Centered Card (Shadcn UI Standard Pattern) */}
-      <main className="w-full max-w-[440px] mx-auto my-auto py-6">
-        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xl shadow-slate-900/[0.04] p-7 sm:p-9 space-y-6">
-          {/* Card Header */}
-          <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center mx-auto shadow-xs">
-              <BrandLogo size="md" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 pt-1">
-              Sign in to GreenCode
+        {/* Locked Card Box */}
+        <div className="w-full bg-white rounded-2xl border border-slate-200/90 shadow-xl shadow-slate-900/[0.04] p-7 sm:p-8 space-y-5">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900 tracking-tight">
+              Sign in to your account
             </h1>
-            <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-              Enter your GitHub Personal Access Token to audit repository carbon intensity and cloud FinOps spend.
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Authenticate with your GitHub Personal Access Token to audit repositories.
             </p>
           </div>
 
-          {/* Error Message */}
           {error && (
             <div
               role="alert"
@@ -106,7 +94,6 @@ export default function Login() {
             </div>
           )}
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div>
               <div className="flex items-center justify-between mb-1.5">
@@ -152,7 +139,7 @@ export default function Login() {
                 </button>
               </div>
               <p className="mt-1.5 text-[11px] text-slate-500">
-                Requires <code className="font-mono text-slate-700 bg-slate-100 px-1 py-0.5 rounded">repo</code> and <code className="font-mono text-slate-700 bg-slate-100 px-1 py-0.5 rounded">read:user</code> scopes to analyze repositories.
+                Requires <code className="font-mono text-slate-700 bg-slate-100 px-1 py-0.5 rounded">repo</code> and <code className="font-mono text-slate-700 bg-slate-100 px-1 py-0.5 rounded">read:user</code> scopes to analyze code.
               </p>
             </div>
 
@@ -176,29 +163,39 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Security & In-Memory Guarantee */}
+          {/* Ephemeral Session Note */}
           <div className="pt-3 border-t border-slate-100 flex items-start gap-2 text-[11px] text-slate-500 leading-relaxed">
             <Lock size={12} className="text-slate-400 shrink-0 mt-0.5" />
             <span>
-              <strong>Ephemeral Session:</strong> Token is retained exclusively in client memory during your active browser tab and is never saved to disk or server logs.
+              <strong>Ephemeral Session:</strong> Token is retained only in browser memory and is never saved to disk, database, or server logs.
             </span>
           </div>
         </div>
 
-        {/* Specifications Badges */}
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-slate-400 font-mono">
-          <span>ISO/IEC 21031:2024 (GSF SCI)</span>
-          <span>&middot;</span>
-          <span>FinOps FOCUS 1.4</span>
-          <span>&middot;</span>
-          <span>Apache-2.0</span>
+        {/* Locked Footer Links & Specifications */}
+        <div className="mt-6 flex flex-col items-center gap-2 text-xs text-slate-400 font-mono">
+          <div className="flex items-center gap-3">
+            <span>ISO/IEC 21031:2024</span>
+            <span>&middot;</span>
+            <span>FinOps FOCUS 1.4</span>
+            <span>&middot;</span>
+            <span>Apache-2.0</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href="https://github.com/zeenat28-ui/greencode"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-slate-600 transition-colors inline-flex items-center gap-1"
+            >
+              <Github size={11} />
+              <span>Source Repository</span>
+            </a>
+            <span>&middot;</span>
+            <span>&copy; 2026 Zeenat (@zeenat28-ui)</span>
+          </div>
         </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="w-full max-w-md mx-auto text-center text-xs text-slate-400 font-mono py-2">
-        <span>&copy; 2026 Zeenat (@zeenat28-ui) &middot; GreenCode Platform</span>
-      </footer>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { scanService, gridService } from '../services/greencodeApi';
+import { gridService } from '../services/greencodeApi';
 import { ScanResult, ZoneData } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import ScoreBadge from '../components/common/ScoreBadge';
@@ -16,20 +16,17 @@ import {
   AlertTriangle,
   CheckCircle2,
   ArrowRight,
-  RefreshCw,
   FileCode2,
   FileText,
   DollarSign,
   Bot,
   Code2,
-  FlaskConical,
 } from 'lucide-react';
 import AlexaVoiceCockpit from '../components/common/AlexaVoiceCockpit';
 import EsgAuditModal from '../components/common/EsgAuditModal';
 import CiCdBadgeModal from '../components/common/CiCdBadgeModal';
 import FinOpsCalculatorModal from '../components/common/FinOpsCalculatorModal';
 import GitHubBotPreviewModal from '../components/common/GitHubBotPreviewModal';
-import { DEMO_SCAN_DATA } from '../utils/demoData';
 
 export default function Dashboard() {
   const [scanData, setScanData] = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
@@ -37,7 +34,6 @@ export default function Dashboard() {
   const [activeZone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
   const [gridData, setGridData] = useState<ZoneData | null>(null);
   const [isMounting, setIsMounting] = useState(true);
-  const [loadingSample, setLoadingSample] = useState(false);
   const [showEsgModal, setShowEsgModal] = useState(false);
   const [showCiCdModal, setShowCiCdModal] = useState(false);
   const [showFinOpsModal, setShowFinOpsModal] = useState(false);
@@ -50,38 +46,6 @@ export default function Dashboard() {
       .then((r) => setGridData(r.data))
       .catch(() => setGridData(null));
   }, [activeZone]);
-
-  const handleScanSample = async () => {
-    setLoadingSample(true);
-    try {
-      const res = await fetch('/api/scan/local-workspace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subpath: 'samples',
-          repo_name: 'greencode-org/samples-benchmark',
-          team_id: 'core-platform',
-        }),
-      });
-      if (res.ok) {
-        const liveData = await res.json();
-        setScanData(liveData);
-        return;
-      }
-      const history = await scanService.getHistory(1, 0);
-      const latest = history.data.repositories?.[0];
-      if (latest?.full_name) {
-        const resp = await scanService.scanGitHub(latest.full_name, latest.default_branch || undefined);
-        setScanData(resp.data);
-      } else {
-        setScanData(Object.values(DEMO_SCAN_DATA)[0]);
-      }
-    } catch {
-      setScanData(Object.values(DEMO_SCAN_DATA)[0]);
-    } finally {
-      setLoadingSample(false);
-    }
-  };
 
   const greenScore = scanData?.green_score ?? 0;
   const isPass = greenScore >= threshold;
@@ -171,15 +135,6 @@ export default function Dashboard() {
                 <ShieldCheck size={13} className="text-zinc-600" />
                 <span>CI/CD Gate</span>
               </button>
-              <button
-                onClick={handleScanSample}
-                disabled={loadingSample}
-                className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 whitespace-nowrap"
-                title="Execute Reference Benchmark Suite"
-              >
-                <RefreshCw size={13} className={loadingSample ? 'animate-spin text-emerald-600' : 'text-zinc-500'} />
-                <span>{loadingSample ? 'Running...' : 'Benchmark'}</span>
-              </button>
             </>
           )}
           <Link
@@ -191,19 +146,6 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
-
-      {/* Demo-data notice: shown only when the active scan is bundled sample data. */}
-      {scanData?.is_demo && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
-          <FlaskConical size={15} className="text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-900 leading-relaxed">
-            <span className="font-semibold">Demo data.</span> This is a bundled sample scan, not a live
-            audit of your repository. Run a real scan from the{' '}
-            <Link to="/scan" className="font-semibold underline hover:text-amber-950">Scan Repository</Link>{' '}
-            page to populate metrics from your own code.
-          </div>
-        </div>
-      )}
 
       {/* Row 2: Above-the-Fold Quality Gate Hero + 4 Core Engineering KPIs */}
       {scanData ? (
@@ -408,14 +350,6 @@ export default function Dashboard() {
             Audit a local directory, upload a source archive, or connect a GitHub repository to compute GSF SCI metrics and synthesize AST remediations.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
-            <button
-              onClick={handleScanSample}
-              disabled={loadingSample}
-              className="btn-secondary flex items-center gap-2 text-xs px-4 py-2"
-            >
-              <RefreshCw size={13} className={loadingSample ? 'animate-spin text-emerald-600' : 'text-zinc-600'} />
-              <span>{loadingSample ? 'Analyzing Reference Suite...' : 'Run Reference Benchmark Suite'}</span>
-            </button>
             <Link to="/scan" className="btn-primary flex items-center gap-2 text-xs px-4 py-2">
               <GitBranch size={13} />
               <span>Scan Repository</span>

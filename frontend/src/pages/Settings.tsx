@@ -22,7 +22,6 @@ export default function Settings() {
 
   const [selectedZone, setSelectedZone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
   const [qualityThreshold, setQualityThreshold] = useLocalStorage('greencode_threshold', 75);
-  const [saved, setSaved] = useState(false);
 
   const [gridData, setGridData] = useState<ZoneData | null>(null);
   const [gridLoading, setGridLoading] = useState(false);
@@ -148,11 +147,6 @@ export default function Settings() {
     }
   };
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
-
   return (
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200/80 pb-3">
@@ -166,14 +160,12 @@ export default function Settings() {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          {saved && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-900 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg">
-              <CheckCircle size={13} className="text-emerald-600" /> Saved
-            </span>
-          )}
-          <button onClick={handleSave} className="btn-primary flex items-center gap-1.5 text-xs py-2 px-4">
-            <CheckCircle size={13} /> Save Changes
-          </button>
+          <span
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg"
+            title="Zone and threshold persist to this browser instantly on change."
+          >
+            <CheckCircle size={13} className="text-emerald-600" /> Auto-saved
+          </span>
         </div>
       </div>
 

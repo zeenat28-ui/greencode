@@ -8,7 +8,6 @@ import {
   Lock, Globe, ChevronDown, CheckCircle2, Cpu, ArrowRight,
   Play, FileCode2
 } from 'lucide-react';
-import { DEMO_SCAN_DATA } from '../utils/demoData';
 
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -166,7 +165,7 @@ export default function ScanRepository() {
   };
 
   const [directSlug, setDirectSlug] = useState('');
-  const [localSubpath, setLocalSubpath] = useState('samples');
+  const [localSubpath, setLocalSubpath] = useState('app');
 
   const handleScanLocalSubpath = async (subpath: string, repoLabel: string) => {
     setIsScanning(true);
@@ -189,13 +188,7 @@ export default function ScanRepository() {
       setScanData(applyEnergyEstimates(body));
       navigate('/dashboard');
     } catch (err: any) {
-      const demo = DEMO_SCAN_DATA[repoLabel] || Object.values(DEMO_SCAN_DATA)[0];
-      if (demo && !navigator.onLine) {
-        setScanData(applyEnergyEstimates(demo));
-        navigate('/dashboard');
-      } else {
-        setScanError(err?.message || 'Could not complete workspace audit.');
-      }
+      setScanError(err?.message || 'Could not complete workspace audit.');
     } finally {
       setIsScanning(false);
     }
@@ -227,18 +220,11 @@ export default function ScanRepository() {
 
   const LIVE_WORKSPACE_TARGETS = [
     {
-      subpath: 'samples',
-      repo_name: 'greencode-org/samples-benchmark',
-      name: 'samples/ (Multi-Language Benchmark)',
-      language: 'Python / JS / C++ / Java / Go',
-      description: 'Live on-disk benchmark suite containing real cubic loops, uncached network calls, and raw DB cursors alongside optimized code.',
-    },
-    {
       subpath: 'app',
       repo_name: 'greencode-org/greencode-backend',
       name: 'app/ (GreenCode Core Engine)',
       language: 'Python',
-      description: 'Live self-audit of GreenCode FastAPI routers, AST/Tree-sitter parser, and calibrated energy profiler (100/100 target).',
+      description: 'Live self-audit of GreenCode FastAPI routers, AST/Tree-sitter parser, and calibrated energy profiler.',
     },
     {
       subpath: 'frontend/src',
@@ -301,7 +287,7 @@ export default function ScanRepository() {
               type="text"
               value={localSubpath}
               onChange={(e) => setLocalSubpath(e.target.value)}
-              placeholder="e.g. samples, app, frontend/src, scripts"
+              placeholder="e.g. app, frontend/src, scripts"
               className="input text-xs font-mono flex-1"
             />
             <button

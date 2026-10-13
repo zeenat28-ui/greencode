@@ -39,40 +39,9 @@ export const setRefreshToken = (token: string | null): void => {
     // Storage unavailable (private mode) - session simply won't survive reloads.
   }
 };
-/**
- * Demo mode marker.
- *
- * The interactive preview session provides a populated walkthrough without a
- * GitHub token. It issues no real token, so authenticated endpoints
- * answer 401 - and the interceptor below treats 401 as an expired session
- * unless demo mode is active.
- *
- * loginAsDemo sets this flag, and the 401 handler consults it so a demo session
- * keeps its state and lets each page render its local state.
- */
-const DEMO_MODE_KEY = 'greencode_demo_mode';
-
-export const isDemoMode = (): boolean => {
-  try {
-    return localStorage.getItem(DEMO_MODE_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
-
-export const setDemoMode = (on: boolean): void => {
-  try {
-    if (on) localStorage.setItem(DEMO_MODE_KEY, '1');
-    else localStorage.removeItem(DEMO_MODE_KEY);
-  } catch {
-    // Storage unavailable (private mode) - demo simply degrades to signing out.
-  }
-};
-
 export const clearSession = (): void => {
   _accessToken = null;
   setRefreshToken(null);
-  setDemoMode(false);
 };
 
 const api = axios.create({
@@ -135,12 +104,6 @@ api.interceptors.response.use(
           clearSession();
         }
       }
-      // A demo session holds no token by design, so a 401 is expected rather
-      // than a sign of an expired session.
-      if (isDemoMode()) {
-        return Promise.reject(error);
-      }
-
       clearSession();
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }

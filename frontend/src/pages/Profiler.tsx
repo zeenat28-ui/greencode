@@ -22,7 +22,7 @@ export default function Profiler() {
   const [benchmarksLoading, setBenchmarksLoading] = useState(true);
   const [selected, setSelected] = useState<string>('');
 
-  const [gridIntensity, setGridIntensity] = useState(215);
+  const [gridIntensity, setGridIntensity] = useState<number | null>(null);
   const [timeoutSec, setTimeoutSec] = useState(20);
   const [isProfiling, setIsProfiling] = useState(false);
   const [result, setResult] = useState<ProfilingResult | null>(null);
@@ -46,8 +46,8 @@ export default function Profiler() {
   useEffect(() => {
     gridService
       .getZoneIntensity(zone)
-      .then((r) => setGridIntensity(r.data.marginal_carbon_intensity ?? r.data.carbon_intensity ?? 215))
-      .catch(() => setGridIntensity(215));
+      .then((r) => setGridIntensity(r.data.marginal_carbon_intensity ?? r.data.carbon_intensity ?? null))
+      .catch(() => setGridIntensity(null));
   }, [zone]);
 
   const handleProfile = async () => {
@@ -117,7 +117,7 @@ export default function Profiler() {
         </div>
         <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-olive-50 border border-olive-200 text-xs font-semibold text-olive-900 shadow-sm">
           <span className="w-2.5 h-2.5 rounded-full bg-olive-600 animate-pulse" />
-          <span>Active Grid: <strong className="font-mono">{zone}</strong> &middot; <strong className="font-mono">{gridIntensity}</strong> gCO₂e/kWh</span>
+          <span>Active Grid: <strong className="font-mono">{zone}</strong> &middot; <strong className="font-mono">{gridIntensity != null ? gridIntensity : '—'}</strong> {gridIntensity != null && 'gCO₂e/kWh'}</span>
         </div>
       </div>
 

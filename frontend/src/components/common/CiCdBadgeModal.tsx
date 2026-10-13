@@ -14,7 +14,7 @@ interface CiCdBadgeModalProps {
 export default function CiCdBadgeModal({
   isOpen,
   onClose,
-  score = 92,
+  score = 0,
 }: CiCdBadgeModalProps) {
   const [copiedType, setCopiedType] = useState<string | null>(null);
 

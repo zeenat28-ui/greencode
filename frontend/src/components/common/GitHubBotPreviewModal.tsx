@@ -25,6 +25,7 @@ export default function GitHubBotPreviewModal({
 }: GitHubBotPreviewModalProps) {
   const [isPatched, setIsPatched] = useState(false);
   const [isPatching, setIsPatching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [liveDiff, setLiveDiff] = useState<string>('');
   const [liveSuggestionMd, setLiveSuggestionMd] = useState<string>('');
   const [refactorMeta, setRefactorMeta] = useState<{
@@ -40,49 +41,57 @@ export default function GitHubBotPreviewModal({
 
   const handleApplyBotPatch = async () => {
     setIsPatching(true);
+    setError(null);
     try {
-      const [refactorRes, gateRes] = await Promise.all([
-        fetch('/api/refactor', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source_code: DEFAULT_PR_SNIPPET,
-            language: 'python',
-            violation_type: 'nested_loop_lookup',
-            file_path: 'checkout/inventory.py',
-            start_line: 48,
-            end_line: 55,
-          }),
+      const refactorRes = await fetch('/api/refactor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_code: DEFAULT_PR_SNIPPET,
+          language: 'python',
+          violation_type: 'nested_loop_lookup',
+          file_path: 'checkout/inventory.py',
+          start_line: 48,
+          end_line: 55,
         }),
-        fetch('/api/energy/budgets/evaluate-pr', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            team_name: repoName || 'core-platform',
-            pr_delta_gco2e: -14.2,
-          }),
-        }),
-      ]);
+      });
 
-      if (refactorRes.ok) {
-        const data = await refactorRes.json();
-        const gateData = gateRes.ok ? await gateRes.json() : null;
-        setLiveDiff(
-          data.unified_diff ||
-            `--- a/checkout/inventory.py\n+++ b/checkout/inventory.py\n@@ -48,7 +48,4 @@\n-${DEFAULT_PR_SNIPPET.split('\n').join('\n-')}\n+${(data.refactored_code || '').split('\n').join('\n+')}`
-        );
-        setLiveSuggestionMd(data.github_suggestion_markdown || '');
-        setRefactorMeta({
-          model: data.model || 'Deterministic AST Engine',
-          source: data.source || 'ast_verifier',
-          behaviourVerified: Boolean(data.behaviour_verified),
-          energyReductionPct: Number(data.estimated_energy_reduction_pct || 58),
-          gateVerdict: gateData?.evaluation?.status || 'PASS',
-        });
+      if (!refactorRes.ok) {
+        setError(`Refactor service returned HTTP ${refactorRes.status}. No patch was applied.`);
+        return;
       }
+
+      const data = await refactorRes.json();
+      const energyReductionPct = Number(data.estimated_energy_reduction_pct ?? 0);
+
+      // Evaluate the PR using a carbon delta derived from the real refactor result
+      // (a positive energy reduction -> negative gCO2e delta). No fixed "pass" value.
+      const gateRes = await fetch('/api/energy/budgets/evaluate-pr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_name: repoName || 'core-platform',
+          pr_delta_gco2e: Number((-energyReductionPct * 0.25).toFixed(2)),
+        }),
+      });
+      const gateData = gateRes.ok ? await gateRes.json() : null;
+
+      setLiveDiff(
+        data.unified_diff ||
+          `--- a/checkout/inventory.py\n+++ b/checkout/inventory.py\n@@ -48,7 +48,4 @@\n-${DEFAULT_PR_SNIPPET.split('\n').join('\n-')}\n+${(data.refactored_code || '').split('\n').join('\n+')}`
+      );
+      setLiveSuggestionMd(data.github_suggestion_markdown || '');
+      setRefactorMeta({
+        model: data.model || 'Deterministic AST Engine',
+        source: data.source || 'ast_verifier',
+        behaviourVerified: Boolean(data.behaviour_verified),
+        energyReductionPct,
+        gateVerdict: gateData?.evaluation?.status || 'PENDING',
+      });
       setIsPatched(true);
-    } catch {
-      setIsPatched(true);
+    } catch (err: any) {
+      // Honest failure: do NOT claim a patch was verified when the call errored.
+      setError(err?.message || 'Refactor request failed. No patch was applied.');
     } finally {
       setIsPatching(false);
     }
@@ -93,6 +102,7 @@ export default function GitHubBotPreviewModal({
     setLiveDiff('');
     setLiveSuggestionMd('');
     setRefactorMeta(null);
+    setError(null);
   };
 
   const copyText = (text: string, label: string) => {
@@ -156,15 +166,15 @@ export default function GitHubBotPreviewModal({
                     isPatched ? 'bg-purple-600' : 'bg-emerald-600'
                   }`}>
                     <GitPullRequest size={12} />
-                    {isPatched ? 'Patch Verified' : 'Open PR'}
+                    {isPatched ? 'Patch Verified' : 'Preview PR'}
                   </span>
                   <span className="text-sm font-bold text-slate-900">
                     feat(checkout): update warehouse stock matching logic
                   </span>
-                  <span className="text-xs text-slate-400 font-mono">{repoName ? `${repoName}#142` : '#142'}</span>
+                  <span className="text-xs text-slate-400 font-mono">{repoName ? `${repoName} (example)` : 'example PR'}</span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  Target branch: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-800">main</code> &larr; <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-800">feature/order-sync</code>
+                  Illustrative preview of a bot-authored PR &mdash; target branch: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-800">main</code> &larr; <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-800">feature/order-sync</code>
                 </p>
               </div>
 
@@ -193,17 +203,24 @@ export default function GitHubBotPreviewModal({
                 <div className="font-medium">
                   {isPatched ? (
                     <span>
-                      <strong>GreenCode Quality Gate: {refactorMeta?.gateVerdict || 'PASSED'} (SCI: 94/100)</strong> — Behaviour verified: {refactorMeta?.behaviourVerified ? 'AST + Sandbox Equivalence Passed' : 'Verified'}
+                      <strong>GreenCode Quality Gate: {refactorMeta?.gateVerdict || 'PASSED'}</strong> — Behaviour verified: {refactorMeta?.behaviourVerified ? 'AST + Sandbox Equivalence Passed' : 'Verified'}
                     </span>
                   ) : (
-                    <span><strong>GreenCode Quality Gate: FAILED (SCI: 64/100)</strong> — Quality threshold &ge; 75/100 required</span>
+                    <span><strong>GreenCode Quality Gate: PENDING</strong> — Apply the bot patch to run the gate &amp; get a verdict</span>
                   )}
                 </div>
               </div>
               <span className="font-mono text-[11px] font-semibold">
-                {isPatched ? 'All checks passed' : '1 check blocking'}
+                {isPatched ? 'Checks running' : 'Not yet run'}
               </span>
             </div>
+
+            {error && (
+              <div className="p-3 rounded-lg border bg-rose-50 border-rose-200 text-rose-900 text-xs flex items-start gap-2">
+                <AlertTriangle size={15} className="text-rose-600 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
           </div>
 
           {/* GitHub Bot Comment Container */}
@@ -230,7 +247,7 @@ export default function GitHubBotPreviewModal({
                   <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-900 space-y-1">
                     <div className="font-bold flex items-center gap-1.5">
                       <CheckCircle2 size={14} className="text-emerald-600" />
-                      Live Unified Diff Synthesized ({refactorMeta?.energyReductionPct ?? 58}% Estimated Energy Reduction)
+                      Live Unified Diff Synthesized ({refactorMeta?.energyReductionPct ?? 0}% Estimated Energy Reduction)
                     </div>
                     <p className="text-[11px] text-emerald-800">
                       Generated by <code className="bg-emerald-100/60 px-1 rounded font-mono">{refactorMeta?.model}</code>. Copy the unified patch or GitHub PR suggestion block below to commit directly.

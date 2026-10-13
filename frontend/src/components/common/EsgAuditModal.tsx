@@ -24,10 +24,10 @@ export default function EsgAuditModal({
 
   if (!isOpen) return null;
 
-  const score = scanData.green_score || 85;
-  const violations = scanData.total_violations || 0;
-  const energyWh = scanData.energy_wh || 0.042;
-  const carbonG = scanData.carbon_g || (energyWh / 1000) * (marginalRate || 215);
+  const score = scanData.green_score ?? 0;
+  const violations = scanData.total_violations ?? 0;
+  const energyWh = scanData.energy_wh ?? 0;
+  const carbonG = scanData.carbon_g ?? (energyWh / 1000) * (marginalRate ?? 0);
   const auditDate = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -35,10 +35,13 @@ export default function EsgAuditModal({
   });
   const auditId = `GC-ESG-${String(scanData.total_files || 0).padStart(4, '0')}-${score}-${new Date().getFullYear()}`;
 
-  // Annual projection for 10 EC2 instances running 24/7
+  // Modeled annual projection: each detected violation is assumed to represent
+  // ~1.8 W of continuous CPU draw running 24/7 (8,760 h). Dollar savings derive
+  // from the resulting kWh at a stated ~$0.12/kWh grid rate — no per-violation
+  // dollar figure is invented. The disclosure below states these are estimates.
   const annualKwhSaved = ((violations * 1.8 * 8760) / 1000);
-  const annualKgCo2Saved = ((annualKwhSaved * (marginalRate || 215)) / 1000);
-  const annualDollarSaved = Math.round(annualKwhSaved * 0.14 + (violations * 180));
+  const annualKgCo2Saved = ((annualKwhSaved * (marginalRate ?? 0)) / 1000);
+  const annualDollarSaved = Math.round(annualKwhSaved * 0.12);
 
   const handlePrint = () => {
     window.print();
@@ -185,7 +188,7 @@ export default function EsgAuditModal({
                   <tr>
                     <td className="py-2.5 px-3 font-sans font-medium text-slate-800">Marginal Grid Carbon ($I$)</td>
                     <td className="py-2.5 px-3 font-sans text-slate-500">Electricity Maps telemetry ({activeZone})</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-slate-900">{marginalRate || 215} gCO₂e/kWh</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-slate-900">{marginalRate ?? '—'} {marginalRate != null && 'gCO₂e/kWh'}</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-3 font-sans font-medium text-slate-800">Total Operational Carbon ($O$)</td>
@@ -216,7 +219,7 @@ export default function EsgAuditModal({
                 <div className="text-lg font-bold text-slate-900 font-mono">
                   {annualKgCo2Saved.toFixed(1)} kgCO₂e
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">Across 10 continuous cloud nodes</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">Modeled: violations × ~1.8 W × 8,760 h</div>
               </div>
 
               <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50">
@@ -238,7 +241,7 @@ export default function EsgAuditModal({
                 <div className="text-lg font-bold text-emerald-800 font-mono">
                   ~${annualDollarSaved.toLocaleString()} / yr
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">Estimated AWS EC2 compute cost cut</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">Modeled at ~$0.12/kWh grid rate</div>
               </div>
             </div>
           </div>
@@ -247,8 +250,8 @@ export default function EsgAuditModal({
           <p className="text-[10px] leading-relaxed text-slate-500">
             <strong className="text-slate-600">About these projections:</strong> annual savings are
             modeled estimates derived from the detected violation count (&times; 1.8 W continuous
-            draw &times; 8,760 h) and a published grid-intensity rate &mdash; not metered
-            measurements. Per-scan energy and carbon figures above come from the actual
+            draw &times; 8,760 h) and a stated &sim;$0.12/kWh grid rate &mdash; not metered
+            measurements or a cost quote. Per-scan energy and carbon figures above come from the actual
             RAPL-instrumented scan of this repository.
           </p>
 

@@ -11,7 +11,6 @@ import {
   ExternalLink,
   Terminal,
   Cpu,
-  Activity,
   GitPullRequest,
   CheckCircle2,
 } from 'lucide-react';
@@ -37,7 +36,7 @@ const CAPABILITY_HIGHLIGHTS = [
 ];
 
 export default function Login() {
-  const { connectGitHub, loginAsDemo } = useAuth();
+  const { connectGitHub } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from || '/dashboard';
@@ -45,7 +44,6 @@ export default function Login() {
   const [githubToken, setGithubToken] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [guestLoading, setGuestLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -69,16 +67,6 @@ export default function Login() {
       setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleWorkspacePreview = () => {
-    setError(null);
-    setGuestLoading(true);
-    try {
-      loginAsDemo();
-    } finally {
-      setGuestLoading(false);
     }
   };
 
@@ -116,7 +104,7 @@ export default function Login() {
               Sign in to GreenCode
             </h1>
             <p className="text-sm text-zinc-500 mt-1.5 leading-relaxed">
-              Authenticate with a GitHub personal access token to audit repositories, or open the interactive workspace.
+              Authenticate with a GitHub personal access token to audit your repositories and compute GSF SCI metrics.
             </p>
           </div>
 
@@ -181,7 +169,7 @@ export default function Login() {
 
             <button
               type="submit"
-              disabled={loading || guestLoading}
+              disabled={loading}
               className="w-full py-2.5 px-4 rounded-lg bg-zinc-900 hover:bg-zinc-800 active:bg-zinc-950 text-white text-xs font-medium flex items-center justify-center gap-2 transition-colors shadow-xs disabled:opacity-50"
             >
               {loading ? (
@@ -198,39 +186,6 @@ export default function Login() {
               )}
             </button>
           </form>
-
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-zinc-200" />
-            </div>
-            <div className="relative flex justify-center text-[11px]">
-              <span className="bg-white px-2.5 text-zinc-400 font-medium">
-                or
-              </span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleWorkspacePreview}
-            disabled={loading || guestLoading}
-            className="w-full py-2.5 px-4 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-200 hover:border-zinc-300 text-xs font-medium flex items-center justify-center gap-2 transition-all shadow-2xs disabled:opacity-50"
-          >
-            {guestLoading ? (
-              <>
-                <Loader2 size={14} className="animate-spin text-emerald-600" />
-                <span>Initializing workspace...</span>
-              </>
-            ) : (
-              <>
-                <Activity size={14} className="text-emerald-600" />
-                <span>Open Interactive Workspace</span>
-              </>
-            )}
-          </button>
-          <p className="text-[11px] text-zinc-400 text-center mt-2">
-            Explore pre-loaded repository audits, SCI metrics, and FinOps cost models without a token.
-          </p>
         </div>
 
         {/* Bottom Metadata Footer */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Sliders, Save, CheckCircle2, FileCode, Terminal, Play } from 'lucide-react';
+import { ShieldAlert, Sliders, Save, CheckCircle2, FileCode, Terminal, Play, AlertTriangle } from 'lucide-react';
 
 const SAMPLE_TF = `resource "aws_instance" "api_node" {
   ami           = "ami-0c55b159cbfafe1f0"
@@ -32,6 +32,7 @@ export default function Policies() {
   const [autoRollback, setAutoRollback] = useState(true);
   const [dirtyGridLimit, setDirtyGridLimit] = useState(450.0);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [customRules, setCustomRules] = useState<any[]>([]);
   const [customTestCode, setCustomTestCode] = useState(
@@ -73,13 +74,15 @@ export default function Policies() {
   }, []);
 
   const handleSave = async () => {
+    setSaveError(null);
+    setSavedSuccess(false);
     try {
       const token = localStorage.getItem('greencode_token');
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
-      await fetch('/api/policies', {
+      const res = await fetch('/api/policies', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -92,11 +95,16 @@ export default function Policies() {
           dirty_grid_threshold_gco2e: dirtyGridLimit,
         }),
       });
-    } catch {
-      // Fall back to local state confirmation if unauthenticated
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({} as any));
+        setSaveError(body?.detail || `Save failed (HTTP ${res.status}).`);
+        return;
+      }
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (err: any) {
+      setSaveError(err?.message || 'Could not reach the policy service.');
     }
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
   };
 
   const handleEvaluateCustomRules = async () => {
@@ -167,6 +175,13 @@ export default function Policies() {
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm p-4 rounded-xl flex items-center gap-2">
           <CheckCircle2 className="w-5 h-5 text-emerald-600" />
           <span>Policies successfully updated and synchronized across all deployment sentinels.</span>
+        </div>
+      )}
+
+      {saveError && (
+        <div className="bg-red-50 border border-red-200 text-red-800 text-sm p-4 rounded-xl flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-red-600" />
+          <span>{saveError}</span>
         </div>
       )}
 

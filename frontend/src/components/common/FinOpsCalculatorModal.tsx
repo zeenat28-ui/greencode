@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   DollarSign, Leaf, Zap, 
-  X, TrendingDown, Sparkles 
+  X, TrendingDown, Sparkles, ArrowRight 
 } from 'lucide-react';
 
 interface FinOpsCalculatorModalProps {
@@ -346,6 +347,21 @@ export default function FinOpsCalculatorModal({
             <div className="leading-relaxed">
               <strong>Enterprise Decision Maker Takeaway:</strong> GreenCode allows engineering teams to meet ESG board requirements and sustainability goals while simultaneously slashing AWS/Azure bills with <strong>zero architecture redesign</strong>.
             </div>
+          </div>
+
+          {/* Action to AWS Cloud FinOps Workspace */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-1">
+            <span className="text-[11px] text-slate-500 font-mono">
+              Live AWS STS AssumeRole &amp; Ember 2024 regional grid mapping
+            </span>
+            <Link
+              to="/cloud-carbon"
+              onClick={onClose}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-mono text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+            >
+              <span>Launch AWS FinOps Live</span>
+              <ArrowRight size={13} />
+            </Link>
           </div>
         </div>
       </div>

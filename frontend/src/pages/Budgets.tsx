@@ -332,6 +332,10 @@ export default function Budgets() {
               <p className="text-xs text-slate-500">
                 Reconciles BilledCost and EffectiveCost against regional PUE, grid intensity (gCO2e/kWh), and AWS Graviton right-sizing
               </p>
+              <p className="text-[11px] text-amber-700 mt-1 flex items-center gap-1">
+                <span className="font-semibold">Sample data.</span>
+                Reconciled from a bundled example billing set. Upload your own FOCUS rows via POST /api/billing/focus/reconcile for real figures.
+              </p>
             </div>
             <div className="flex gap-2 text-xs font-semibold">
               <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">

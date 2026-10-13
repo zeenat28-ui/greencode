@@ -1,63 +1,15 @@
-import { ScanResult, GitHubRepo } from '../types';
+import { ScanResult } from '../types';
 
-export const DEMO_REPOSITORIES: GitHubRepo[] = [
-  {
-    full_name: 'demo-org/ecommerce-django-api',
-    name: 'ecommerce-django-api',
-    owner: 'demo-org',
-    default_branch: 'main',
-    language: 'Python',
-    description: 'High-throughput checkout service with quadratic ORM lookups and blocking database loops.',
-    size_kb: 4280,
-    private: false,
-    fork: false,
-    archived: false,
-    stars: 342,
-    forks: 48,
-    open_issues: 7,
-    updated_at: new Date().toISOString(),
-    url: 'https://github.com/demo-org/ecommerce-django-api',
-  },
-  {
-    full_name: 'demo-org/telemetry-fastapi-service',
-    name: 'telemetry-fastapi-service',
-    owner: 'demo-org',
-    default_branch: 'main',
-    language: 'Python',
-    description: 'High-frequency telemetry pipeline with unindexed stream queries and synchronous I/O bottlenecks.',
-    size_kb: 2150,
-    private: false,
-    fork: false,
-    archived: false,
-    stars: 189,
-    forks: 23,
-    open_issues: 3,
-    updated_at: new Date().toISOString(),
-    url: 'https://github.com/demo-org/telemetry-fastapi-service',
-  },
-  {
-    full_name: 'demo-org/transformers-llm-pipeline',
-    name: 'transformers-llm-pipeline',
-    owner: 'demo-org',
-    default_branch: 'main',
-    language: 'Python',
-    description: 'PyTorch LLM embedding pipeline with unquantized FP32 forward passes and missing inference_mode.',
-    size_kb: 5120,
-    private: false,
-    fork: false,
-    archived: false,
-    stars: 521,
-    forks: 74,
-    open_issues: 5,
-    updated_at: new Date().toISOString(),
-    url: 'https://github.com/demo-org/transformers-llm-pipeline',
-  },
-];
-
+/**
+ * Bundled sample audits. Every entry is flagged `is_demo: true` so the UI can
+ * label it honestly. These are used only as an offline/last-resort fallback
+ * when a live scan is unavailable - never presented as a real repository audit.
+ */
 export const DEMO_SCAN_DATA: Record<string, ScanResult> = {
   'demo-org/ecommerce-django-api': {
     repo_path: 'demo-org/ecommerce-django-api',
     full_name: 'demo-org/ecommerce-django-api',
+    is_demo: true,
     ref: 'main',
     default_branch: 'main',
     source: 'github',
@@ -205,6 +157,7 @@ export const DEMO_SCAN_DATA: Record<string, ScanResult> = {
   'demo-org/transformers-llm-pipeline': {
     repo_path: 'demo-org/transformers-llm-pipeline',
     full_name: 'demo-org/transformers-llm-pipeline',
+    is_demo: true,
     ref: 'main',
     default_branch: 'main',
     source: 'github',

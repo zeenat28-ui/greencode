@@ -2,6 +2,7 @@ import { ReactNode, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Navbar from './Navbar';
 import AmazonTechStackModal from '../common/AmazonTechStackModal';
+import ErrorBoundary from '../common/ErrorBoundary';
 import { Layers, Github } from 'lucide-react';
 import BrandLogo from '../common/BrandLogo';
 
@@ -16,7 +17,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
     <div className="min-h-screen flex flex-col bg-[#FAFAFA] text-zinc-900 overflow-x-hidden max-w-full">
       <Navbar />
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {children ?? <Outlet />}
+        <ErrorBoundary>
+          {children ?? <Outlet />}
+        </ErrorBoundary>
       </main>
       <footer className="border-t border-zinc-200/80 bg-white mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-zinc-500">

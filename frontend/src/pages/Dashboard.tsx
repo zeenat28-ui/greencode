@@ -21,8 +21,8 @@ import {
   FileText,
   DollarSign,
   Bot,
-  Calculator,
   Code2,
+  FlaskConical,
 } from 'lucide-react';
 import AlexaVoiceCockpit from '../components/common/AlexaVoiceCockpit';
 import EsgAuditModal from '../components/common/EsgAuditModal';
@@ -92,7 +92,13 @@ export default function Dashboard() {
   const carbonG = scanData?.carbon_g ?? 0;
   const marginalRate = gridData?.marginal_carbon_intensity ?? gridData?.carbon_intensity ?? null;
   const isLive = gridData?.is_live ?? false;
-  const annualSavingsUsd = Math.round(((totalViolations * 1.8 * 8760) / 1000) * 0.14 + totalViolations * 180);
+  // Language mix is a real, scan-derived fact - no fabricated dollar figures.
+  const languagesAnalyzed = Object.keys(scanData?.languages_breakdown || {}).length;
+  const topLanguages = Object.entries(scanData?.languages_breakdown || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([lang]) => lang)
+    .join(' · ');
 
   if (isMounting) {
     return (
@@ -186,6 +192,19 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Demo-data notice: shown only when the active scan is bundled sample data. */}
+      {scanData?.is_demo && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+          <FlaskConical size={15} className="text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-900 leading-relaxed">
+            <span className="font-semibold">Demo data.</span> This is a bundled sample scan, not a live
+            audit of your repository. Run a real scan from the{' '}
+            <Link to="/scan" className="font-semibold underline hover:text-amber-950">Scan Repository</Link>{' '}
+            page to populate metrics from your own code.
+          </div>
+        </div>
+      )}
+
       {/* Row 2: Above-the-Fold Quality Gate Hero + 4 Core Engineering KPIs */}
       {scanData ? (
         <>
@@ -276,11 +295,10 @@ export default function Dashboard() {
               icon={<Leaf size={15} />}
             />
             <MetricCard
-              title="Cloud FinOps Delta"
-              value={totalViolations > 0 ? `-$${annualSavingsUsd.toLocaleString()}/yr` : '$0/yr'}
-              subtitle="FOCUS 1.4 projected EC2 savings"
-              icon={<Calculator size={15} />}
-              accentColor={totalViolations > 0 ? '#059669' : undefined}
+              title="Languages Analyzed"
+              value={languagesAnalyzed}
+              subtitle={topLanguages || 'Across scanned modules'}
+              icon={<Code2 size={15} />}
             />
           </div>
 

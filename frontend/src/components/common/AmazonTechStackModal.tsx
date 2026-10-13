@@ -1,7 +1,8 @@
-import { 
-  ShieldCheck, Terminal, 
-  X, Layers 
+import {
+  ShieldCheck, Terminal,
+  X, Layers
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 interface AmazonTechStackModalProps {
   isOpen: boolean;
@@ -13,56 +14,87 @@ interface TechItem {
   category: string;
   role: string;
   codeLocation: string;
-  status: string;
 }
 
+/**
+ * Where each Amazon capability is actually implemented. These are code
+ * locations, not runtime claims - the modal never asserts that a service is
+ * "Active" or "Verified", because that can only be true for the account that is
+ * actually configured. The live connection state is read separately from
+ * GET /api/aws/health and shown in the header.
+ */
 const AMAZON_TECH_STACK: TechItem[] = [
   {
     name: 'Amazon Alexa+ Add-on & Voice MCP',
     category: 'Conversational Voice & MCP Protocol',
     role: 'Implements RFC 9728 & RFC 8414 Model Context Protocol over /mcp for hands-free code auditing and region selection.',
     codeLocation: 'alexa/addon.json · app/mcp_server.py · tests/test_alexa_compliance.py',
-    status: 'RFC 9728 Verified & Deployed',
   },
   {
-    name: 'Amazon Bedrock (Claude 3.5 Sonnet)',
+    name: 'Amazon Bedrock (Claude Sonnet / Haiku)',
     category: 'Generative AI & Code Synthesis',
-    role: 'Orchestrates AST eco-refactoring with strict zero-regression guardrails and algorithmic complexity reduction.',
+    role: 'Orchestrates AST eco-refactoring with strict zero-regression guardrails and algorithmic complexity reduction, via the Bedrock Runtime Converse API.',
     codeLocation: 'app/bedrock_client.py · app/llm_refactor.py',
-    status: 'Bedrock Converse API Active',
   },
   {
     name: 'AWS Datacenter Carbon & Grid Telemetry',
     category: 'Cloud Infrastructure & Carbon Arbitrage',
-    role: 'Real-time telemetry tracking marginal carbon intensity and compute pricing across AWS global regions (eu-west-1, us-east-1, us-west-2).',
-    codeLocation: 'app/carbon_intensity.py · frontend/src/pages/CloudCarbon.tsx',
-    status: 'Live Electricity Maps & AWS API',
+    role: 'Resolves marginal carbon intensity per AWS region via Electricity Maps, falling back to the cited Ember 2024 reference table.',
+    codeLocation: 'app/carbon_intensity.py · app/amazon_service.py',
+  },
+  {
+    name: 'AWS STS AssumeRole & Budgets FinOps',
+    category: 'Cross-Account Cost & Carbon Attribution',
+    role: 'Links an AWS account via STS AssumeRole and reads month-to-date spend with AWS Budgets for physics-calibrated carbon attribution.',
+    codeLocation: 'app/amazon_service.py · app/routers/amazon.py',
   },
   {
     name: 'AWS CodeArtifact & alexa-ai CLI Toolchain',
     category: 'Package Distribution & Deployment',
     role: 'Automates add-on packaging, icon generation, and endpoint verification for Alexa+ skills via AWS CodeArtifact.',
     codeLocation: 'alexa/README.md · scripts/gen_alexa_icons.py',
-    status: 'Schema 1.0 Compliant',
-  },
-  {
-    name: 'AWS EC2 Cost & Carbon Rightsizing',
-    category: 'Compute & Cloud Cost Optimization',
-    role: 'Calculates infrastructure savings across AWS Graviton (m6g), Compute-Optimized (c6i), and GPU AI (g5) workloads.',
-    codeLocation: 'frontend/src/components/common/FinOpsCalculatorModal.tsx',
-    status: 'Cost Calculator Active',
   },
 ];
+
+interface AwsHealth {
+  status?: string;
+  connected_accounts?: number;
+}
 
 export default function AmazonTechStackModal({
   isOpen,
   onClose,
 }: AmazonTechStackModalProps) {
+  const [health, setHealth] = useState<AwsHealth | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    const token = localStorage.getItem('greencode_token');
+    fetch('/api/aws/health', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (active && data) setHealth(data);
+      })
+      .catch(() => {
+        if (active) setHealth(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const connectedAccounts = health?.connected_accounts;
+  const headerStatus =
+    health === null
+      ? 'Checking…'
+      : `${health.status || 'UNKNOWN'} · ${connectedAccounts ?? 0} account${connectedAccounts === 1 ? '' : 's'} linked`;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div 
+      <div
         className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
@@ -75,12 +107,12 @@ export default function AmazonTechStackModal({
             <div>
               <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
                 Amazon &amp; AWS Integration Architecture
-                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-mono">
-                  Verified
+                <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-700/60 text-zinc-200 border border-zinc-600 font-mono">
+                  {headerStatus}
                 </span>
               </h3>
               <p className="text-[11px] text-slate-400">
-                Documentation of Amazon products, services, and APIs integrated with GreenCode
+                Where each Amazon capability is implemented in GreenCode. Live status is read from the running backend.
               </p>
             </div>
           </div>
@@ -91,6 +123,7 @@ export default function AmazonTechStackModal({
             <X size={16} />
           </button>
         </div>
+
 
         <div className="p-6 space-y-6 text-slate-800 max-h-[82vh] overflow-y-auto">
           {/* Architecture Summary */}
@@ -122,8 +155,8 @@ export default function AmazonTechStackModal({
                       </span>
                       <span className="font-bold text-xs text-slate-900">{item.name}</span>
                     </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold self-start sm:self-auto">
-                      {item.status}
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-semibold self-start sm:self-auto">
+                      {item.category}
                     </span>
                   </div>
 

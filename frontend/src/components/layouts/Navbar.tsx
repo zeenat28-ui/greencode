@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard, GitBranch, AlertCircle,
-  Gauge, Settings, ShieldCheck,
+  Gauge, Settings, ShieldCheck, Cloud,
   Loader2, LogOut, Github, ChevronDown,
   Sliders, DollarSign, Activity, FileText
 } from 'lucide-react';
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { name: 'Scan',        path: '/scan',        icon: GitBranch },
   { name: 'Issues',      path: '/issues',      icon: AlertCircle },
   { name: 'Overview',    path: '/overview',    icon: Activity },
+  { name: 'Cloud',       path: '/cloud-carbon', icon: Cloud },
   { name: 'Budgets',     path: '/budgets',     icon: DollarSign },
   { name: 'Policies',    path: '/policies',    icon: Sliders },
   { name: 'Deploys',     path: '/deployments', icon: Gauge },

@@ -197,6 +197,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem('greencode_scan_data', JSON.stringify({
         repo_path: 'greencode-org/greencode',
         ref: 'main',
+        is_demo: true,
         total_files: 42,
         total_lines: 8410,
         green_score: 84.5,

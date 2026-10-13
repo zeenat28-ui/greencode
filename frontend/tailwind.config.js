@@ -72,6 +72,10 @@ module.exports = {
         sans: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
+      boxShadow: {
+        // Extra-small surface shadow for inputs and inline controls (not in TW 3.4 by default).
+        xs: '0 1px 2px 0 rgba(9, 9, 11, 0.05)',
+      },
     },
   },
   plugins: [],

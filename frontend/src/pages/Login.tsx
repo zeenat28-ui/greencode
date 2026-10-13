@@ -285,8 +285,8 @@ export default function Login() {
               <span className="text-[11px] font-mono text-zinc-400">
                 greencode-cli &mdash; audit pipeline
               </span>
-              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.5 rounded">
-                PASS
+              <span className="text-[10px] font-mono text-zinc-300 bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 rounded">
+                EXAMPLE
               </span>
             </div>
 
@@ -323,6 +323,9 @@ export default function Login() {
                 <span>SARIF 2.1.0 report &amp; OTLP metrics exported (0 violations).</span>
               </div>
             </div>
+            <p className="text-[11px] font-mono text-zinc-500 text-center">
+              Illustrative example output &mdash; not a live scan. Real metrics are computed when you audit a repository.
+            </p>
           </div>
 
           {/* 3 Engineering Capability Cards */}

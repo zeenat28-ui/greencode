@@ -245,6 +245,69 @@ export const pricingService = {
   getTiers: () => api.get('/api/pricing/tiers'),
 };
 
+// ---------------------------------------------------------------------------
+// Amazon Web Services (AWS) FinOps & Carbon
+//
+// Every call here hits a real FastAPI endpoint under /api/aws/*, which in turn
+// calls the live AWS SDK (STS AssumeRole, Budgets) and Electricity Maps. There
+// is no client-side fabrication: an unlinked account or a missing credential
+// surfaces as the backend's own fail-closed response, never a made-up number.
+// ---------------------------------------------------------------------------
+export const awsService = {
+  /** Backend health + count of linked AWS accounts for the org. */
+  getHealth: (orgId: number = 1) => api.get('/api/aws/health', { params: { org_id: orgId } }),
+
+  /** Supported AWS regions and their AWS-region -> grid-zone mapping. */
+  getRegions: () => api.get('/api/aws/regions'),
+
+  /** Live (or Ember-2024 referenced) marginal carbon intensity for one region. */
+  getRegionCarbon: (region: string) =>
+    api.get(`/api/aws/regions/${encodeURIComponent(region)}/carbon-intensity`),
+
+  /** Ranked carbon-optimal AWS target regions, honouring data residency. */
+  recommendMigration: (params: {
+    current_region: string;
+    monthly_kwh?: number;
+    data_residency?: string;
+    max_candidates?: number;
+  }) =>
+    api.get('/api/aws/regions/recommend-migration', {
+      params: {
+        current_region: params.current_region,
+        monthly_kwh: params.monthly_kwh ?? 1000.0,
+        data_residency: params.data_residency ?? 'GLOBAL',
+        max_candidates: params.max_candidates ?? 5,
+      },
+    }),
+
+  /** AWS accounts already linked to the organization. */
+  listAccounts: (orgId: number = 1) => api.get('/api/aws/accounts', { params: { org_id: orgId } }),
+
+  /** Link an AWS account via STS AssumeRole (never returns raw credentials). */
+  linkAccount: (payload: {
+    account_id: string;
+    role_arn: string;
+    region?: string;
+    account_name?: string;
+    external_id?: string;
+    org_id?: number;
+  }) => api.post('/api/aws/accounts/link', { org_id: 1, region: 'us-east-1', ...payload }),
+
+  /** Unlink an AWS account. */
+  unlinkAccount: (accountId: string, orgId: number = 1) =>
+    api.delete(`/api/aws/accounts/${encodeURIComponent(accountId)}`, { params: { org_id: orgId } }),
+
+  /** Month-to-date AWS Budgets spend + physics-calibrated carbon for a linked account. */
+  getCostCarbon: (accountId: string, params?: { region?: string; instance_type?: string; org_id?: number }) =>
+    api.get(`/api/aws/accounts/${encodeURIComponent(accountId)}/cost-carbon`, {
+      params: {
+        region: params?.region ?? 'us-east-1',
+        instance_type: params?.instance_type ?? 'c6g.xlarge',
+        org_id: params?.org_id ?? 1,
+      },
+    }),
+};
+
 export default {
   authService,
   scanService,
@@ -258,6 +321,7 @@ export default {
   mlService,
   slaService,
   pricingService,
+  awsService,
 };
 
 

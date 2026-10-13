@@ -58,6 +58,12 @@ export interface ScanResult {
   language?: string;
   source?: 'github' | 'local_workspace';
   is_github?: boolean;
+  /**
+   * True when this result is bundled sample/demo data rather than a live audit.
+   * The UI must surface this prominently so a fabricated scan is never mistaken
+   * for a real one.
+   */
+  is_demo?: boolean;
   total_files: number;
   total_lines: number;
   green_score: number;

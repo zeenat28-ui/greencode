@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { scopeService, mlService } from '../services/greencodeApi';
+import { scopeService, mlService, awsService } from '../services/greencodeApi';
 import {
   Cpu,
   Cloud,
@@ -7,11 +7,17 @@ import {
   Zap,
   Activity,
   RefreshCw,
-  Sliders
+  Sliders,
+  Server,
+  Link2,
+  TrendingDown,
+  ShieldCheck,
 } from 'lucide-react';
 
+type TabKey = 'scope' | 'ml_audit' | 'tokens' | 'aws';
+
 export default function CloudCarbon() {
-  const [activeTab, setActiveTab] = useState<'scope' | 'ml_audit' | 'tokens'>('scope');
+  const [activeTab, setActiveTab] = useState<TabKey>('scope');
 
   // Scope 1-3 Form State
   const [scopeForm, setScopeForm] = useState({
@@ -59,6 +65,36 @@ def predict(input_tensor):
   });
   const [tokenResult, setTokenResult] = useState<any>(null);
   const [tokenLoading, setTokenLoading] = useState(false);
+
+  // ------------------------------------------------------------------
+  // AWS FinOps & Carbon state (all values come from the live /api/aws/* API)
+  // ------------------------------------------------------------------
+  const [awsRegions, setAwsRegions] = useState<any>(null);
+  const [awsCarbon, setAwsCarbon] = useState<any>(null);
+  const [awsCarbonLoading, setAwsCarbonLoading] = useState(false);
+  const [awsRegion, setAwsRegion] = useState('us-east-1');
+
+  const [migrationForm, setMigrationForm] = useState({
+    current_region: 'us-east-1',
+    monthly_kwh: 1000,
+    data_residency: 'GLOBAL',
+  });
+  const [migrationResult, setMigrationResult] = useState<any>(null);
+  const [migrationLoading, setMigrationLoading] = useState(false);
+
+  const [awsAccounts, setAwsAccounts] = useState<any[]>([]);
+  const [linkForm, setLinkForm] = useState({
+    account_id: '',
+    role_arn: '',
+    account_name: 'AWS Account',
+    region: 'us-east-1',
+  });
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkMsg, setLinkMsg] = useState<string | null>(null);
+
+  const [costCarbon, setCostCarbon] = useState<any>(null);
+  const [costCarbonLoading, setCostCarbonLoading] = useState(false);
+  const [costCarbonAccount, setCostCarbonAccount] = useState('');
 
   const handleRunScope = async () => {
     setScopeLoading(true);
@@ -114,6 +150,109 @@ def predict(input_tensor):
     }
   };
 
+  // ---- AWS FinOps & Carbon handlers (live /api/aws/* calls) ----
+  const loadAwsRegions = async () => {
+    try {
+      const resp = await awsService.getRegions();
+      setAwsRegions(resp.data);
+      // Preselect the first supported region for the carbon lookup.
+      const regions: string[] = resp.data?.regions || [];
+      if (regions.length && !regions.includes(awsRegion)) setAwsRegion(regions[0]);
+    } catch (err) {
+      console.error('AWS regions load error:', err);
+    }
+  };
+
+  const loadAwsCarbon = async (region: string) => {
+    setAwsCarbonLoading(true);
+    try {
+      const resp = await awsService.getRegionCarbon(region);
+      setAwsCarbon(resp.data);
+    } catch (err) {
+      console.error('AWS region carbon error:', err);
+      setAwsCarbon(null);
+    } finally {
+      setAwsCarbonLoading(false);
+    }
+  };
+
+  const loadAwsAccounts = async () => {
+    try {
+      const resp = await awsService.listAccounts();
+      const accounts = resp.data?.accounts || [];
+      setAwsAccounts(accounts);
+      if (accounts.length && !costCarbonAccount) {
+        setCostCarbonAccount(accounts[0].account_id);
+      }
+    } catch (err) {
+      console.error('AWS accounts load error:', err);
+    }
+  };
+
+  const handleLinkAccount = async () => {
+    setLinkLoading(true);
+    setLinkMsg(null);
+    try {
+      const resp = await awsService.linkAccount({
+        account_id: linkForm.account_id.trim(),
+        role_arn: linkForm.role_arn.trim(),
+        account_name: linkForm.account_name.trim() || 'AWS Account',
+        region: linkForm.region,
+      });
+      const data = resp.data;
+      if (data?.status === 'LINKED') {
+        setLinkMsg(`Linked ${data.account_name} (${data.account_id}) - STS session verified.`);
+        setLinkForm({ account_id: '', role_arn: '', account_name: 'AWS Account', region: 'us-east-1' });
+        loadAwsAccounts();
+      } else {
+        setLinkMsg(`Link failed: ${data?.error || data?.error_code || 'unknown error'}`);
+      }
+    } catch (err: any) {
+      setLinkMsg(err?.response?.data?.detail || 'Link failed. Check the account ID and role ARN.');
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+
+  const handleUnlinkAccount = async (accountId: string) => {
+    try {
+      await awsService.unlinkAccount(accountId);
+      loadAwsAccounts();
+    } catch (err) {
+      console.error('AWS unlink error:', err);
+    }
+  };
+
+  const handleCostCarbon = async () => {
+    if (!costCarbonAccount) return;
+    setCostCarbonLoading(true);
+    try {
+      const resp = await awsService.getCostCarbon(costCarbonAccount);
+      setCostCarbon(resp.data);
+    } catch (err: any) {
+      setCostCarbon(err?.response?.data?.detail ? { error: err.response.data.detail } : null);
+      console.error('AWS cost-carbon error:', err);
+    } finally {
+      setCostCarbonLoading(false);
+    }
+  };
+
+  const handleMigration = async () => {
+    setMigrationLoading(true);
+    try {
+      const resp = await awsService.recommendMigration({
+        current_region: migrationForm.current_region,
+        monthly_kwh: Number(migrationForm.monthly_kwh),
+        data_residency: migrationForm.data_residency,
+      });
+      setMigrationResult(resp.data);
+    } catch (err) {
+      console.error('AWS migration error:', err);
+    } finally {
+      setMigrationLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-full overflow-hidden">
       {/* Enterprise Header */}
@@ -159,6 +298,21 @@ def predict(input_tensor):
             }`}
           >
             LLM Token Energy Calculator
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('aws');
+              if (!awsRegions) loadAwsRegions();
+              if (awsAccounts.length === 0) loadAwsAccounts();
+            }}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              activeTab === 'aws'
+                ? 'bg-white text-slate-900 font-semibold shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Server size={13} />
+            AWS FinOps &amp; Carbon
           </button>
         </div>
       </div>
@@ -531,6 +685,345 @@ def predict(input_tensor):
                   Simulate energy consumption across AWS Inferentia2, Trainium, Graviton4, and NVIDIA H100/A100 architectures.
                 </p>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: AWS FinOps & Carbon - every value is a live /api/aws/* response */}
+      {activeTab === 'aws' && (
+        <div className="space-y-6">
+          {/* Row A: Region carbon intensity + migration advisor */}
+          <div className="grid lg:grid-cols-12 gap-6">
+            {/* Region carbon intensity */}
+            <div className="lg:col-span-5 card p-5 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Cloud size={16} className="text-slate-500" />
+                  Regional Grid Carbon Intensity
+                </h2>
+              </div>
+              <div>
+                <label className="label block mb-1">AWS Region</label>
+                <div className="flex gap-2">
+                  <select
+                    value={awsRegion}
+                    onChange={(e) => setAwsRegion(e.target.value)}
+                    className="input py-1.5 font-mono flex-1"
+                  >
+                    {(awsRegions?.regions || ['us-east-1', 'eu-west-1', 'eu-north-1']).map((r: string) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => loadAwsCarbon(awsRegion)}
+                    disabled={awsCarbonLoading}
+                    className="btn-secondary px-3 py-1.5 text-xs flex items-center gap-1.5"
+                  >
+                    {awsCarbonLoading ? <RefreshCw size={13} className="animate-spin" /> : <Activity size={13} />}
+                    Resolve
+                  </button>
+                </div>
+              </div>
+
+              {awsCarbon ? (
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold font-mono text-slate-900">
+                      {Number(awsCarbon.carbon_intensity ?? 0).toFixed(1)}
+                    </span>
+                    <span className="text-xs text-slate-500">gCO₂eq/kWh</span>
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-500 space-y-0.5">
+                    <div>Grid zone: <span className="text-slate-700">{awsCarbon.grid_zone}</span></div>
+                    <div>Source: <span className="text-slate-700">{awsCarbon.source}</span> · tier <span className="text-slate-700">{awsCarbon.tier}</span></div>
+                    {awsCarbon.citation && <div className="text-slate-400">{awsCarbon.citation}</div>}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  Select a region and press Resolve to read live grid intensity (Electricity Maps) or the cited Ember 2024 reference.
+                </p>
+              )}
+            </div>
+            {/* Migration advisor */}
+            <div className="lg:col-span-7 card p-5 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <TrendingDown size={16} className="text-slate-500" />
+                  Carbon-Optimal Region Migration
+                </h2>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <label className="label block mb-1">Current Region</label>
+                  <select
+                    value={migrationForm.current_region}
+                    onChange={(e) => setMigrationForm({ ...migrationForm, current_region: e.target.value })}
+                    className="input py-1.5 font-mono"
+                  >
+                    {(awsRegions?.regions || ['us-east-1']).map((r: string) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label block mb-1">Monthly kWh</label>
+                  <input
+                    type="number"
+                    value={migrationForm.monthly_kwh}
+                    onChange={(e) => setMigrationForm({ ...migrationForm, monthly_kwh: Number(e.target.value) })}
+                    className="input py-1.5 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="label block mb-1">Data Residency</label>
+                  <select
+                    value={migrationForm.data_residency}
+                    onChange={(e) => setMigrationForm({ ...migrationForm, data_residency: e.target.value })}
+                    className="input py-1.5 font-mono"
+                  >
+                    <option value="GLOBAL">Global</option>
+                    <option value="EU_STRICT">EU only</option>
+                    <option value="US_STRICT">US/CA only</option>
+                    <option value="APAC_STRICT">APAC only</option>
+                  </select>
+                </div>
+              </div>
+              <button
+                onClick={handleMigration}
+                disabled={migrationLoading}
+                className="btn-primary w-full py-2 text-xs font-semibold flex items-center justify-center gap-2"
+              >
+                {migrationLoading ? <RefreshCw size={14} className="animate-spin" /> : <TrendingDown size={14} />}
+                Rank Cleaner Regions
+              </button>
+
+              {migrationResult && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-mono text-slate-500">Recommended:</span>
+                    <span className="font-mono font-bold text-emerald-700">{migrationResult.recommended_region}</span>
+                    {Number(migrationResult.max_carbon_reduction_pct) > 0 && (
+                      <span className="badge bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        -{Number(migrationResult.max_carbon_reduction_pct).toFixed(1)}% · {Number(migrationResult.max_annual_co2_saved_kg).toFixed(1)} kg CO₂e/yr
+                      </span>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[11px] font-mono">
+                      <thead className="text-slate-400 border-b border-slate-100">
+                        <tr>
+                          <th className="py-1.5 pr-3">Region</th>
+                          <th className="py-1.5 pr-3">gCO₂/kWh</th>
+                          <th className="py-1.5 pr-3">Reduction</th>
+                          <th className="py-1.5 pr-3">Annual Saved</th>
+                          <th className="py-1.5">Latency</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {(migrationResult.candidates || []).map((c: any) => (
+                          <tr key={c.region}>
+                            <td className="py-1.5 pr-3 text-slate-800">{c.region}</td>
+                            <td className="py-1.5 pr-3 text-slate-600">{Number(c.carbon_intensity_gco2_kwh).toFixed(1)}</td>
+                            <td className="py-1.5 pr-3 text-emerald-700">{Number(c.carbon_reduction_pct).toFixed(1)}%</td>
+                            <td className="py-1.5 pr-3 text-slate-600">{Number(c.annual_co2_saved_kg).toFixed(1)} kg</td>
+                            <td className="py-1.5 text-slate-400">{c.latency_impact}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Row B: Link account form + linked accounts list */}
+          <div className="grid lg:grid-cols-12 gap-6">
+            {/* Link account form */}
+            <div className="lg:col-span-5 card p-5 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Link2 size={16} className="text-slate-500" />
+                  Link AWS Account (STS AssumeRole)
+                </h2>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                GreenCode assumes a read-only role in your account. Temporary STS credentials are used for the
+                call and are never stored or returned.
+              </p>
+              <div className="space-y-2.5 text-xs">
+                <div>
+                  <label className="label block mb-1">Account ID (12 digits)</label>
+                  <input
+                    value={linkForm.account_id}
+                    onChange={(e) => setLinkForm({ ...linkForm, account_id: e.target.value })}
+                    placeholder="123456789012"
+                    className="input py-1.5 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="label block mb-1">Role ARN</label>
+                  <input
+                    value={linkForm.role_arn}
+                    onChange={(e) => setLinkForm({ ...linkForm, role_arn: e.target.value })}
+                    placeholder="arn:aws:iam::123456789012:role/GreenCodeReadOnly"
+                    className="input py-1.5 font-mono"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="label block mb-1">Name</label>
+                    <input
+                      value={linkForm.account_name}
+                      onChange={(e) => setLinkForm({ ...linkForm, account_name: e.target.value })}
+                      className="input py-1.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="label block mb-1">Region</label>
+                    <select
+                      value={linkForm.region}
+                      onChange={(e) => setLinkForm({ ...linkForm, region: e.target.value })}
+                      className="input py-1.5 font-mono"
+                    >
+                      {(awsRegions?.regions || ['us-east-1']).map((r: string) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleLinkAccount}
+                disabled={linkLoading || !linkForm.account_id.trim() || !linkForm.role_arn.trim()}
+                className="btn-primary w-full py-2 text-xs font-semibold flex items-center justify-center gap-2"
+              >
+                {linkLoading ? <RefreshCw size={14} className="animate-spin" /> : <Link2 size={14} />}
+                Link Account
+              </button>
+              {linkMsg && (
+                <p className={`text-[11px] font-mono ${linkMsg.startsWith('Linked') ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {linkMsg}
+                </p>
+              )}
+            </div>
+            {/* Linked accounts list */}
+            <div className="lg:col-span-7 card p-5 space-y-3">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-slate-500" />
+                  Linked Accounts ({awsAccounts.length})
+                </h2>
+                <button onClick={loadAwsAccounts} className="btn-ghost text-[11px] flex items-center gap-1">
+                  <RefreshCw size={12} /> Refresh
+                </button>
+              </div>
+              {awsAccounts.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="text-slate-400 border-b border-slate-100">
+                      <tr>
+                        <th className="py-2 pr-3 font-medium">Account</th>
+                        <th className="py-2 pr-3 font-medium">ID</th>
+                        <th className="py-2 pr-3 font-medium">Region</th>
+                        <th className="py-2 pr-3 font-medium">Status</th>
+                        <th className="py-2 font-medium text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {awsAccounts.map((a) => (
+                        <tr key={a.account_id}>
+                          <td className="py-2 pr-3 text-slate-800 font-medium">{a.account_name}</td>
+                          <td className="py-2 pr-3 font-mono text-slate-600">{a.account_id}</td>
+                          <td className="py-2 pr-3 font-mono text-slate-600">{a.region}</td>
+                          <td className="py-2 pr-3">
+                            <span className="badge bg-emerald-50 text-emerald-800 border border-emerald-200">{a.status}</span>
+                          </td>
+                          <td className="py-2 text-right space-x-1">
+                            <button
+                              onClick={() => setCostCarbonAccount(a.account_id)}
+                              className="text-[11px] font-medium text-slate-600 hover:text-slate-900 px-2 py-1 rounded border border-slate-200 hover:border-slate-300"
+                            >
+                              Cost &amp; Carbon
+                            </button>
+                            <button
+                              onClick={() => handleUnlinkAccount(a.account_id)}
+                              className="text-[11px] font-medium text-rose-600 hover:text-rose-700 px-2 py-1 rounded border border-rose-200 hover:border-rose-300"
+                            >
+                              Unlink
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  No AWS accounts linked yet. Link one to read live AWS Budgets spend and calibrated carbon.
+                </p>
+              )}
+            </div>
+          </div>
+          {/* Row C: Month-to-date cost & carbon for the selected account */}
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Server size={16} className="text-slate-500" />
+                Month-to-Date Cost &amp; Carbon
+              </h2>
+              <div className="flex items-center gap-2">
+                <select
+                  value={costCarbonAccount}
+                  onChange={(e) => setCostCarbonAccount(e.target.value)}
+                  className="input py-1.5 text-xs font-mono"
+                >
+                  <option value="">Select account…</option>
+                  {awsAccounts.map((a) => (
+                    <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.account_id})</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleCostCarbon}
+                  disabled={costCarbonLoading || !costCarbonAccount}
+                  className="btn-secondary px-3 py-1.5 text-xs flex items-center gap-1.5"
+                >
+                  {costCarbonLoading ? <RefreshCw size={13} className="animate-spin" /> : <Activity size={13} />}
+                  Fetch
+                </button>
+              </div>
+            </div>
+
+            {costCarbon?.error ? (
+              <p className="text-xs text-rose-700 font-mono">{costCarbon.error}</p>
+            ) : costCarbon ? (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="card-inset p-4">
+                  <p className="label">MTD Spend (AWS Budgets)</p>
+                  <p className="text-xl font-bold font-mono text-slate-900 mt-1">${Number(costCarbon.cost_usd ?? 0).toFixed(2)}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">source: {costCarbon.cost_source} · {costCarbon.cost_tier}</p>
+                </div>
+                <div className="card-inset p-4">
+                  <p className="label">Grid Intensity</p>
+                  <p className="text-xl font-bold font-mono text-slate-900 mt-1">{Number(costCarbon.carbon_intensity_gco2_kwh ?? 0).toFixed(1)}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">gCO₂/kWh · {costCarbon.grid_zone} · {costCarbon.carbon_tier}</p>
+                </div>
+                <div className="card-inset p-4">
+                  <p className="label">Calibrated Energy</p>
+                  <p className="text-xl font-bold font-mono text-slate-900 mt-1">{Number(costCarbon.estimated_energy_kwh ?? 0).toFixed(2)}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">kWh · {costCarbon.instance_type} @ {costCarbon.region}</p>
+                </div>
+                <div className="card-inset p-4">
+                  <p className="label">Estimated CO₂e</p>
+                  <p className="text-xl font-bold font-mono text-emerald-700 mt-1">{Number(costCarbon.estimated_co2e_kg ?? 0).toFixed(3)}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">kg CO₂e · {costCarbon.period_start} → {costCarbon.period_end}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">
+                Select a linked account and press Fetch to read month-to-date AWS Budgets spend and its physics-calibrated carbon footprint.
+              </p>
             )}
           </div>
         </div>

@@ -314,26 +314,6 @@ async def lifespan(app: FastAPI):
 
 
 
-@app.middleware("http")
-async def add_api_version_header(request: Request, call_next):
-    """Carbon-conscious API versioning: emit deprecation headers for un-versioned
-    endpoints and route-aware version metadata.  This avoids an expensive router
-    rebuild while signalling the versioning contract to enterprise clients.
-    """
-    response = await call_next(request)
-    import inspect
-    path = request.url.path
-    route = request.scope.get("route")
-    versioned = path.startswith("/api/v1/") or path.startswith("/api/v2/")
-    if not versioned and path.startswith("/api/"):
-        response.headers["X-API-Version"] = "deprecated"
-        response.headers["X-API-Retire-By"] = "2027-01-01"
-        response.headers["Deprecation"] = "true"
-    else:
-        response.headers["X-API-Version"] = "v2"
-    return response
-
-
 app = FastAPI(
     title="GreenCode Auditor API",
     description="Green Software Carbon Intensity Audit, Dynamic Profiling, and Automated Refactoring Platform",
@@ -361,6 +341,27 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Accept"],
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
 )
+
+
+@app.middleware("http")
+async def add_api_version_header(request: Request, call_next):
+    """Carbon-conscious API versioning: emit deprecation headers for un-versioned
+    endpoints and route-aware version metadata.  This avoids an expensive router
+    rebuild while signalling the versioning contract to enterprise clients.
+    """
+    response = await call_next(request)
+    import inspect
+    path = request.url.path
+    route = request.scope.get("route")
+    versioned = path.startswith("/api/v1/") or path.startswith("/api/v2/")
+    if not versioned and path.startswith("/api/"):
+        response.headers["X-API-Version"] = "deprecated"
+        response.headers["X-API-Retire-By"] = "2027-01-01"
+        response.headers["Deprecation"] = "true"
+    else:
+        response.headers["X-API-Version"] = "v2"
+    return response
+
 
 # Enterprise Modular Routers
 from app.routers.governance import router as enterprise_governance_router
@@ -1469,6 +1470,10 @@ def logout_endpoint(
     }
 
 
+class SwitchTenantRequest(BaseModel):
+    org_id: int
+
+
 @app.post("/api/tenants/switch", tags=["Enterprise Multi-Tenancy"])
 async def api_switch_tenant(
     req: SwitchTenantRequest,
@@ -1536,10 +1541,6 @@ async def api_switch_tenant(
         "user": {**current_user, "org_id": target_org_id},
         "organization": org,
     }
-
-
-class SwitchTenantRequest(BaseModel):
-    org_id: int
 
 
 @app.post("/api/auth/github", tags=["Authentication"])
@@ -2540,6 +2541,10 @@ async def api_parse_kepler_metrics(payload: Dict[str, Any]):
 
 
 
+class SSOInitiateRequest(BaseModel):
+    org_id: Optional[int] = None
+
+
 @app.post("/api/enterprise/sso/initiate", tags=["Enterprise Identity & SSO"])
 async def api_initiate_sso(
     req: SSOInitiateRequest,
@@ -2577,10 +2582,6 @@ async def api_initiate_sso(
         "relay_state": relay_state,
         "sso_enabled": cfg.enforce_sso_only or bool(cfg.sso_url),
     }
-
-
-class SSOInitiateRequest(BaseModel):
-    org_id: Optional[int] = None
 
 
 @app.post("/api/enterprise/sso/callback", tags=["Enterprise Identity & SSO"])
@@ -2635,6 +2636,10 @@ async def api_sso_callback(
     }
 
 
+class SSOEnforceCheckRequest(BaseModel):
+    org_id: Optional[int] = None
+
+
 @app.post("/api/enterprise/sso/enforce-check", tags=["Enterprise Identity & SSO"])
 async def api_sso_enforce_check(
     req: SSOEnforceCheckRequest,
@@ -2645,10 +2650,6 @@ async def api_sso_enforce_check(
     if cfg and cfg.enforce_sso_only:
         return {"sso_required": True, "allowed_domains": cfg.allowed_domains}
     return {"sso_required": False, "allowed_domains": []}
-
-
-class SSOEnforceCheckRequest(BaseModel):
-    org_id: Optional[int] = None
 
 
 @app.post("/api/enterprise/sso/verify-saml", tags=["Enterprise Governance"])

@@ -16,6 +16,8 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 import requests
 
+from app.core.circuit_breaker import circuit_breaker
+
 try:
     from dotenv import load_dotenv
     load_dotenv()

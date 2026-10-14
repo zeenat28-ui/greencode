@@ -1,5 +1,6 @@
 # GreenCode Auditor
 
+[![Production Live](https://img.shields.io/badge/Production%20Live-greencode--teal.vercel.app-059669?style=flat&logo=vercel&logoColor=white)](https://greencode-teal.vercel.app)
 [![Release](https://img.shields.io/badge/release-v2.1.0-0ea5e9)](pyproject.toml)
 [![CI Gatekeeper](https://img.shields.io/badge/CI%2FCD-Quality%20Gate-success)](action.yml)
 [![SCI Standard](https://img.shields.io/badge/ISO%2FIEC%2021031-GSF%20SCI-brightgreen)](https://greensoftware.foundation)

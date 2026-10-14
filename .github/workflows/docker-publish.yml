@@ -49,15 +49,19 @@ jobs:
 
       # ─── Log in to Docker Hub (supports ZEEMLOPS or DOCKERHUB_TOKEN) ───
       - name: Log in to Docker Hub
-        if: ${{ secrets.ZEEMLOPS != '' || secrets.DOCKERHUB_TOKEN != '' }}
+        env:
+          DOCKER_TOKEN: ${{ secrets.ZEEMLOPS || secrets.DOCKERHUB_TOKEN }}
+        if: ${{ env.DOCKER_TOKEN != '' }}
         uses: docker/login-action@v3
         with:
           username: ${{ steps.dockerhub-config.outputs.username }}
-          password: ${{ secrets.ZEEMLOPS || secrets.DOCKERHUB_TOKEN }}
+          password: ${{ env.DOCKER_TOKEN }}
 
       # ─── Compute Tags ───
       - name: Generate Docker Tags
         id: tags
+        env:
+          DOCKER_TOKEN: ${{ secrets.ZEEMLOPS || secrets.DOCKERHUB_TOKEN }}
         run: |
           TAG="${{ github.event.inputs.custom_tag }}"
           if [ -z "$TAG" ]; then
@@ -72,7 +76,7 @@ jobs:
 
           TAGS="ghcr.io/${{ github.repository }}:${TAG},ghcr.io/${{ github.repository }}:latest"
 
-          if [ -n "${{ secrets.ZEEMLOPS || secrets.DOCKERHUB_TOKEN }}" ]; then
+          if [ -n "$DOCKER_TOKEN" ]; then
             TAGS="${TAGS},${DOCKER_USER}/${REPO_NAME}:${TAG},${DOCKER_USER}/${REPO_NAME}:latest"
           fi
 

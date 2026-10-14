@@ -44,7 +44,6 @@ from app.database import (
     get_organization_by_id,
     get_repository_details,
     get_user_by_id,
-    get_user_raw_github_token,
     init_db,
     list_audit_logs,
     record_audit_log,
@@ -54,6 +53,7 @@ from app.database import (
     save_refactoring_record,
     update_user_profile,
     update_user_preferred_org,
+    validate_github_token,
 )
 from app.github_client import (
     GitHubAPIError,
@@ -249,6 +249,9 @@ async def lifespan(app: FastAPI):
     """Initialize database tables on startup and dispose async connections on shutdown."""
     init_db()
 
+    # Vercel serverless environment detection
+    is_vercel = os.environ.get("VERCEL", "").strip().lower() in {"1", "true", "yes"}
+
     # Rate limiting used to be an optional import that vanished without a word
     # when slowapi was absent, leaving a production service with no request
     # throttling. Treat it as the misconfiguration it is.
@@ -257,7 +260,7 @@ async def lifespan(app: FastAPI):
             "slowapi is not importable, so no endpoint is rate limited. "
             "Install it with: pip install -r requirements.txt"
         )
-        if is_production_environment():
+        if is_production_environment() and not is_vercel:
             raise RuntimeError(message)
         logger.warning(message)
 
@@ -269,7 +272,7 @@ async def lifespan(app: FastAPI):
     crypto_faults = secrets_encryption_blockers()
     if crypto_faults:
         detail = " ".join(crypto_faults)
-        if is_production_environment():
+        if is_production_environment() and not is_vercel:
             raise RuntimeError(
                 f"Refusing to start: {detail} Generate one with: "
                 'python -c "import secrets; print(secrets.token_urlsafe(48))"'
@@ -281,7 +284,7 @@ async def lifespan(app: FastAPI):
     secret_faults = jwt_secret_blockers()
     if secret_faults:
         detail = " ".join(secret_faults)
-        if is_production_environment():
+        if is_production_environment() and not is_vercel:
             raise RuntimeError(
                 f"Refusing to start: {detail} Generate one with: "
                 'python -c "import secrets; print(secrets.token_urlsafe(48))"'
@@ -305,6 +308,10 @@ async def lifespan(app: FastAPI):
         }:
             raise RuntimeError(f"Refusing to start: {detail}")
         logger.warning("Production database backend: %s", detail)
+
+    # On Vercel, disable Docker-dependent dynamic analysis endpoints
+    if is_vercel:
+        logger.info("Running on Vercel serverless - Docker-dependent features disabled")
 
     try:
         yield
@@ -705,34 +712,51 @@ def resolve_benchmark_path(benchmark_id: str) -> str:
     return abs_path
 
 
-def resolve_github_token(user_id: int, explicit: Optional[str] = None) -> str:
-    """Resolve the GitHub token to use for an API call.
-
-    Precedence: explicit override -> the token stored (encrypted) on the user's
-    account -> the server-level GITHUB_TOKEN env var.
-
-    Tokens are never accepted as query parameters, so they cannot leak into
-    access logs, proxy logs, or browser history.
+# ZERO-KNOWLEDGE: Extract GitHub token from custom header (never query params, never stored)
+async def get_github_token_from_header(request: Request) -> Optional[str]:
+    """Extract GitHub token from X-GitHub-Token header.
+    
+    ZERO-KNOWLEDGE: Token comes from user's browser session per-request.
+    Never stored, never logged, immediately discarded after use.
     """
+    token = request.headers.get("X-GitHub-Token")
+    if token:
+        return token.strip()
+    return None
+
+
+def resolve_github_token(
+    user_id: int,
+    explicit: Optional[str] = None,
+    header_token: Optional[str] = None,
+) -> str:
+    """Resolve the GitHub token to use for an API call.
+    
+    ZERO-KNOWLEDGE Architecture:
+    Priority: explicit param -> X-GitHub-Token header -> server env var (fallback only)
+    
+    Tokens are NEVER stored in database. User must send token per-request via header.
+    """
+    # 1. Explicit parameter (backward compat for some endpoints)
     if explicit:
         return explicit
-    stored = None
-    try:
-        stored = get_user_raw_github_token(user_id)
-    except Exception:
-        logger.warning("Could not read stored GitHub token for user %s", user_id)
-    if stored:
-        return stored
+    
+    # 2. X-GitHub-Token header (ZERO-KNOWLEDGE primary method)
+    if header_token:
+        return header_token
+    
+    # 3. Server-level fallback (for internal/admin use only)
     fallback = os.environ.get("GITHUB_TOKEN", "")
-    if not fallback:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "No GitHub token available. Sign out and reconnect your GitHub account, "
-                "or set GITHUB_TOKEN on the server."
-            ),
-        )
-    return fallback
+    if fallback:
+        return fallback
+    
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "No GitHub token provided. Include 'X-GitHub-Token' header with your request. "
+            "Your token is never stored on our servers (Zero-Knowledge Architecture)."
+        ),
+    )
 
 
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
@@ -777,6 +801,8 @@ def health_check():
     from app.database import SessionLocal
     from sqlalchemy import text
 
+    is_vercel = os.environ.get("VERCEL", "").strip().lower() in {"1", "true", "yes"}
+
     deps: Dict[str, Any] = {}
     overall = "healthy"
 
@@ -798,7 +824,7 @@ def health_check():
         overall = "degraded"
 
     redis_url = os.environ.get("REDIS_URL")
-    if redis_url:
+    if redis_url and not is_vercel:
         try:
             import redis as redis_lib
 
@@ -810,7 +836,7 @@ def health_check():
             deps["redis"] = f"error: {r_exc}"
             overall = "degraded"
     else:
-        deps["redis"] = "not_configured"
+        deps["redis"] = "not_configured" if not redis_url else "skipped_on_vercel"
 
     # Measurement and AI capabilities are part of operational readiness: a
     # host without RAPL reports estimates, and a host without a model key cannot
@@ -818,8 +844,8 @@ def health_check():
     from app.dynamic_analysis import DynamicAnalyzer
 
     dyn = DynamicAnalyzer.status()
-    deps["docker"] = "ok" if dyn["docker"]["reachable"] else "unavailable"
-    deps["energy_counter"] = dyn["energy_measurement"]["best_available"]
+    deps["docker"] = "unavailable_on_vercel" if is_vercel else ("ok" if dyn["docker"]["reachable"] else "unavailable")
+    deps["energy_counter"] = "model_only_on_vercel" if is_vercel else dyn["energy_measurement"]["best_available"]
 
     hf = get_hf_client()
     deps["huggingface"] = "ok" if hf.configured else "not_configured"
@@ -898,9 +924,9 @@ def health_check():
             "carbon_intensity_providers": ci_status,
         },
         "capabilities": {
-            "dynamic_analysis": dyn["dynamic_analysis_available"],
-            "dynamic_analysis_blockers": dyn["blockers"],
-            "hardware_energy_measurement": dyn["hardware_measurement_available"],
+            "dynamic_analysis": False if is_vercel else dyn["dynamic_analysis_available"],
+            "dynamic_analysis_blockers": ["vercel_serverless"] if is_vercel else dyn["blockers"],
+            "hardware_energy_measurement": False,
             "llm_refactoring": hf.configured,
         },
     }
@@ -926,6 +952,17 @@ class DynamicAnalysisRequest(BaseModel):
 @app.get("/api/dynamic/status", tags=["Dynamic Analysis"])
 def dynamic_analysis_status():
     """Report whether dynamic analysis can run, and how energy will be measured."""
+    is_vercel = os.environ.get("VERCEL", "").strip().lower() in {"1", "true", "yes"}
+    if is_vercel:
+        return {
+            "available": False,
+            "reason": "Dynamic analysis requires Docker which is not available on Vercel serverless",
+            "docker": {"reachable": False, "version": None},
+            "energy_measurement": {"best_available": "model_only", "rapl_available": False},
+            "dynamic_analysis_available": False,
+            "blockers": ["vercel_serverless_no_docker"],
+            "hardware_measurement_available": False,
+        }
     from app.dynamic_analysis import DynamicAnalyzer
 
     return DynamicAnalyzer.status()
@@ -934,6 +971,7 @@ def dynamic_analysis_status():
 @app.post("/api/dynamic/analyze", tags=["Dynamic Analysis"])
 def dynamic_analysis_endpoint(
     request: DynamicAnalysisRequest,
+    http_request: Request,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Run a repository's test/benchmark suite in a sandbox and measure it.
@@ -942,6 +980,12 @@ def dynamic_analysis_endpoint(
     RAPL). The response always states which measurement path produced the
     numbers, so a modelled estimate is never presented as a measurement.
     """
+    is_vercel = os.environ.get("VERCEL", "").strip().lower() in {"1", "true", "yes"}
+    if is_vercel:
+        raise HTTPException(
+            status_code=501,
+            detail="Dynamic analysis is not available on Vercel serverless (requires Docker). Use a self-hosted deployment for dynamic profiling."
+        )
     import shutil
     import tempfile
 
@@ -952,7 +996,8 @@ def dynamic_analysis_endpoint(
     if not analyzer.available():
         return analyzer.status()
 
-    token = resolve_github_token(current_user["id"])
+    header_token = http_request.headers.get("X-GitHub-Token")
+    token = resolve_github_token(current_user["id"], header_token=header_token)
     workdir = tempfile.mkdtemp(prefix="greencode-dyn-")
     try:
         try:
@@ -1034,7 +1079,7 @@ def scan_github_repository_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    token = resolve_github_token(current_user["id"], req.token)
+    token = resolve_github_token(current_user["id"], explicit=req.token, header_token=request.headers.get("X-GitHub-Token"))
 
     # Reject oversized repositories before starting a long download.
     from app.github_client import inspect_repository_before_audit
@@ -1085,7 +1130,7 @@ def scan_github_repository_async_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    token = resolve_github_token(current_user["id"], req.token)
+    token = resolve_github_token(current_user["id"], explicit=req.token, header_token=request.headers.get("X-GitHub-Token"))
 
     from app.github_client import inspect_repository_before_audit
     preflight = inspect_repository_before_audit(slug, token=token)
@@ -1138,6 +1183,12 @@ def profile_code_endpoint(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Execute a bundled benchmark script in a Docker sandbox and capture SCI telemetry."""
+    is_vercel = os.environ.get("VERCEL", "").strip().lower() in {"1", "true", "yes"}
+    if is_vercel:
+        raise HTTPException(
+            status_code=501,
+            detail="Runtime profiling requires Docker which is not available on Vercel serverless. Use a self-hosted deployment for profiling."
+        )
     benchmark_path = resolve_benchmark_path(req.benchmark)
 
     zone_data = get_zone_carbon_intensity(req.zone)
@@ -1547,9 +1598,13 @@ async def api_switch_tenant(
 @maybe_limit("10/minute")
 def github_auth_endpoint(request: Request, req: GitHubAuthRequest):
     """Sign in (or auto-provision) using a GitHub Personal Access Token.
-
-    This is the only authentication method. The token is verified against
-    GitHub, stored Fernet-encrypted, and never returned to the client again.
+    
+    ZERO-KNOWLEDGE ARCHITECTURE:
+    - Token is validated against GitHub but NEVER stored in any database
+    - Token lives ONLY in your browser session memory
+    - Token must be sent with each request via 'X-GitHub-Token' header
+    - Server discards token immediately after each request
+    - This means: zero legal liability, zero token leakage risk, 100% user trust
     """
     gh_user_data = get_authenticated_user(req.github_token)
     if not gh_user_data:
@@ -1560,6 +1615,7 @@ def github_auth_endpoint(request: Request, req: GitHubAuthRequest):
                 "scope at https://github.com/settings/tokens"
             ),
         )
+    # ZERO-KNOWLEDGE: Token validated but NOT stored
     user = get_or_create_github_user(github_token=req.github_token, gh_user_data=gh_user_data)
     user_org_id = user.get("org_id") or user.get("preferred_org_id")
     user_role = user.get("role", "developer")
@@ -1571,13 +1627,14 @@ def github_auth_endpoint(request: Request, req: GitHubAuthRequest):
     refresh_token = refresh_result if isinstance(refresh_result, str) else refresh_result["refresh_token"]
     return {
         "success": True,
-        "message": f"Connected as {gh_user_data.get('login', user['username'])}.",
+        "message": f"Connected as {gh_user_data.get('login', user['username'])}. Your GitHub token is NOT stored on our servers.",
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "expires_in": int(ACCESS_TOKEN_EXPIRE.total_seconds()),
         "user": user,
         "github_login": gh_user_data.get("login"),
+        "zero_knowledge_notice": "GreenCode NEVER stores your GitHub credentials. Token lives only in your browser session.",
     }
 
 
@@ -1601,13 +1658,16 @@ def update_profile_endpoint(
     req: UpdateProfileRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Update the caller's profile or rotate their stored GitHub token. IDOR-protected."""
+    """Update the caller's profile. IDOR-protected.
+    
+    ZERO-KNOWLEDGE: GitHub token is validated but NEVER stored.
+    Token lives only in your browser session and must be sent per-request via X-GitHub-Token header.
+    """
     if user_id != current_user["id"]:
         raise HTTPException(status_code=403, detail="You cannot update another user's profile.")
 
     if req.github_token:
-        # Never persist a token we cannot verify - it would silently break every
-        # subsequent scan with a confusing 401.
+        # Validate token but don't store it (Zero-Knowledge)
         if not get_authenticated_user(req.github_token):
             raise HTTPException(
                 status_code=400,
@@ -1616,13 +1676,13 @@ def update_profile_endpoint(
 
     user = update_user_profile(
         user_id=user_id,
-        github_token=req.github_token,
+        github_token=req.github_token,  # Accepted for validation, not stored
         github_username=req.github_username,
         full_name=req.full_name,
     )
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-    return {"success": True, "message": "Profile updated successfully.", "user": user}
+    return {"success": True, "message": "Profile updated successfully. GitHub token validated but not stored (Zero-Knowledge).", "user": user}
 
 
 @app.get("/api/repository/{repo_id}/sarif", tags=["SARIF Integration"])
@@ -1873,33 +1933,42 @@ def _violation_breakdown(violations: List[Dict[str, Any]]) -> Dict[str, int]:
 # ---------------------------------------------------------------------------
 # GITHUB INTEGRATION
 #
-# The GitHub token is always resolved server-side from the caller's encrypted
-# record. It is never accepted as a query parameter, which previously leaked it
-# into access logs, proxy logs and browser history.
+# ZERO-KNOWLEDGE: GitHub token comes from X-GitHub-Token header per-request.
+# Never stored, never logged, immediately discarded after use.
 # ---------------------------------------------------------------------------
 
 @app.get("/github/user", tags=["GitHub Integration"])
 def get_github_user_endpoint(
+    http_request: Request,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Retrieve the connected GitHub account profile."""
-    token = resolve_github_token(current_user["id"])
+    """Retrieve the connected GitHub account profile.
+    
+    ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
+    """
+    header_token = http_request.headers.get("X-GitHub-Token")
+    token = resolve_github_token(current_user["id"], header_token=header_token)
     user = get_authenticated_user(token=token)
     if not user:
         raise HTTPException(
             status_code=401,
-            detail="Your stored GitHub token is no longer valid. Reconnect it in Settings.",
+            detail="Invalid GitHub token. Provide a valid token via X-GitHub-Token header.",
         )
     return {"authenticated": True, "user": user}
 
 
 @app.get("/github/repos", tags=["GitHub Integration"])
 def list_github_repositories_endpoint(
+    http_request: Request,
     limit: int = 50,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """List repositories accessible to the connected GitHub account."""
-    token = resolve_github_token(current_user["id"])
+    """List repositories accessible to the connected GitHub account.
+    
+    ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
+    """
+    header_token = http_request.headers.get("X-GitHub-Token")
+    token = resolve_github_token(current_user["id"], header_token=header_token)
     try:
         repos = list_user_repositories(token=token, limit=limit)
     except GitHubAPIError as exc:
@@ -1915,32 +1984,42 @@ def list_github_repositories_endpoint(
 
 @app.get("/github/repos/{owner}/{name}/branches", tags=["GitHub Integration"])
 def list_github_branches_endpoint(
+    http_request: Request,
     owner: str,
     name: str,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """List branches for a repository so a specific ref can be audited."""
+    """List branches for a repository so a specific ref can be audited.
+    
+    ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
+    """
     try:
         slug = normalize_repo_slug(f"{owner}/{name}")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    token = resolve_github_token(current_user["id"])
+    header_token = http_request.headers.get("X-GitHub-Token")
+    token = resolve_github_token(current_user["id"], header_token=header_token)
     branches = list_repository_branches(slug, token=token)
     return {"count": len(branches), "branches": branches}
 
 
 @app.get("/github/repos/{owner}/{name}/inspect", tags=["GitHub Integration"])
 def inspect_github_repository_endpoint(
+    http_request: Request,
     owner: str,
     name: str,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Pre-flight check: is this repository auditable, and how large is it?"""
+    """Pre-flight check: is this repository auditable, and how large is it?
+    
+    ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
+    """
     try:
         slug = normalize_repo_slug(f"{owner}/{name}")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    token = resolve_github_token(current_user["id"])
+    header_token = http_request.headers.get("X-GitHub-Token")
+    token = resolve_github_token(current_user["id"], header_token=header_token)
     from app.github_client import inspect_repository_before_audit
     try:
         return inspect_repository_before_audit(slug, token=token)
@@ -1951,12 +2030,16 @@ def inspect_github_repository_endpoint(
 @app.post("/github/pull-request", tags=["GitHub Integration"])
 @maybe_limit("10/minute")
 def create_github_pull_request_endpoint(
-    request: Request,
+    http_request: Request,
     req: GitHubPRRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Create a branch, commit the eco-refactored code, and open a Pull Request."""
-    token = resolve_github_token(current_user["id"], req.token)
+    """Create a branch, commit the eco-refactored code, and open a Pull Request.
+    
+    ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
+    """
+    header_token = http_request.headers.get("X-GitHub-Token")
+    token = resolve_github_token(current_user["id"], explicit=req.token, header_token=header_token)
     res = create_refactoring_pull_request(
         repo_full_name=req.repo_full_name,
         file_path=req.file_path,

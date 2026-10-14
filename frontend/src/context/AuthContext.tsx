@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, ReactNode 
 import { useNavigate } from 'react-router-dom';
 import { User } from '../types';
 import { authService } from '../services/greencodeApi';
-import { getRefreshToken, clearSession } from '../services/api';
+import { getRefreshToken, clearSession, setGitHubToken } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
@@ -33,6 +33,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    * The persisted refresh token is exchanged for a fresh access token, which the
    * axios interceptor stores automatically. This is what keeps a refresh from
    * logging the user out.
+   * 
+   * ZERO-KNOWLEDGE: GitHub token is NOT restored from storage - user must re-enter it.
+   * This is intentional for maximum security - token never leaves browser memory.
    */
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +80,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const connectGitHub = useCallback(async (githubToken: string) => {
     const res = await authService.signInWithGitHub(githubToken);
+    // ZERO-KNOWLEDGE: Store GitHub token in memory only (never localStorage)
+    // This token will be sent with each request via X-GitHub-Token header
+    setGitHubToken(githubToken);
     setUser(res.data.user);
     return res.data.user;
   }, []);
@@ -87,7 +93,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch {
       // Best effort - the local session is cleared regardless.
     }
-    clearSession();
+    clearSession(); // Also clears GitHub token from memory
     setUser(null);
     navigate('/login', { replace: true });
   }, [navigate]);

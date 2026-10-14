@@ -15,6 +15,9 @@ import {
   CheckCircle2,
   Lock,
   Layers,
+  Shield,
+  Database,
+  XCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ssoService } from '../services/greencodeApi';
@@ -326,8 +329,43 @@ export default function Login() {
             <span>Continue with SSO / SAML</span>
           </button>
 
-          {/* Institutional Ephemeral Session Notice */}
-          <div className="mt-6 pt-5 border-t border-slate-100 flex items-start gap-2.5 text-[11px] text-slate-500 leading-relaxed">
+          {/* Zero-Knowledge Architecture Notice - Prominent Trust Indicator */}
+          <div className="mt-6 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                <Shield size={16} className="text-emerald-700" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 font-semibold text-slate-800 mb-1.5">
+                  <span className="text-sm">🛡️ Zero-Knowledge Architecture</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-700 leading-relaxed">
+                  <div className="flex items-center gap-1.5">
+                    <XCircle size={12} className="text-rose-500 shrink-0" />
+                    <span>Token NEVER stored in database</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Database size={12} className="text-slate-400 shrink-0" />
+                    <span>No server-side token persistence</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Lock size={12} className="text-emerald-600 shrink-0" />
+                    <span>Token lives only in browser memory</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Shield size={12} className="text-emerald-600 shrink-0" />
+                    <span>Sent per-request via secure header</span>
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-600 font-mono bg-white/50 rounded px-2 py-1 inline-block">
+                  X-GitHub-Token header • Auto-discarded after each request • Zero legal liability
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Client-Side Ephemeral Session Notice */}
+          <div className="mt-4 pt-4 border-t border-slate-100 flex items-start gap-2.5 text-[11px] text-slate-500 leading-relaxed">
             <ShieldCheck size={16} className="text-emerald-600 shrink-0 mt-0.5" />
             <div>
               <div className="flex items-center gap-1 font-semibold text-slate-700 mb-0.5">

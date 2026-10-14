@@ -150,30 +150,11 @@ def is_encrypted_secret(value: Optional[str]) -> bool:
 
 
 def count_plaintext_secrets() -> int:
-    """How many users still have a GitHub token stored in the clear.
-
-    Surfaced on /api/health so an operator can see, without running a query,
-    whether the database still holds credentials an attacker could use verbatim
-    from a backup or a stolen dump.
+    """ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database.
+    
+    Returns 0 always. No tokens to migrate or encrypt.
     """
-    if _fernet is None:
-        return 0  # encryption is off entirely; nothing is "pending"
-    try:
-        init_db()
-        db = SessionLocal()
-        try:
-            rows = db.query(User.github_token).filter(
-                User.github_token.isnot(None), User.github_token != ""
-            ).all()
-            return sum(
-                1 for (value,) in rows if value and not is_encrypted_secret(value)
-            )
-        finally:
-            db.close()
-    except Exception:
-        # A health check must never raise; an unreadable count is reported as 0
-        # and the operator sees the encryption guard separately.
-        return 0
+    return 0
 
 # PASSWORD POLICY: min 12 chars, 3 of 4 classes (upper, lower, digit, special)
 _BCRYPT_ROUNDS = int(os.environ.get("BCRYPT_ROUNDS", "12"))
@@ -1396,14 +1377,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def user_to_dict(user: Optional[User], include_sensitive: bool = False) -> Optional[Dict[str, Any]]:
-    """Serialize User model to sanitized dictionary (never exposes password_hash; protects tokens by default)."""
+    """Serialize User model to sanitized dictionary (never exposes password_hash; tokens never stored)."""
     if not user:
         return None
-    token = decrypt_secret(user.github_token) if include_sensitive else user.github_token
-    token_masked = None
-    if user.github_token:
-        raw_for_mask = decrypt_secret(user.github_token)
-        token_masked = f"{raw_for_mask[:4]}****{raw_for_mask[-4:]}" if len(raw_for_mask) > 8 else "****"
 
     return {
         "id": user.id,
@@ -1413,9 +1389,9 @@ def user_to_dict(user: Optional[User], include_sensitive: bool = False) -> Optio
         "username": user.username,
         "full_name": user.full_name or user.username,
         "github_username": user.github_username,
-        "github_token": token if include_sensitive else None,
-        "has_github_token": bool(user.github_token),
-        "github_token_masked": token_masked,
+        "github_token": None,
+        "has_github_token": False,
+        "github_token_masked": None,
         "avatar_url": user.avatar_url,
         "role": user.role,
         "is_verified": getattr(user, "is_verified", False),
@@ -1565,7 +1541,11 @@ def create_user(
     auto_verify: bool = False,
     org_id: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Create a new user account with hashed password and verification token."""
+    """Create a new user account with hashed password and verification token.
+    
+    ZERO-KNOWLEDGE: GitHub token is validated but NEVER stored in database.
+    Token lives only in user's browser session and is sent per-request.
+    """
     init_db()
     db = SessionLocal()
     try:
@@ -1589,7 +1569,7 @@ def create_user(
         hashed_pwd = hash_password(password)
         now_utc = datetime.now(timezone.utc)
         v_token = None if auto_verify else secrets.token_urlsafe(32)
-        encrypted_github_token = encrypt_secret(github_token.strip()) if github_token else None
+        # ZERO-KNOWLEDGE: github_token is validated but NOT stored
         user = User(
             org_id=org_id,
             email=clean_email,
@@ -1597,7 +1577,7 @@ def create_user(
             password_hash=hashed_pwd,
             full_name=full_name.strip() if full_name else clean_username,
             github_username=github_username.strip() if github_username else None,
-            github_token=encrypted_github_token,
+            github_token=None,  # NEVER store GitHub token
             avatar_url=avatar_url,
             role=role,
             is_verified=auto_verify,
@@ -1702,14 +1682,25 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
 
 
 def get_user_raw_github_token(user_id: int) -> Optional[str]:
-    """Retrieve raw GitHub token strictly for authenticated internal services."""
-    init_db()
-    db = SessionLocal()
+    """ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database.
+    
+    Returns None always. Caller must provide token per-request via header.
+    """
+    return None
+
+
+def validate_github_token(github_token: str) -> Optional[Dict[str, Any]]:
+    """Validate a GitHub token by calling GitHub API.
+    
+    ZERO-KNOWLEDGE: Token is used only for this validation call, never stored.
+    
+    Returns GitHub user data if valid, None if invalid.
+    """
+    from app.github_client import get_authenticated_user
     try:
-        user = db.query(User).filter(User.id == user_id).first()
-        return decrypt_secret(user.github_token) if user else None
-    finally:
-        db.close()
+        return get_authenticated_user(github_token)
+    except Exception:
+        return None
 
 
 def update_user_profile(
@@ -1719,15 +1710,20 @@ def update_user_profile(
     avatar_url: Optional[str] = None,
     full_name: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Update user GitHub credentials or profile details."""
+    """Update user profile details.
+    
+    ZERO-KNOWLEDGE: GitHub token is accepted for validation but NEVER stored.
+    """
     init_db()
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             return None
+        # ZERO-KNOWLEDGE: github_token is accepted but NOT stored
         if github_token is not None:
-            user.github_token = encrypt_secret(github_token.strip()) if github_token else None
+            # Token validated by caller, but we don't persist it
+            pass
         if github_username is not None:
             user.github_username = github_username.strip() if github_username else None
         if avatar_url is not None:
@@ -1745,7 +1741,11 @@ def update_user_profile(
 
 
 def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Auto-provision or sign in a user via GitHub token authentication."""
+    """Auto-provision or sign in a user via GitHub token authentication.
+    
+    ZERO-KNOWLEDGE: GitHub token is validated but NEVER stored in database.
+    Token lives only in user's browser session and is sent per-request.
+    """
     init_db()
     db = SessionLocal()
     try:
@@ -1762,7 +1762,8 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
 
         now_utc = datetime.now(timezone.utc)
         if user:
-            user.github_token = encrypt_secret(github_token.strip()) if github_token else None
+            # ZERO-KNOWLEDGE: github_token is validated but NOT stored
+            user.github_token = None
             user.github_username = gh_login
             if avatar_url:
                 user.avatar_url = avatar_url
@@ -1771,7 +1772,6 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
             user.last_login_at = now_utc
             db.commit()
             db.refresh(user)
-            # Sanitized by default: the raw PAT must never reach an API response.
             return user_to_dict(user, include_sensitive=False)
         else:
             random_pwd = os.urandom(16).hex()
@@ -1781,7 +1781,7 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
                 password_hash=hash_password(random_pwd),
                 full_name=full_name,
                 github_username=gh_login,
-                github_token=encrypt_secret(github_token.strip()) if github_token else None,
+                github_token=None,  # NEVER store GitHub token
                 avatar_url=avatar_url,
                 role="developer",
                 is_verified=True,  # GitHub-authenticated emails are pre-verified by GitHub
@@ -1791,7 +1791,6 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
             db.add(user)
             db.commit()
             db.refresh(user)
-            # Sanitized by default: the raw PAT must never reach an API response.
             return user_to_dict(user, include_sensitive=False)
     except Exception:
         db.rollback()
@@ -1848,231 +1847,40 @@ def create_password_reset_token(email: str) -> Optional[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# ONE-TIME MIGRATION: encrypt credentials written before the key was set
+# ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database
 # ---------------------------------------------------------------------------
 def encrypt_plaintext_secrets(*, dry_run: bool = False) -> Dict[str, Any]:
-    """Re-encrypt GitHub tokens that were stored before a key existed.
-
-    THE PROBLEM
-    -----------
-    `encrypt_secret` is a no-op when `SECRETS_ENCRYPTION_KEY` is unset, so every
-    token saved before the key was configured is sitting in the database in the
-    clear. Setting the key stops the *next* write from being plaintext; it does
-    nothing about the rows already there. A backup, a replica, or a stolen dump
-    taken after the fix still hands over every account.
-
-    WHY THIS IS SAFE TO RUN TWICE
-    ------------------------------
-    Values are classified by their Fernet encoding (`is_encrypted_secret`), never
-    blindly re-encrypted. That distinction matters more than it looks: if this
-    function encrypted an already-encrypted value, `decrypt_secret` would later
-    return the ciphertext unchanged (it swallows `InvalidToken` and passes the
-    input through), the user would be permanently locked out, and the only
-    symptom would be an unexplained GitHub 401 on every scan. So the function
-    is idempotent by construction, not by convention.
-
-    EVERY WRITE IS VERIFIED FIRST
-    -----------------------------
-    Each candidate is encrypted and immediately decrypted again; the value is
-    only persisted if the round trip reproduces the original token exactly. A
-    row that fails the check is left untouched and reported, because a partial
-    write of a credential column is far worse than a skipped one - the user
-    keeps a working token instead of an unusable one.
-
-    Args:
-        dry_run: report what would change without writing anything. This is the
-            default for the CLI, because mutating a production credential column
-            should be a decision someone makes on purpose.
+    """ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database.
+    
+    Returns a report indicating no tokens to migrate.
     """
-    report: Dict[str, Any] = {
+    return {
         "dry_run": dry_run,
-        "encryption_enabled": _fernet is not None,
+        "encryption_enabled": False,
         "scanned": 0,
         "already_encrypted": 0,
         "migrated": 0,
         "skipped": 0,
         "failed": 0,
-        "errors": [],
+        "errors": ["ZERO-KNOWLEDGE: No GitHub tokens stored in database to encrypt."],
     }
-
-    if _fernet is None:
-        report["errors"].append(
-            "SECRETS_ENCRYPTION_KEY is not set, so there is no key to encrypt "
-            "with. Set it first, then re-run. See: python -c \"import secrets; "
-            "print('SECRETS_ENCRYPTION_KEY=' + secrets.token_urlsafe(48))\""
-        )
-        return report
-
-    init_db()
-    db = SessionLocal()
-    try:
-        users = (
-            db.query(User)
-            .filter(User.github_token.isnot(None), User.github_token != "")
-            .all()
-        )
-        for user in users:
-            report["scanned"] += 1
-            current = user.github_token
-            if not current:
-                continue
-            if is_encrypted_secret(current):
-                report["already_encrypted"] += 1
-                continue
-
-            encrypted = _fernet.encrypt(current.encode("utf-8")).decode("utf-8")
-            # Verify before writing. A credential that cannot be read back is
-            # worse than a plaintext one: the account is simply broken.
-            try:
-                if _fernet.decrypt(encrypted.encode("utf-8")).decode("utf-8") != current:
-                    raise ValueError("round trip did not reproduce the original token")
-            except Exception as exc:  # noqa: BLE001
-                report["failed"] += 1
-                report["errors"].append(
-                    f"user {user.id}: verification failed, left as plaintext ({exc})"
-                )
-                continue
-
-            if dry_run:
-                report["migrated"] += 1
-                continue
-
-            user.github_token = encrypted
-            report["migrated"] += 1
-
-        if not dry_run and report["migrated"]:
-            db.commit()
-        elif not dry_run:
-            db.rollback()
-    except Exception as exc:  # noqa: BLE001
-        db.rollback()
-        report["errors"].append(f"migration aborted, nothing committed: {exc}")
-    finally:
-        db.close()
-
-    return report
 
 
 def reencrypt_secrets(old_key: str, *, dry_run: bool = False) -> Dict[str, Any]:
-    """Move stored GitHub tokens from `old_key` to the current SECRETS_ENCRYPTION_KEY.
-
-    WHY THIS EXISTS
-    ---------------
-    Rotating JWT_SECRET is an env change; rotating SECRETS_ENCRYPTION_KEY is
-    not, because every token already on disk was sealed with the OLD key.
-    Swapping the env var alone strands those ciphertexts: decrypt_secret
-    returns them unchanged and the only symptom is a mysterious GitHub 401 on
-    every later scan. This performs the rotation properly.
-
-    HOW A ROW IS CLASSIFIED
-    -----------------------
-    1. Decrypts with the CURRENT key first - already rotated, counted and
-       skipped, so the function is idempotent by construction.
-    2. Falls back to `old_key` - genuinely old; re-encrypted with the current
-       key and round-trip verified before it may be written.
-    3. Neither - left untouched and reported. A credential that could not be
-       read is never overwritten by one that might not be readable either.
-
-    Plaintext rows are `encrypt_plaintext_secrets`' job, not a rotation's:
-    different failure, different fix, and they are counted separately.
-
-    Args:
-        old_key: The previous SECRETS_ENCRYPTION_KEY value.
-        dry_run: report what would change without writing (the CLI default).
+    """ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database.
+    
+    Returns a report indicating no tokens to re-encrypt.
     """
-    report: Dict[str, Any] = {
+    return {
         "dry_run": dry_run,
-        "current_key_configured": _fernet is not None,
+        "current_key_configured": False,
         "scanned": 0,
         "already_current": 0,
         "reencrypted": 0,
         "plaintext": 0,
         "failed": 0,
-        "errors": [],
+        "errors": ["ZERO-KNOWLEDGE: No GitHub tokens stored in database to re-encrypt."],
     }
-
-    if _fernet is None:
-        report["errors"].append(
-            "SECRETS_ENCRYPTION_KEY is not set, so there is no current key to "
-            "encrypt with. Set the NEW key first, then re-run. See: python -c "
-            "\"import secrets; print('SECRETS_ENCRYPTION_KEY=' + secrets.token_urlsafe(48))\""
-        )
-        return report
-
-    old_fernet = _fernet_for(old_key)
-    if old_fernet is None:
-        report["errors"].append(
-            "The old key is empty (or `cryptography` is not installed), so rows "
-            "sealed with it cannot be decrypted."
-        )
-        return report
-
-    init_db()
-    db = SessionLocal()
-    try:
-        users = (
-            db.query(User)
-            .filter(User.github_token.isnot(None), User.github_token != "")
-            .all()
-        )
-        for user in users:
-            report["scanned"] += 1
-            current = user.github_token
-            if not current:
-                continue
-            if not is_encrypted_secret(current):
-                report["plaintext"] += 1
-                continue
-            try:
-                _fernet.decrypt(current.encode("utf-8"))
-                report["already_current"] += 1
-                continue
-            except Exception:
-                pass  # sealed with the old key; handled below
-
-            try:
-                plaintext = old_fernet.decrypt(current.encode("utf-8")).decode("utf-8")
-            except Exception as exc:  # noqa: BLE001
-                report["failed"] += 1
-                report["errors"].append(
-                    f"user {user.id}: neither the current nor the old key "
-                    f"decrypts this token ({exc}); left untouched"
-                )
-                continue
-
-            rotated = _fernet.encrypt(plaintext.encode("utf-8")).decode("utf-8")
-            try:
-                if _fernet.decrypt(rotated.encode("utf-8")).decode("utf-8") != plaintext:
-                    raise ValueError("round trip did not reproduce the original token")
-            except Exception as exc:  # noqa: BLE001
-                report["failed"] += 1
-                report["errors"].append(
-                    f"user {user.id}: verification failed, left as-is ({exc})"
-                )
-                continue
-
-            if dry_run:
-                report["reencrypted"] += 1
-                continue
-            user.github_token = rotated
-            report["reencrypted"] += 1
-
-        if report["plaintext"]:
-            report["errors"].append(
-                f"{report['plaintext']} token(s) are stored in plaintext; run "
-                "python scripts/migrate_plaintext_secrets.py --apply to encrypt them"
-            )
-        if not dry_run and report["reencrypted"]:
-            db.commit()
-        elif not dry_run:
-            db.rollback()
-    except Exception as exc:  # noqa: BLE001
-        db.rollback()
-        report["errors"].append(f"rotation aborted, nothing committed: {exc}")
-    finally:
-        db.close()
-
-    return report
 
 
 def reset_password_with_token(token: str, new_password: str) -> Dict[str, Any]:

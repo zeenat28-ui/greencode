@@ -1,6 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+const API_BASE_URL = import.meta.env.VITE_API_URL || (isVercel ? '' : 'http://localhost:8000');
 
 /**
  * Session storage model
@@ -10,11 +11,15 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
  * page reload can silently mint a new short-lived access token. A stolen
  * refresh token is a far smaller and far shorter-lived exposure than a
  * long-lived bearer credential in localStorage.
+ * 
+ * ZERO-KNOWLEDGE: GitHub token is ALSO kept in memory only - NEVER in localStorage.
+ * It is sent with each request via X-GitHub-Token header. Server NEVER stores it.
  */
 const REFRESH_TOKEN_KEY = 'greencode_refresh_token';
 
 let _accessToken: string | null = null;
 let _refreshToken: string | null = null;
+let _githubToken: string | null = null;  // ZERO-KNOWLEDGE: GitHub PAT in memory only
 let _refreshing: Promise<string | null> | null = null;
 
 export const getAccessToken = (): string | null => _accessToken;
@@ -39,8 +44,15 @@ export const setRefreshToken = (token: string | null): void => {
     // Storage unavailable (private mode) - session simply won't survive reloads.
   }
 };
+
+/** ZERO-KNOWLEDGE: GitHub token stored in memory only, never persisted */
+export const getGitHubToken = (): string | null => _githubToken;
+export const setGitHubToken = (token: string | null): void => {
+  _githubToken = token;
+};
 export const clearSession = (): void => {
   _accessToken = null;
+  _githubToken = null;
   setRefreshToken(null);
 };
 
@@ -53,6 +65,17 @@ const api = axios.create({
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (_accessToken) {
     config.headers.Authorization = `Bearer ${_accessToken}`;
+  }
+  // ZERO-KNOWLEDGE: Attach GitHub token to requests that need it
+  // Endpoints that require GitHub token: /api/scan/*, /github/*, /api/dynamic/analyze
+  if (_githubToken && config.url) {
+    const needsGithubToken = 
+      config.url.startsWith('/api/scan/') ||
+      config.url.startsWith('/github/') ||
+      config.url.startsWith('/api/dynamic/analyze');
+    if (needsGithubToken) {
+      config.headers['X-GitHub-Token'] = _githubToken;
+    }
   }
   return config;
 });
@@ -113,4 +136,3 @@ api.interceptors.response.use(
 
 export default api;
 export { API_BASE_URL };
-

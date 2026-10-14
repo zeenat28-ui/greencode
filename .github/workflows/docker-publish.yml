@@ -30,12 +30,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Determine Docker Hub Organization / Username
+      - name: Determine Docker Hub Credentials
         id: dockerhub-config
         run: |
           DOCKER_USER="${{ secrets.DOCKERHUB_USERNAME }}"
           if [ -z "$DOCKER_USER" ]; then
-            DOCKER_USER="${{ github.repository_owner }}"
+            DOCKER_USER="zeenat28"
           fi
           echo "username=$DOCKER_USER" >> $GITHUB_OUTPUT
 
@@ -47,13 +47,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ─── Log in to Docker Hub (if secret is present) ───
+      # ─── Log in to Docker Hub (supports ZEEMLOPS or DOCKERHUB_TOKEN) ───
       - name: Log in to Docker Hub
-        if: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+        if: ${{ secrets.ZEEMLOPS != '' || secrets.DOCKERHUB_TOKEN != '' }}
         uses: docker/login-action@v3
         with:
           username: ${{ steps.dockerhub-config.outputs.username }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: ${{ secrets.ZEEMLOPS || secrets.DOCKERHUB_TOKEN }}
 
       # ─── Compute Tags ───
       - name: Generate Docker Tags
@@ -72,7 +72,7 @@ jobs:
 
           TAGS="ghcr.io/${{ github.repository }}:${TAG},ghcr.io/${{ github.repository }}:latest"
 
-          if [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+          if [ -n "${{ secrets.ZEEMLOPS || secrets.DOCKERHUB_TOKEN }}" ]; then
             TAGS="${TAGS},${DOCKER_USER}/${REPO_NAME}:${TAG},${DOCKER_USER}/${REPO_NAME}:latest"
           fi
 
@@ -95,3 +95,4 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=2.1.0
             org.opencontainers.image.licenses=Apache-2.0
+

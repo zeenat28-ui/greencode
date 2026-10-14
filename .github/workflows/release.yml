@@ -76,18 +76,18 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub (if token configured)
-        if: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+        if: ${{ secrets.ZEEMLOPS != '' || secrets.DOCKERHUB_TOKEN != '' }}
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME || github.repository_owner }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME || 'zeenat28' }}
+          password: ${{ secrets.ZEEMLOPS || secrets.DOCKERHUB_TOKEN }}
 
       - name: Generate Multi-Registry Tags
         id: meta
         run: |
-          DOCKER_USER="${{ secrets.DOCKERHUB_USERNAME || github.repository_owner }}"
+          DOCKER_USER="${{ secrets.DOCKERHUB_USERNAME || 'zeenat28' }}"
           TAGS="ghcr.io/${{ github.repository }}:${{ github.ref_name }},ghcr.io/${{ github.repository }}:latest"
-          if [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+          if [ -n "${{ secrets.ZEEMLOPS || secrets.DOCKERHUB_TOKEN }}" ]; then
             TAGS="${TAGS},${DOCKER_USER}/greencode:${{ github.ref_name }},${DOCKER_USER}/greencode:latest"
           fi
           echo "tags=$TAGS" >> $GITHUB_OUTPUT

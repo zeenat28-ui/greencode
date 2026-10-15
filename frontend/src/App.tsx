@@ -24,7 +24,7 @@ function App() {
     <Routes>
       <Route
         path="/login"
-        element={isLoading ? <FullScreenLoader /> : isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />}
+        element={isLoading ? <FullScreenLoader /> : <Login />}
       />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>

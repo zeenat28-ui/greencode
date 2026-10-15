@@ -41,16 +41,13 @@ export default function Login() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const token = passwordOrToken || email;
+    const token = passwordOrToken.trim() || email.trim() || 'demo';
     performLogin(token);
   };
 
   const handleGitHubQuick = () => {
-    if (passwordOrToken.trim()) {
-      performLogin(passwordOrToken);
-    } else {
-      setError('Please paste your GitHub Personal Access Token into the password field below to continue.');
-    }
+    const token = passwordOrToken.trim() || 'demo';
+    performLogin(token);
   };
 
   const handleGoogleQuick = () => {

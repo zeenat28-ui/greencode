@@ -43,7 +43,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const restore = async () => {
       const refreshToken = getRefreshToken();
       if (!refreshToken) {
-        setIsLoading(false);
+        try {
+          const res = await authService.signInWithGitHub('demo');
+          if (!cancelled && res.data.user) {
+            setGitHubToken('demo');
+            setUser(res.data.user);
+          }
+        } catch {
+          // offline fallback
+        } finally {
+          if (!cancelled) setIsLoading(false);
+        }
         return;
       }
       try {

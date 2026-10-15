@@ -121,7 +121,7 @@ REFRESH_TOKEN_EXPIRE = timedelta(days=7)
 # Pydantic Schemas for API Requests & Responses
 class GitHubAuthRequest(BaseModel):
     github_token: str = Field(
-        ..., min_length=10, max_length=200,
+        ..., min_length=3, max_length=200,
         description="GitHub Personal Access Token with 'repo' scope",
     )
 

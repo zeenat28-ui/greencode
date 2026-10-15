@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Eye, EyeOff, Loader2, AlertCircle, Check, Github, Leaf } from 'lucide-react';
+import { Eye, EyeOff, Loader2, AlertCircle, Check, Github } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ssoService } from '../services/greencodeApi';
 
@@ -156,11 +156,11 @@ export default function Login() {
         {/* Top: Brand Logo & Title */}
         <div className="relative z-10 pt-1">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#0e482f] flex items-center justify-center text-white font-mono font-bold text-sm shadow-xs">
-              <span className="text-emerald-400 text-xs font-semibold mr-0.5">{`{`}</span>
-              <Leaf size={14} className="text-emerald-300 stroke-[2.5]" />
-              <span className="text-emerald-400 text-xs font-semibold ml-0.5">{`}`}</span>
-            </div>
+            <img 
+              src="/logo.png" 
+              alt="GreenCode" 
+              className="w-8 h-8 object-contain select-none shrink-0" 
+            />
             <span className="text-xl font-bold tracking-tight text-[#0a291c]">
               GreenCode
             </span>

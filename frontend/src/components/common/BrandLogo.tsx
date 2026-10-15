@@ -4,9 +4,9 @@ interface BrandLogoProps {
 }
 
 const SIZE_MAP = {
-  sm: 'w-7 h-7 rounded-lg',
-  md: 'w-9 h-9 rounded-xl',
-  lg: 'w-11 h-11 rounded-xl',
+  sm: 'w-7 h-7',
+  md: 'w-8 h-8',
+  lg: 'w-10 h-10',
 };
 
 export default function BrandLogo({ size = 'md', className = '' }: BrandLogoProps) {
@@ -14,7 +14,7 @@ export default function BrandLogo({ size = 'md', className = '' }: BrandLogoProp
     <img
       src="/logo.png"
       alt="GreenCode"
-      className={`${SIZE_MAP[size]} object-contain select-none shrink-0 shadow-xs ring-1 ring-emerald-950/10 ${className}`}
+      className={`${SIZE_MAP[size]} object-contain select-none shrink-0 ${className}`}
     />
   );
 }

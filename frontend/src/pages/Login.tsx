@@ -77,23 +77,32 @@ export default function Login() {
       {/* ════════════════════════ LEFT HERO PANE (Mint Green #ebf6ee) ════════════════════════ */}
       <div className="lg:w-1/2 bg-[#ebf6ee] px-8 sm:px-12 xl:px-16 py-6 sm:py-8 lg:py-10 flex flex-col justify-between relative overflow-hidden border-b lg:border-b-0 lg:border-r border-[#d8ecdd] h-full">
         
-        {/* Subtle Geometric Wireframe Leaf + Cloud Line Art Overlay */}
-        <div className="absolute right-0 top-10 lg:top-16 w-72 h-72 pointer-events-none select-none opacity-35 text-[#4c8464]">
-          <svg viewBox="0 0 240 240" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-full h-full">
-            <path d="M125 75 A 28 28 0 0 1 175 75 A 24 24 0 0 1 205 100 A 24 24 0 0 1 185 140 L 115 140" strokeWidth="1.1" />
-            <path d="M145 105 A 32 32 0 0 1 205 105 A 28 28 0 0 1 235 135 L 145 135" strokeWidth="1.1" opacity="0.6" />
-            <path d="M150 35 C 205 80, 205 165, 150 205 C 95 165, 95 80, 150 35 Z" strokeWidth="1.5" />
-            <path d="M150 35 L 150 205" strokeWidth="1.2" />
-            <path d="M150 68 L 178 90 M 150 68 L 122 90" />
-            <path d="M150 102 L 188 124 M 150 102 L 112 124" />
-            <path d="M150 138 L 182 160 M 150 138 L 118 160" />
-            <path d="M150 172 L 166 186 M 150 172 L 134 186" />
+        {/* Subtle Geometric Wireframe Leaf + Cloud Line Art Overlay (Moved higher up & wider) */}
+        <div className="absolute right-0 -top-6 lg:-top-2 w-[380px] h-[380px] pointer-events-none select-none opacity-40 text-[#4c8464]">
+          <svg viewBox="0 0 320 320" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-full h-full">
+            {/* Background Clouds */}
+            <path d="M150 90 A 35 35 0 0 1 220 90 A 30 30 0 0 1 260 125 A 30 30 0 0 1 235 175 L 140 175" strokeWidth="1.2" />
+            <path d="M180 130 A 40 40 0 0 1 255 130 A 35 35 0 0 1 295 170 L 175 170" strokeWidth="1.1" opacity="0.6" />
+            
+            {/* Geometric Leaf Outline */}
+            <path d="M190 40 C 265 95, 265 205, 190 255 C 115 205, 115 95, 190 40 Z" strokeWidth="1.6" />
+            <path d="M190 40 L 190 255" strokeWidth="1.3" />
+            
+            {/* Internal Veins & Tech nodes */}
+            <path d="M190 80 L 225 105 M 190 80 L 155 105" />
+            <path d="M190 120 L 240 148 M 190 120 L 140 148" />
+            <path d="M190 165 L 230 192 M 190 165 L 150 192" />
+            <path d="M190 205 L 212 222 M 190 205 L 168 222" />
+            
+            <circle cx="225" cy="105" r="2" fill="currentColor" opacity="0.7" />
+            <circle cx="240" cy="148" r="2" fill="currentColor" opacity="0.7" />
+            <circle cx="140" cy="148" r="2" fill="currentColor" opacity="0.7" />
           </svg>
         </div>
 
-        {/* Top: Brand Logo & Title (Moved strictly to the top) */}
+        {/* Top: Brand Logo & Title */}
         <div className="relative z-10 pt-1">
-          <div className="flex items-center gap-2.5 mb-6 sm:mb-8 lg:mb-10">
+          <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-[#0e482f] flex items-center justify-center text-white font-mono font-bold text-sm shadow-xs">
               <span className="text-emerald-400 text-xs font-semibold mr-0.5">{`{`}</span>
               <Leaf size={14} className="text-emerald-300 stroke-[2.5]" />
@@ -103,82 +112,90 @@ export default function Login() {
               GreenCode
             </span>
           </div>
+        </div>
 
+        {/* Middle Core Area: Hero + Cards Pulled Higher Up (Eliminates Empty Space) */}
+        <div className="relative z-10 my-auto py-2">
+          
           {/* Headline & Clear Value-Driven Body Text */}
-          <div className="max-w-[460px]">
-            <h1 className="text-3xl sm:text-4xl lg:text-[42px] font-black text-[#0a291c] tracking-tight leading-[1.12] mb-4">
+          <div className="max-w-[540px] mb-5 sm:mb-6">
+            <h1 className="text-3xl sm:text-4xl lg:text-[42px] font-black text-[#0a291c] tracking-tight leading-[1.12] mb-3">
               Build greener,<br />run leaner.
             </h1>
-            <p className="text-xs sm:text-sm text-[#2c4e3e] leading-relaxed mb-6 font-normal">
+            <p className="text-xs sm:text-sm text-[#2c4e3e] leading-relaxed font-normal max-w-[480px]">
               Measure real code energy, eliminate cloud compute waste, and automate green optimizations in your CI/CD pipeline.
             </p>
           </div>
-        </div>
 
-        {/* Bottom Metrics Showcase (Useful for both Code & Business) */}
-        <div className="relative z-10 pb-1">
-          
-          {/* Twin Metric Cards */}
-          <div className="grid grid-cols-2 gap-3 max-w-[420px] mb-3">
+          {/* Cards & Badges Section: Expanded Width + Generous Gap between Cards */}
+          <div className="w-full max-w-[540px] space-y-3.5">
             
-            {/* Metric Card 1: Carbon & Code Performance */}
-            <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-[#d3e7d8] shadow-xs flex items-center justify-between">
-              <div>
-                <div className="text-xl sm:text-2xl font-black text-[#0a291c] font-sans tracking-tight leading-none">
-                  14.2
+            {/* Twin Metric Cards with Generous Spacing */}
+            <div className="grid grid-cols-2 gap-4 sm:gap-5 w-full">
+              
+              {/* Metric Card 1: Carbon & Code Performance */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-[#d3e7d8] shadow-xs flex items-center justify-between hover:border-emerald-500/30 transition">
+                <div>
+                  <div className="text-2xl sm:text-[28px] font-black text-[#0a291c] font-sans tracking-tight leading-none">
+                    14.2
+                  </div>
+                  <div className="text-xs font-semibold text-slate-800 mt-1.5">
+                    Carbon Score
+                  </div>
+                  <div className="text-[11px] text-[#467059]">
+                    gCO₂e / 1k requests
+                  </div>
                 </div>
-                <div className="text-[11px] font-semibold text-slate-800 mt-1">
-                  Carbon Score
-                </div>
-                <div className="text-[10px] text-[#467059]">
-                  gCO₂e / 1k requests
-                </div>
+                <svg className="w-14 sm:w-16 h-8 text-emerald-500 shrink-0" viewBox="0 0 80 40" fill="none">
+                  <path d="M2 15 Q 15 25, 28 10 T 55 18 T 78 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M2 15 Q 15 25, 28 10 T 55 18 T 78 5 L 78 40 L 2 40 Z" fill="currentColor" fillOpacity="0.08" />
+                </svg>
               </div>
-              <svg className="w-12 sm:w-14 h-7 text-emerald-500 shrink-0" viewBox="0 0 80 40" fill="none">
-                <path d="M2 15 Q 15 25, 28 10 T 55 18 T 78 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M2 15 Q 15 25, 28 10 T 55 18 T 78 5 L 78 40 L 2 40 Z" fill="currentColor" fillOpacity="0.08" />
-              </svg>
+
+              {/* Metric Card 2: Cloud Cost Savings */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-[#d3e7d8] shadow-xs flex items-center justify-between hover:border-emerald-500/30 transition">
+                <div>
+                  <div className="text-2xl sm:text-[28px] font-black text-[#0a291c] font-sans tracking-tight leading-none">
+                    -$340
+                  </div>
+                  <div className="text-xs font-semibold text-slate-800 mt-1.5">
+                    Cloud Bill
+                  </div>
+                  <div className="text-[11px] text-[#467059]">
+                    Monthly average saved
+                  </div>
+                </div>
+                <svg className="w-14 sm:w-16 h-8 text-emerald-500 shrink-0" viewBox="0 0 80 40" fill="none">
+                  <path d="M2 22 Q 20 8, 38 18 T 60 12 T 78 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M2 22 Q 20 8, 38 18 T 60 12 T 78 4 L 78 40 L 2 40 Z" fill="currentColor" fillOpacity="0.08" />
+                </svg>
+              </div>
+
             </div>
 
-            {/* Metric Card 2: Cloud Cost Savings */}
-            <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-[#d3e7d8] shadow-xs flex items-center justify-between">
-              <div>
-                <div className="text-xl sm:text-2xl font-black text-[#0a291c] font-sans tracking-tight leading-none">
-                  -$340
-                </div>
-                <div className="text-[11px] font-semibold text-slate-800 mt-1">
-                  Cloud Bill
-                </div>
-                <div className="text-[10px] text-[#467059]">
-                  Monthly average saved
-                </div>
+            {/* Twin Badges Spanning Balanced Full Width */}
+            <div className="grid grid-cols-2 gap-4 sm:gap-5 w-full">
+              
+              {/* Badge 1: Code Side */}
+              <div className="bg-white/90 backdrop-blur-xs rounded-xl px-4 py-2.5 border border-[#d3e7d8] flex items-center gap-2 text-xs font-medium text-[#14422c]">
+                <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />
+                <span className="truncate">Automated Code Fixes</span>
               </div>
-              <svg className="w-12 sm:w-14 h-7 text-emerald-500 shrink-0" viewBox="0 0 80 40" fill="none">
-                <path d="M2 22 Q 20 8, 38 18 T 60 12 T 78 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M2 22 Q 20 8, 38 18 T 60 12 T 78 4 L 78 40 L 2 40 Z" fill="currentColor" fillOpacity="0.08" />
-              </svg>
+
+              {/* Badge 2: Business & Monitoring Side */}
+              <div className="bg-white/90 backdrop-blur-xs rounded-xl px-4 py-2.5 border border-[#d3e7d8] flex items-center gap-2 text-xs font-medium text-[#14422c]">
+                <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />
+                <span className="truncate">Continuous Cost Audits</span>
+              </div>
+
             </div>
 
           </div>
 
-          {/* Twin Minimal Global Standard Badges */}
-          <div className="grid grid-cols-2 gap-3 max-w-[420px]">
-            
-            {/* Badge 1: Code Side */}
-            <div className="bg-white/90 backdrop-blur-xs rounded-lg px-3 py-2 border border-[#d3e7d8] flex items-center gap-1.5 text-[11px] font-medium text-[#14422c]">
-              <Check size={13} className="text-emerald-600 stroke-[3] shrink-0" />
-              <span className="truncate">Automated Code Fixes</span>
-            </div>
-
-            {/* Badge 2: Business & Monitoring Side */}
-            <div className="bg-white/90 backdrop-blur-xs rounded-lg px-3 py-2 border border-[#d3e7d8] flex items-center gap-1.5 text-[11px] font-medium text-[#14422c]">
-              <Check size={13} className="text-emerald-600 stroke-[3] shrink-0" />
-              <span className="truncate">Continuous Cost Audits</span>
-            </div>
-
-          </div>
-
         </div>
+
+        {/* Bottom spacer for balanced vertical alignment */}
+        <div className="h-2"></div>
 
       </div>
 

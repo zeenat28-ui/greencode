@@ -81,79 +81,79 @@ export default function Login() {
         <div className="absolute inset-0 pointer-events-none select-none bg-[linear-gradient(115deg,transparent_20%,rgba(255,255,255,0.22)_35%,rgba(255,255,255,0.42)_42%,rgba(255,255,255,0.08)_50%,transparent_65%)]" />
         <div className="absolute inset-0 pointer-events-none select-none bg-[radial-gradient(ellipse_80%_60%_at_65%_25%,rgba(255,255,255,0.4)_0%,rgba(255,255,255,0.12)_40%,transparent_70%)]" />
 
-        {/* Subtle Geometric Wireframe Leaf + Cloud Line Art Overlay (Shifted towards Right Card Boundary, Clear of Text) */}
-        <div className="absolute -right-2 lg:right-0 top-6 lg:top-10 w-[320px] sm:w-[350px] h-[310px] pointer-events-none select-none opacity-50 text-[#2f6645]">
+        {/* Subtle Geometric Wireframe Leaf + Cloud Line Art Overlay (Pushed Right Against Card Boundary) */}
+        <div className="absolute right-[-10px] lg:right-0 top-6 lg:top-10 w-[300px] sm:w-[330px] h-[300px] pointer-events-none select-none opacity-50 text-[#2f6645]">
           <svg viewBox="0 0 320 300" fill="none" stroke="currentColor" strokeWidth="1.3" className="w-full h-full">
             {/* ═════════ 1. COMPLETE CLOUD ON LEFT (Background, 100% Fully Visible Even in Overlap) ═════════ */}
             <path 
-              d="M 177.0 124.2 C 173.9 108.3 159.9 96.4 143.2 96.4 C 129.9 96.4 118.4 103.9 112.6 115.0 C 98.8 116.5 88.0 128.2 88.0 142.4 C 88.0 157.6 100.4 170.0 115.6 170.0 L 175.4 170.0 C 188.1 170.0 198.4 159.7 198.4 147.0 C 198.4 134.9 189.0 125.0 177.0 124.2 Z" 
+              d="M 214.0 124.2 C 210.9 108.3 196.9 96.4 180.2 96.4 C 166.9 96.4 155.4 103.9 149.6 115.0 C 135.8 116.5 125.0 128.2 125.0 142.4 C 125.0 157.6 137.4 170.0 152.6 170.0 L 212.4 170.0 C 225.1 170.0 235.4 159.7 235.4 147.0 C 235.4 134.9 226.0 125.0 214.0 124.2 Z" 
               strokeWidth="1.4"
             />
             {/* Cloud Internal Tech Pulse Node */}
-            <path d="M 143.2 155 L 143.2 130 M 138 135 L 143.2 130 L 148.4 135" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" opacity="0.65" />
-            <circle cx="143.2" cy="155" r="2.2" fill="currentColor" opacity="0.8" />
+            <path d="M 180.2 155 L 180.2 130 M 175 135 L 180.2 130 L 185.4 135" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" opacity="0.65" />
+            <circle cx="180.2" cy="155" r="2.2" fill="currentColor" opacity="0.8" />
 
-            {/* ═════════ 2. TECH LEAF ON RIGHT (Wireframe Overlapping Over Cloud, Zero Opaque Fill) ═════════ */}
+            {/* ═════════ 2. TECH LEAF ON RIGHT (Wireframe Hugging Right Card Boundary, Zero Opaque Fill) ═════════ */}
             <path 
-              d="M 215 40 C 275 95 275 210 215 265 C 155 210 155 95 215 40 Z" 
+              d="M 252 40 C 312 95 312 210 252 265 C 192 210 192 95 252 40 Z" 
               strokeWidth="1.5"
             />
             
             {/* Central Leaf Stem */}
-            <path d="M 215 40 L 215 265" strokeWidth="1.4" />
+            <path d="M 252 40 L 252 265" strokeWidth="1.4" />
             
             {/* Vein Branch Lines */}
             {/* Pair 1 */}
-            <path d="M 215 84 L 194 70" strokeWidth="1.2" />
-            <path d="M 215 84 L 236 70" strokeWidth="1.2" />
+            <path d="M 252 84 L 231 70" strokeWidth="1.2" />
+            <path d="M 252 84 L 273 70" strokeWidth="1.2" />
 
             {/* Pair 2 */}
-            <path d="M 215 122 L 178 108" strokeWidth="1.2" />
-            <path d="M 215 122 L 252 108" strokeWidth="1.2" />
+            <path d="M 252 122 L 215 108" strokeWidth="1.2" />
+            <path d="M 252 122 L 289 108" strokeWidth="1.2" />
 
             {/* Pair 3 (Widest) */}
-            <path d="M 215 162 L 172 150" strokeWidth="1.2" />
-            <path d="M 215 162 L 258 150" strokeWidth="1.2" />
+            <path d="M 252 162 L 209 150" strokeWidth="1.2" />
+            <path d="M 252 162 L 295 150" strokeWidth="1.2" />
 
             {/* Pair 4 */}
-            <path d="M 215 204 L 178 192" strokeWidth="1.2" />
-            <path d="M 215 204 L 252 192" strokeWidth="1.2" />
+            <path d="M 252 204 L 215 192" strokeWidth="1.2" />
+            <path d="M 252 204 L 289 192" strokeWidth="1.2" />
 
             {/* Pair 5 */}
-            <path d="M 215 240 L 194 232" strokeWidth="1.2" />
-            <path d="M 215 240 L 236 232" strokeWidth="1.2" />
+            <path d="M 252 240 L 231 232" strokeWidth="1.2" />
+            <path d="M 252 240 L 273 232" strokeWidth="1.2" />
 
             {/* ═════════ TECH DOTS AT EVERY SINGLE LINE END (Terminal Nodes) ═════════ */}
             {/* Stem Terminals */}
-            <circle cx="215" cy="40" r="3" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="215" cy="265" r="3" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="252" cy="40" r="3" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="252" cy="265" r="3" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Vein Pair 1 Dots */}
-            <circle cx="194" cy="70" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="236" cy="70" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="231" cy="70" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="273" cy="70" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Vein Pair 2 Dots */}
-            <circle cx="178" cy="108" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="252" cy="108" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="215" cy="108" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="289" cy="108" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Vein Pair 3 Dots */}
-            <circle cx="172" cy="150" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="258" cy="150" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="209" cy="150" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="295" cy="150" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Vein Pair 4 Dots */}
-            <circle cx="178" cy="192" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="252" cy="192" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="215" cy="192" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="289" cy="192" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Vein Pair 5 Dots */}
-            <circle cx="194" cy="232" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="236" cy="232" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="231" cy="232" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="273" cy="232" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Stem Junction Internal Circuit Nodes */}
-            <circle cx="215" cy="84" r="2" fill="currentColor" opacity="0.65" />
-            <circle cx="215" cy="122" r="2" fill="currentColor" opacity="0.65" />
-            <circle cx="215" cy="162" r="2" fill="currentColor" opacity="0.65" />
-            <circle cx="215" cy="204" r="2" fill="currentColor" opacity="0.65" />
-            <circle cx="215" cy="240" r="2" fill="currentColor" opacity="0.65" />
+            <circle cx="252" cy="84" r="2" fill="currentColor" opacity="0.65" />
+            <circle cx="252" cy="122" r="2" fill="currentColor" opacity="0.65" />
+            <circle cx="252" cy="162" r="2" fill="currentColor" opacity="0.65" />
+            <circle cx="252" cy="204" r="2" fill="currentColor" opacity="0.65" />
+            <circle cx="252" cy="240" r="2" fill="currentColor" opacity="0.65" />
           </svg>
         </div>
 

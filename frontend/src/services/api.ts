@@ -1,7 +1,8 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
-const API_BASE_URL = import.meta.env.VITE_API_URL || (isVercel ? '' : 'http://localhost:8000');
+const isLocal8000 = typeof window !== 'undefined' && (window.location.port === '8000' || window.location.host.includes(':8000'));
+const API_BASE_URL = import.meta.env.VITE_API_URL || (isVercel || isLocal8000 ? '' : 'http://127.0.0.1:8000');
 
 /**
  * Session storage model

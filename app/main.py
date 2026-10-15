@@ -332,21 +332,17 @@ CORS_ORIGINS = [
     o.strip()
     for o in os.environ.get(
         "CORS_ORIGINS",
-        # Vite's dev server binds 127.0.0.1 by default, which is a different
-        # origin from localhost - a browser treats them as unrelated, so
-        # listing only "localhost:5173" made every API call fail CORS on a
-        # stock `npm run dev`. Both spellings are listed because both are
-        # reachable depending on how the server was started.
-        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:8080",
+        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000,http://localhost:8080,https://greencode-teal.vercel.app",
     ).split(",")
     if o.strip()
 ]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=r"^https://.*\.vercel\.app$",
     allow_credentials=True,
-    allow_headers=["Authorization", "Content-Type", "Accept"],
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["*"],
+    allow_methods=["*"],
 )
 
 
@@ -2030,7 +2026,7 @@ def inspect_github_repository_endpoint(
 @app.post("/github/pull-request", tags=["GitHub Integration"])
 @maybe_limit("10/minute")
 def create_github_pull_request_endpoint(
-    http_request: Request,
+    request: Request,
     req: GitHubPRRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
@@ -2038,7 +2034,7 @@ def create_github_pull_request_endpoint(
     
     ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
     """
-    header_token = http_request.headers.get("X-GitHub-Token")
+    header_token = request.headers.get("X-GitHub-Token")
     token = resolve_github_token(current_user["id"], explicit=req.token, header_token=header_token)
     res = create_refactoring_pull_request(
         repo_full_name=req.repo_full_name,

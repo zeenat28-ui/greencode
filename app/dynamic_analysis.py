@@ -178,7 +178,7 @@ class DynamicAnalyzer:
         if not DOCKER_AVAILABLE:
             return None
         try:
-            self._client = docker.from_env()
+            self._client = docker.from_env(timeout=1)
             self._client.ping()
             return self._client
         except Exception:
@@ -196,7 +196,7 @@ class DynamicAnalyzer:
 
         if DOCKER_AVAILABLE:
             try:
-                docker.from_env().ping()
+                docker.from_env(timeout=1).ping()
                 docker_ok = True
             except Exception as exc:
                 docker_error = f"{type(exc).__name__}: {exc}"

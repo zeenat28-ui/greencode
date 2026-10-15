@@ -18,10 +18,12 @@ import {
   TrendingDown,
   ShieldCheck,
 } from 'lucide-react';
+import { useT } from '../i18n/I18nContext';
 
 type TabKey = 'scope' | 'ml_audit' | 'tokens' | 'aws';
 
 export default function CloudCarbon() {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<TabKey>('scope');
 
   // Scope 1-3 Form State
@@ -264,12 +266,12 @@ def predict(input_tensor):
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1 border-b border-slate-200/80">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Cloud &amp; AI Carbon Emissions</h1>
-            <span className="badge bg-olive-100 text-olive-900 border border-olive-200">AWS &amp; GPU Profiler</span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Measure cloud infrastructure emissions, compare AWS regions, and estimate GPU &amp; LLM model energy consumption.
-          </p>
+             <h1 className="text-xl font-bold text-slate-900 dark:text-zinc-100 tracking-tight">{t('cloudCarbon.pageTitle')}</h1>
+             <span className="badge bg-olive-100 dark:bg-olive-900/30 text-olive-900 dark:text-olive-300 border border-olive-200 dark:border-olive-800">{t('cloudCarbon.badge')}</span>
+           </div>
+           <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+             {t('cloudCarbon.subtitle')}
+           </p>
         </div>
 
         {/* Tab Controls */}
@@ -278,31 +280,31 @@ def predict(input_tensor):
             onClick={() => setActiveTab('scope')}
             className={`px-3 py-1.5 rounded-md transition-all ${
               activeTab === 'scope'
-                ? 'bg-white text-slate-900 font-semibold shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 font-semibold shadow-sm'
+                : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
             }`}
           >
-            Cloud Emissions (Scope 1–3)
+            {t('cloudCarbon.tabs.scope')}
           </button>
           <button
             onClick={() => setActiveTab('ml_audit')}
             className={`px-3 py-1.5 rounded-md transition-all ${
               activeTab === 'ml_audit'
-                ? 'bg-white text-slate-900 font-semibold shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 font-semibold shadow-sm'
+                : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
             }`}
           >
-            AI &amp; GPU Model Auditor
+            {t('cloudCarbon.tabs.mlAudit')}
           </button>
           <button
             onClick={() => setActiveTab('tokens')}
             className={`px-3 py-1.5 rounded-md transition-all ${
               activeTab === 'tokens'
-                ? 'bg-white text-slate-900 font-semibold shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 font-semibold shadow-sm'
+                : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
             }`}
           >
-            LLM Token Energy Calculator
+            {t('cloudCarbon.tabs.tokens')}
           </button>
           <button
             onClick={() => {
@@ -312,12 +314,12 @@ def predict(input_tensor):
             }}
             className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
               activeTab === 'aws'
-                ? 'bg-white text-slate-900 font-semibold shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 font-semibold shadow-sm'
+                : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
             }`}
           >
             <Server size={13} />
-            AWS FinOps &amp; Carbon
+            {t('cloudCarbon.tabs.aws')}
           </button>
         </div>
       </div>
@@ -328,29 +330,29 @@ def predict(input_tensor):
           <div className="lg:col-span-5">
             <Card padding="lg" className="space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Sliders size={16} className="text-slate-500" />
-                Infrastructure Parameters
+               <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                <Sliders size={16} className="text-slate-500 dark:text-zinc-500" />
+                {t('cloudCarbon.infraParams')}
               </h2>
-              <span className="text-[11px] font-mono text-slate-400">AWS Datacenter PUE 1.15</span>
+              <span className="text-[11px] font-mono text-slate-400 dark:text-zinc-500">{t('cloudCarbon.pueLabel')}</span>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="label block mb-1">Cloud Provider</label>
-                <Select
-                  value={scopeForm.cloud_provider}
-                  onChange={(e) => setScopeForm({ ...scopeForm, cloud_provider: e.target.value })}
-                  className="text-xs font-mono"
-                >
-                  <option value="aws">Amazon Web Services (AWS)</option>
-                  <option value="gcp">Google Cloud Platform (GCP)</option>
-                  <option value="azure">Microsoft Azure</option>
+                 <label className="label block mb-1">{t('cloudCarbon.labels.cloudProvider')}</label>
+                 <Select
+                   value={scopeForm.cloud_provider}
+                   onChange={(e) => setScopeForm({ ...scopeForm, cloud_provider: e.target.value })}
+                   className="text-xs font-mono"
+                 >
+                   <option value="aws">Amazon Web Services (AWS)</option>
+                   <option value="gcp">Google Cloud Platform (GCP)</option>
+                   <option value="azure">Microsoft Azure</option>
                 </Select>
               </div>
 
               <div>
-                <label className="label block mb-1">vCPU Allocation</label>
+                <label className="label block mb-1">{t('cloudCarbon.labels.vcpuAllocation')}</label>
                 <Input
                   type="number"
                   value={scopeForm.vcpu_count}
@@ -360,7 +362,7 @@ def predict(input_tensor):
               </div>
 
               <div>
-                <label className="label block mb-1">Grid Intensity (gCO₂e/kWh)</label>
+                <label className="label block mb-1">{t('cloudCarbon.labels.gridIntensity')}</label>
                 <Input
                   type="number"
                   value={scopeForm.grid_intensity}
@@ -370,7 +372,7 @@ def predict(input_tensor):
               </div>
 
               <div>
-                <label className="label block mb-1">Annual Runs / Invocations</label>
+                <label className="label block mb-1">{t('cloudCarbon.labels.annualRuns')}</label>
                 <Input
                   type="number"
                   value={scopeForm.runs_per_year}
@@ -380,7 +382,7 @@ def predict(input_tensor):
               </div>
 
               <div>
-                <label className="label block mb-1">Egress Data Transfer (GB)</label>
+                <label className="label block mb-1">{t('cloudCarbon.labels.dataTransfer')}</label>
                 <Input
                   type="number"
                   value={scopeForm.data_transfer_gb}
@@ -390,7 +392,7 @@ def predict(input_tensor):
               </div>
 
               <div>
-                <label className="label block mb-1">Dev Team Size (FTE)</label>
+                <label className="label block mb-1">{t('cloudCarbon.labels.devTeamSize')}</label>
                 <Input
                   type="number"
                   value={scopeForm.team_size}
@@ -407,7 +409,7 @@ def predict(input_tensor):
               className="w-full py-2.5 text-xs font-semibold"
             >
               {scopeLoading ? <RefreshCw size={14} className="animate-spin" /> : <FileCheck size={14} />}
-              Compute Audit-Ready GHG Inventory
+              {t('cloudCarbon.computeInventory')}
             </Button>
           </Card>
         </div>
@@ -417,27 +419,27 @@ def predict(input_tensor):
                <div className="space-y-4">
                  <div className="grid sm:grid-cols-3 gap-3">
                     <Card className="border-l-4 border-l-slate-400 p-4">
-                      <p className="label">Scope 1 (Direct)</p>
+                      <p className="label">{t('cloudCarbon.scope1')}</p>
                      <p className="text-xl font-bold font-mono text-slate-900 mt-1">
                        {scopeResult.scope_1.total_emissions_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
                      </p>
-                     <p className="text-[11px] text-slate-500 mt-1">Development Team Overhead</p>
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{t('cloudCarbon.devTeamOverhead')}</p>
                    </Card>
 
                 <Card className="border-l-4 border-l-emerald-600 p-4">
-                     <p className="label">Scope 2 (Electricity)</p>
+                      <p className="label">{t('cloudCarbon.scope2')}</p>
                      <p className="text-xl font-bold font-mono text-emerald-700 mt-1">
                        {scopeResult.scope_2.location_based_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
                      </p>
-                     <p className="text-[11px] text-slate-500 mt-1">AWS Compute Grid Footprint</p>
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{t('cloudCarbon.awsGridFootprint')}</p>
                    </Card>
 
                   <Card className="border-l-4 border-l-cyan-600 p-4">
-                      <p className="label">Scope 3 (Supply Chain)</p>
+                      <p className="label">{t('cloudCarbon.scope3')}</p>
                      <p className="text-xl font-bold font-mono text-cyan-800 mt-1">
                        {scopeResult.scope_3.total_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
                      </p>
-                     <p className="text-[11px] text-slate-500 mt-1">Hardware LCA &amp; Data Egress</p>
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{t('cloudCarbon.hardwareLca')}</p>
                    </Card>
                 </div>
 
@@ -453,19 +455,19 @@ def predict(input_tensor):
 
                 <div className="space-y-2.5 text-xs">
                   <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-600">AWS Datacenter PUE Coefficient</span>
-                    <span className="font-mono font-semibold">{scopeResult.cloud_pue}</span>
+                    <span className="text-slate-600 dark:text-zinc-400">{t('cloudCarbon.pueCoeff')}</span>
+                    <span className="font-mono font-semibold text-slate-900 dark:text-zinc-100">{scopeResult.cloud_pue}</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-600">Operational Energy Consumption</span>
-                    <span className="font-mono font-semibold">{scopeResult.scope_2.annual_energy_kwh.toFixed(2)} kWh / year</span>
+                  <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700">
+                    <span className="text-slate-600 dark:text-zinc-400">{t('cloudCarbon.operationalEnergy')}</span>
+                    <span className="font-mono font-semibold text-slate-900 dark:text-zinc-100">{scopeResult.scope_2.annual_energy_kwh.toFixed(2)} kWh / year</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-600">Hardware Manufacturing LCA Amortization</span>
-                    <span className="font-mono font-semibold">{scopeResult.scope_3.hardware_embodied_kg_co2e.toFixed(2)} kg CO₂e</span>
+                  <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700">
+                    <span className="text-slate-600 dark:text-zinc-400">{t('cloudCarbon.hardwareLcaAmortization')}</span>
+                    <span className="font-mono font-semibold text-slate-900 dark:text-zinc-100">{scopeResult.scope_3.hardware_embodied_kg_co2e.toFixed(2)} kg CO₂e</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-600">Regulatory Framework Compliance</span>
+                  <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700">
+                    <span className="text-slate-600 dark:text-zinc-400">{t('cloudCarbon.regulatoryCompliance')}</span>
                     <span className="font-medium text-emerald-700">CSRD ESRS-E1 &middot; GHG Protocol &middot; SBTi ICT</span>
                   </div>
                 </div>
@@ -474,9 +476,9 @@ def predict(input_tensor):
             ) : (
               <Card padding="none" className="p-12 text-center text-slate-500 space-y-3">
                 <Cloud size={36} className="mx-auto text-slate-300" />
-                <p className="text-sm font-semibold text-slate-700">No Inventory Generated</p>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                  Click &ldquo;Compute Audit-Ready GHG Inventory&rdquo; to calculate certified Scope 1, Scope 2, and Scope 3 enterprise carbon metrics.
+                <p className="text-sm font-semibold text-slate-700 dark:text-zinc-300">{t('cloudCarbon.noInventory')}</p>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 max-w-sm mx-auto">
+                  {t('cloudCarbon.noInventoryBody')}
                 </p>
               </Card>
             )}
@@ -489,11 +491,11 @@ def predict(input_tensor):
         <div className="grid lg:grid-cols-12 gap-6 max-w-full overflow-hidden">
           <div className="lg:col-span-6 card p-5 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Cpu size={14} className="text-slate-600" />
-                PyTorch / Transformers Source Code
+              <h2 className="text-xs font-bold text-slate-900 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+                <Cpu size={14} className="text-slate-600 dark:text-zinc-500" />
+                {t('cloudCarbon.mlSource')}
               </h2>
-              <span className="text-[10px] font-mono text-slate-400">AST Pattern Detection</span>
+              <span className="text-[10px] font-mono text-slate-400 dark:text-zinc-500">{t('cloudCarbon.astDetection')}</span>
             </div>
 
             <textarea
@@ -510,7 +512,7 @@ def predict(input_tensor):
               className="btn-primary w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-2"
             >
               {mlAuditLoading ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
-              Scan for AI &amp; GPU Energy Anti-Patterns
+              {t('cloudCarbon.scanMl')}
             </button>
           </div>
 
@@ -519,13 +521,13 @@ def predict(input_tensor):
           <div className="space-y-3">
             <Card padding="lg" className="flex items-center justify-between">
               <div>
-                <p className="label">AI Workload Status</p>
-                <p className="text-lg font-bold text-slate-900 mt-0.5">
-                  {mlAuditResult.detected_patterns.length} Inefficiencies Detected
+                <p className="label dark:text-zinc-300">{t('cloudCarbon.mlStatus')}</p>
+                <p className="text-lg font-bold text-slate-900 dark:text-zinc-100 mt-0.5">
+                  {t('cloudCarbon.inefficienciesDetected', { count: String(mlAuditResult.detected_patterns.length) })}
                 </p>
               </div>
               <Badge variant={mlAuditResult.detected_patterns.length > 0 ? 'critical' : 'success'}>
-                {mlAuditResult.detected_patterns.length > 0 ? 'GPU Optimization Required' : 'Optimal'}
+                {mlAuditResult.detected_patterns.length > 0 ? t('cloudCarbon.gpuOptimizationRequired') : t('cloudCarbon.optimal')}
               </Badge>
             </Card>
 
@@ -536,11 +538,11 @@ def predict(input_tensor):
                         <span className="text-xs font-bold font-mono text-slate-900">{p.rule_id}</span>
                         <Badge variant="high" size="sm" className="text-[10px]">{p.severity}</Badge>
                       </div>
-                      <p className="text-xs font-semibold text-slate-800">{p.title}</p>
-                      <p className="text-[11px] text-slate-600">{p.description}</p>
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500 font-mono">Line {p.line_number}</span>
-                        <span className="text-emerald-700 font-medium">Estimated savings: {p.estimated_energy_savings_pct}% Joules</span>
+                      <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200">{p.title}</p>
+                      <p className="text-[11px] text-slate-600 dark:text-zinc-400">{p.description}</p>
+                      <div className="pt-2 border-t border-slate-100 dark:border-zinc-700 flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500 dark:text-zinc-400 font-mono">{t('cloudCarbon.lineNumber', { line: String(p.line_number) })}</span>
+                        <span className="text-emerald-700 font-medium">{t('cloudCarbon.estimatedSavings', { pct: String(p.estimated_energy_savings_pct) })}</span>
                 </div>
               </Card>
                   ))}
@@ -549,9 +551,9 @@ def predict(input_tensor):
             ) : (
               <Card padding="none" className="p-12 text-center text-slate-500 space-y-3">
                 <Cpu size={36} className="mx-auto text-slate-300" />
-                <p className="text-sm font-semibold text-slate-700">Awaiting ML Workload Scan</p>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                  Click &ldquo;Scan for AI &amp; GPU Energy Anti-Patterns&rdquo; to analyze the Python model for unquantized inference, missing KV-cache, and GPU sync bottlenecks.
+                <p className="text-sm font-semibold text-slate-700 dark:text-zinc-300">{t('cloudCarbon.awaitingMlScan')}</p>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 max-w-sm mx-auto">
+                  {t('cloudCarbon.awaitingMlBody')}
                 </p>
               </Card>
             )}
@@ -565,16 +567,16 @@ def predict(input_tensor):
             <div className="lg:col-span-5">
             <Card padding="lg" className="space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Zap size={16} className="text-slate-500" />
-                Inference Specifications
+              <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                <Zap size={16} className="text-slate-500 dark:text-zinc-400" />
+                {t('cloudCarbon.inferenceSpecs')}
               </h2>
-              <span className="text-[11px] font-mono text-slate-400">Tokens &middot; Joules &middot; Hardware</span>
+              <span className="text-[11px] font-mono text-slate-400 dark:text-zinc-500">{t('cloudCarbon.tokenJoulesHardware')}</span>
             </div>
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="label block mb-1">Model Parameters</label>
+                <label className="label block mb-1">{t('cloudCarbon.labels.modelParameters')}</label>
                 <Select
                   value={tokenForm.parameter_count_b}
                   onChange={(e) => setTokenForm({ ...tokenForm, parameter_count_b: Number(e.target.value) })}
@@ -588,7 +590,7 @@ def predict(input_tensor):
               </div>
 
               <div>
-                <label className="label block mb-1">Target Accelerator Hardware</label>
+                <label className="label block mb-1">{t('cloudCarbon.labels.hardware')}</label>
                 <Select
                   value={tokenForm.hardware}
                   onChange={(e) => setTokenForm({ ...tokenForm, hardware: e.target.value })}
@@ -607,7 +609,7 @@ def predict(input_tensor):
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label block mb-1">Tokens / Request</label>
+                  <label className="label block mb-1">{t('cloudCarbon.labels.tokensPerRequest')}</label>
                   <Input
                     type="number"
                     value={tokenForm.token_count}
@@ -616,7 +618,7 @@ def predict(input_tensor):
                   />
                 </div>
                 <div>
-                  <label className="label block mb-1">Grid Intensity (g/kWh)</label>
+                  <label className="label block mb-1">{t('cloudCarbon.labels.gridIntensity')}</label>
                   <Input
                     type="number"
                     value={tokenForm.grid_intensity}
@@ -634,7 +636,7 @@ def predict(input_tensor):
               className="w-full py-2.5 text-xs font-semibold"
             >
               {tokenLoading ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
-              Model Token Energy &amp; Carbon Impact
+              {t('cloudCarbon.modelTokenEnergy')}
             </Button>
             </Card>
           </div>
@@ -663,18 +665,18 @@ def predict(input_tensor):
                 </div>
 
                 <Card padding="lg" className="space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 pb-2 border-b border-slate-100">
-                    Annual Scale Projection (1M Invocations)
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <p className="text-slate-500">Annual Energy Demand</p>
-                      <p className="font-mono text-sm font-bold text-slate-900 mt-0.5">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-zinc-200 pb-2 border-b border-slate-100 dark:border-zinc-700">
+                      {t('cloudCarbon.annualProjection')}
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <p className="text-slate-500 dark:text-zinc-400">{t('cloudCarbon.pueCoeff')}</p>
+                        <p className="font-mono text-sm font-bold text-slate-900 dark:text-zinc-100 mt-0.5">
                         {tokenResult.annual_energy_kwh.toFixed(2)} kWh
                       </p>
                     </div>
                     <div>
-                      <p className="text-slate-500">Annual Atmospheric Carbon</p>
+                      <p className="text-slate-500 dark:text-zinc-400">{t('cloudCarbon.annualAtmosphericCarbon')}</p>
                       <p className="font-mono text-sm font-bold text-emerald-700 mt-0.5">
                         {tokenResult.annual_carbon_kg.toFixed(2)} kg CO₂e
                       </p>
@@ -682,7 +684,7 @@ def predict(input_tensor):
                   </div>
                   {tokenResult.aws_silicon_recommendation && (
                     <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-950">
-                      <span className="font-bold">AWS Native Silicon Advisory: </span>
+                      <span className="font-bold">{t('cloudCarbon.awsSiliconAdvisory')}</span>
                       {tokenResult.aws_silicon_recommendation}
                     </div>
                   )}
@@ -691,9 +693,9 @@ def predict(input_tensor):
               ) : (
             <Card padding="none" className="p-12 text-center text-slate-500 space-y-3">
               <Zap size={36} className="mx-auto text-slate-300" />
-              <p className="text-sm font-semibold text-slate-700">Token Model Uncomputed</p>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Simulate energy consumption across AWS Inferentia2, Trainium, Graviton4, and NVIDIA H100/A100 architectures.
+              <p className="text-sm font-semibold text-slate-700 dark:text-zinc-300">{t('cloudCarbon.tokenModelUncomputed')}</p>
+              <p className="text-xs text-slate-400 dark:text-zinc-500 max-w-sm mx-auto">
+                {t('cloudCarbon.tokenModelUncomputedBody')}
               </p>
             </Card>
           )}
@@ -710,13 +712,13 @@ def predict(input_tensor):
             <div className="lg:col-span-5">
             <Card padding="lg" className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Cloud size={16} className="text-slate-500" />
-                  Regional Grid Carbon Intensity
-                </h2>
+                 <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                <Cloud size={16} className="text-slate-500 dark:text-zinc-400" />
+                {t('cloudCarbon.regionalIntensity')}
+              </h2>
               </div>
               <div>
-                <label className="label block mb-1">AWS Region</label>
+                <label className="label block mb-1">{t('cloudCarbon.labels.awsRegion')}</label>
                 <div className="flex gap-2">
                   <Select
                     value={awsRegion}
@@ -735,7 +737,7 @@ def predict(input_tensor):
                     className="text-xs"
                   >
                     {awsCarbonLoading ? <RefreshCw size={13} className="animate-spin" /> : <Activity size={13} />}
-                    Resolve
+                    {t('cloudCarbon.resolve')}
                   </Button>
                 </div>
               </div>
@@ -746,17 +748,17 @@ def predict(input_tensor):
                     <span className="text-3xl font-bold font-mono text-slate-900">
                       {Number(awsCarbon.carbon_intensity ?? 0).toFixed(1)}
                     </span>
-                    <span className="text-xs text-slate-500">gCO₂eq/kWh</span>
+                    <span className="text-xs text-slate-500 dark:text-zinc-500">gCO₂eq/kWh</span>
                   </div>
                   <div className="text-[11px] font-mono text-slate-500 space-y-0.5">
-                    <div>Grid zone: <span className="text-slate-700">{awsCarbon.grid_zone}</span></div>
-                    <div>Source: <span className="text-slate-700">{awsCarbon.source}</span> · tier <span className="text-slate-700">{awsCarbon.tier}</span></div>
-                    {awsCarbon.citation && <div className="text-slate-400">{awsCarbon.citation}</div>}
+                    <div>{t('cloudCarbon.gridZone', { zone: awsCarbon.grid_zone || '' })}</div>
+                    <div>{t('cloudCarbon.source', { source: awsCarbon.source || '', tier: awsCarbon.tier || '' })}</div>
+                    {awsCarbon.citation && <div className="text-slate-400 dark:text-zinc-500">{awsCarbon.citation}</div>}
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-slate-400">
-                  Select a region and press Resolve to read live grid intensity (Electricity Maps) or the cited Ember 2024 reference.
+                <p className="text-xs text-slate-400 dark:text-zinc-500">
+                  {t('cloudCarbon.selectRegionResolve')}
                 </p>
               )}
             </Card>
@@ -764,15 +766,15 @@ def predict(input_tensor):
             {/* Migration advisor */}
             <div className="lg:col-span-7">
             <Card padding="lg" className="space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <TrendingDown size={16} className="text-slate-500" />
-                  Carbon-Optimal Region Migration
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-700">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                  <TrendingDown size={16} className="text-slate-500 dark:text-zinc-400" />
+                  {t('cloudCarbon.migrationAdvisor')}
                 </h2>
               </div>
               <div className="grid grid-cols-3 gap-3 text-xs">
                 <div>
-                  <label className="label block mb-1">Current Region</label>
+                  <label className="label block mb-1">{t('cloudCarbon.labels.currentRegion')}</label>
                   <Select
                     value={migrationForm.current_region}
                     onChange={(e) => setMigrationForm({ ...migrationForm, current_region: e.target.value })}
@@ -784,7 +786,7 @@ def predict(input_tensor):
                   </Select>
                 </div>
                 <div>
-                  <label className="label block mb-1">Monthly kWh</label>
+                  <label className="label block mb-1">{t('cloudCarbon.labels.monthlyKwh')}</label>
                   <Input
                     type="number"
                     value={migrationForm.monthly_kwh}
@@ -793,16 +795,16 @@ def predict(input_tensor):
                   />
                 </div>
                 <div>
-                  <label className="label block mb-1">Data Residency</label>
+                  <label className="label block mb-1">{t('cloudCarbon.labels.dataResidency')}</label>
                   <Select
                     value={migrationForm.data_residency}
                     onChange={(e) => setMigrationForm({ ...migrationForm, data_residency: e.target.value })}
                     className="text-xs font-mono"
                   >
-                    <option value="GLOBAL">Global</option>
-                    <option value="EU_STRICT">EU only</option>
-                    <option value="US_STRICT">US/CA only</option>
-                    <option value="APAC_STRICT">APAC only</option>
+                    <option value="GLOBAL">{t('cloudCarbon.residency.global')}</option>
+                    <option value="EU_STRICT">{t('cloudCarbon.residency.eu')}</option>
+                    <option value="US_STRICT">{t('cloudCarbon.residency.us')}</option>
+                    <option value="APAC_STRICT">{t('cloudCarbon.residency.apac')}</option>
                   </Select>
                 </div>
               </div>
@@ -813,14 +815,14 @@ def predict(input_tensor):
                 className="w-full py-2 text-xs font-semibold"
               >
                 {migrationLoading ? <RefreshCw size={14} className="animate-spin" /> : <TrendingDown size={14} />}
-                Rank Cleaner Regions
+                {t('cloudCarbon.rankRegions')}
               </Button>
 
               {migrationResult && (
                 <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="font-mono text-slate-500">Recommended:</span>
-                    <span className="font-mono font-bold text-emerald-700">{migrationResult.recommended_region}</span>
+                   <div className="flex flex-wrap items-center gap-2 text-xs">
+                     <span className="font-mono text-slate-500 dark:text-zinc-400">{t('cloudCarbon.recommended')}</span>
+                     <span className="font-mono font-bold text-emerald-700">{migrationResult.recommended_region}</span>
                     {Number(migrationResult.max_carbon_reduction_pct) > 0 && (
                       <Badge variant="success">
                         -{Number(migrationResult.max_carbon_reduction_pct).toFixed(1)}% · {Number(migrationResult.max_annual_co2_saved_kg).toFixed(1)} kg CO₂e/yr
@@ -831,11 +833,11 @@ def predict(input_tensor):
                     <table className="w-full text-left text-[11px] font-mono">
                       <thead className="text-slate-400 border-b border-slate-100">
                         <tr>
-                          <th className="py-1.5 pr-3">Region</th>
+                          <th className="py-1.5 pr-3">{t('cloudCarbon.table.region')}</th>
                           <th className="py-1.5 pr-3">gCO₂/kWh</th>
-                          <th className="py-1.5 pr-3">Reduction</th>
-                          <th className="py-1.5 pr-3">Annual Saved</th>
-                          <th className="py-1.5">Latency</th>
+                          <th className="py-1.5 pr-3">{t('cloudCarbon.table.reduction')}</th>
+                          <th className="py-1.5 pr-3">{t('cloudCarbon.table.annualSaved')}</th>
+                          <th className="py-1.5">{t('cloudCarbon.table.latency')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
@@ -861,46 +863,45 @@ def predict(input_tensor):
             {/* Link account form */}
             <div className="lg:col-span-5">
             <Card padding="lg" className="space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Link2 size={16} className="text-slate-500" />
-                  Link AWS Account (STS AssumeRole)
-                </h2>
-              </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                GreenCode assumes a read-only role in your account. Temporary STS credentials are used for the
-                call and are never stored or returned.
-              </p>
-              <div className="space-y-2.5 text-xs">
-                <div>
-                  <label className="label block mb-1">Account ID (12 digits)</label>
-                  <Input
-                    value={linkForm.account_id}
-                    onChange={(e) => setLinkForm({ ...linkForm, account_id: e.target.value })}
-                    placeholder="123456789012"
-                    className="text-xs font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="label block mb-1">Role ARN</label>
-                  <Input
-                    value={linkForm.role_arn}
-                    onChange={(e) => setLinkForm({ ...linkForm, role_arn: e.target.value })}
-                    placeholder="arn:aws:iam::123456789012:role/GreenCodeReadOnly"
-                    className="text-xs font-mono"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="label block mb-1">Name</label>
-                    <Input
-                      value={linkForm.account_name}
-                      onChange={(e) => setLinkForm({ ...linkForm, account_name: e.target.value })}
-                      className="text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="label block mb-1">Region</label>
+               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-700">
+                 <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                   <Link2 size={16} className="text-slate-500 dark:text-zinc-400" />
+                   {t('cloudCarbon.linkAccount')}
+                 </h2>
+               </div>
+               <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+                 {t('cloudCarbon.stsHelp')}
+               </p>
+               <div className="space-y-2.5 text-xs">
+                 <div>
+                   <label className="label block mb-1">{t('cloudCarbon.labels.accountId')}</label>
+                   <Input
+                     value={linkForm.account_id}
+                     onChange={(e) => setLinkForm({ ...linkForm, account_id: e.target.value })}
+                     placeholder={t('cloudCarbon.labels.accountIdPlaceholder')}
+                     className="text-xs font-mono"
+                   />
+                 </div>
+                 <div>
+                   <label className="label block mb-1">{t('cloudCarbon.labels.roleArn')}</label>
+                   <Input
+                     value={linkForm.role_arn}
+                     onChange={(e) => setLinkForm({ ...linkForm, role_arn: e.target.value })}
+                     placeholder={t('cloudCarbon.labels.roleArnPlaceholder')}
+                     className="text-xs font-mono"
+                   />
+                 </div>
+                 <div className="grid grid-cols-2 gap-2">
+                   <div>
+                     <label className="label block mb-1">{t('cloudCarbon.labels.name')}</label>
+                     <Input
+                       value={linkForm.account_name}
+                       onChange={(e) => setLinkForm({ ...linkForm, account_name: e.target.value })}
+                       className="text-xs"
+                     />
+                   </div>
+                   <div>
+                     <label className="label block mb-1">{t('cloudCarbon.labels.region')}</label>
                     <Select
                       value={linkForm.region}
                       onChange={(e) => setLinkForm({ ...linkForm, region: e.target.value })}
@@ -920,7 +921,7 @@ def predict(input_tensor):
                 className="w-full py-2 text-xs font-semibold"
               >
                 {linkLoading ? <RefreshCw size={14} className="animate-spin" /> : <Link2 size={14} />}
-                Link Account
+                {t('cloudCarbon.linkAccountBtn')}
               </Button>
               {linkMsg && (
                 <p className={`text-[11px] font-mono ${linkMsg.startsWith('Linked') ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -932,53 +933,53 @@ def predict(input_tensor):
             {/* Linked accounts list */}
             <div className="lg:col-span-7">
             <Card padding="lg" className="space-y-3">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <ShieldCheck size={16} className="text-slate-500" />
-                  Linked Accounts ({awsAccounts.length})
-                </h2>
-                <Button onClick={loadAwsAccounts} variant="ghost" size="sm" className="text-[11px]">
-                  <RefreshCw size={12} /> Refresh
-                </Button>
-              </div>
+               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-700">
+                 <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                   <ShieldCheck size={16} className="text-slate-500 dark:text-zinc-400" />
+                   {t('cloudCarbon.linkedAccounts', { count: String(awsAccounts.length) })}
+                 </h2>
+                 <Button onClick={loadAwsAccounts} variant="ghost" size="sm" className="text-[11px]">
+                   <RefreshCw size={12} /> {t('cloudCarbon.refresh')}
+                 </Button>
+               </div>
               {awsAccounts.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="text-slate-400 border-b border-slate-100">
-                      <tr>
-                        <th className="py-2 pr-3 font-medium">Account</th>
-                        <th className="py-2 pr-3 font-medium">ID</th>
-                        <th className="py-2 pr-3 font-medium">Region</th>
-                        <th className="py-2 pr-3 font-medium">Status</th>
-                        <th className="py-2 font-medium text-right">Actions</th>
-                      </tr>
+                       <thead className="text-slate-400 dark:text-zinc-500 border-b border-slate-100 dark:border-zinc-700">
+                       <tr>
+                         <th className="py-2 pr-3 font-medium">{t('cloudCarbon.table.account')}</th>
+                         <th className="py-2 pr-3 font-medium">{t('cloudCarbon.table.id')}</th>
+                         <th className="py-2 pr-3 font-medium">{t('cloudCarbon.table.region')}</th>
+                         <th className="py-2 pr-3 font-medium">{t('cloudCarbon.table.status')}</th>
+                         <th className="py-2 font-medium text-right">{t('cloudCarbon.table.actions')}</th>
+                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {awsAccounts.map((a) => (
                         <tr key={a.account_id}>
-                          <td className="py-2 pr-3 text-slate-800 font-medium">{a.account_name}</td>
-                          <td className="py-2 pr-3 font-mono text-slate-600">{a.account_id}</td>
-                          <td className="py-2 pr-3 font-mono text-slate-600">{a.region}</td>
-                          <td className="py-2 pr-3">
-                            <Badge variant="success">{a.status}</Badge>
-                          </td>
-                            <td className="py-2 text-right space-x-1">
-                              <Button
-                                onClick={() => setCostCarbonAccount(a.account_id)}
-                                variant="ghost"
-                                size="xs"
-                                className="text-[11px]"
-                              >
-                                Cost &amp; Carbon
-                              </Button>
-                              <Button
-                                onClick={() => handleUnlinkAccount(a.account_id)}
-                                variant="ghost-danger"
-                                size="xs"
-                                className="text-[11px]"
-                              >
-                                Unlink
-                              </Button>
+                               <td className="py-2 pr-3 text-slate-800 dark:text-zinc-200 font-medium">{a.account_name}</td>
+                           <td className="py-2 pr-3 font-mono text-slate-600 dark:text-zinc-400">{a.account_id}</td>
+                           <td className="py-2 pr-3 font-mono text-slate-600 dark:text-zinc-400">{a.region}</td>
+                           <td className="py-2 pr-3">
+                             <Badge variant="success">{a.status}</Badge>
+                           </td>
+                             <td className="py-2 text-right space-x-1">
+                               <Button
+                                 onClick={() => setCostCarbonAccount(a.account_id)}
+                                 variant="ghost"
+                                 size="xs"
+                                 className="text-[11px]"
+                               >
+                                 {t('cloudCarbon.costCarbon')}
+                               </Button>
+                               <Button
+                                 onClick={() => handleUnlinkAccount(a.account_id)}
+                                 variant="ghost-danger"
+                                 size="xs"
+                                 className="text-[11px]"
+                               >
+                                 {t('cloudCarbon.unlink')}
+                               </Button>
                           </td>
                         </tr>
                       ))}
@@ -986,8 +987,8 @@ def predict(input_tensor):
                   </table>
                 </div>
               ) : (
-                <p className="text-xs text-slate-400">
-                  No AWS accounts linked yet. Link one to read live AWS Budgets spend and calibrated carbon.
+                <p className="text-xs text-slate-400 dark:text-zinc-500">
+                  {t('cloudCarbon.noAccounts')}
                 </p>
               )}
             </Card>
@@ -995,10 +996,10 @@ def predict(input_tensor):
           </div>
           {/* Row C: Month-to-date cost & carbon for the selected account */}
           <Card padding="lg" className="space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Server size={16} className="text-slate-500" />
-                Month-to-Date Cost &amp; Carbon
+             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-700">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                <Server size={16} className="text-slate-500 dark:text-zinc-400" />
+                {t('cloudCarbon.mtdCostCarbon')}
               </h2>
               <div className="flex items-center gap-2">
                 <Select
@@ -1006,7 +1007,7 @@ def predict(input_tensor):
                   onChange={(e) => setCostCarbonAccount(e.target.value)}
                   className="text-xs font-mono"
                 >
-                  <option value="">Select account…</option>
+                  <option value="">{t('cloudCarbon.selectAccount')}</option>
                   {awsAccounts.map((a) => (
                     <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.account_id})</option>
                   ))}
@@ -1019,7 +1020,7 @@ def predict(input_tensor):
                   className="text-xs"
                 >
                   {costCarbonLoading ? <RefreshCw size={13} className="animate-spin" /> : <Activity size={13} />}
-                  Fetch
+                  {t('cloudCarbon.fetch')}
                 </Button>
               </div>
             </div>
@@ -1029,30 +1030,30 @@ def predict(input_tensor):
             ) : costCarbon ? (
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Card variant="inset" padding="md">
-                  <p className="label">MTD Spend (AWS Budgets)</p>
-                  <p className="text-xl font-bold font-mono text-slate-900 mt-1">${Number(costCarbon.cost_usd ?? 0).toFixed(2)}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">source: {costCarbon.cost_source} · {costCarbon.cost_tier}</p>
+                   <p className="label dark:text-zinc-300">{t('cloudCarbon.mtdSpend')}</p>
+                   <p className="text-xl font-bold font-mono text-slate-900 dark:text-zinc-100 mt-1">${Number(costCarbon.cost_usd ?? 0).toFixed(2)}</p>
+                   <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{t('cloudCarbon.costSource', { source: costCarbon.cost_source || '', tier: costCarbon.cost_tier || '' })}</p>
                 </Card>
                 <Card variant="inset" padding="md">
-                  <p className="label">Grid Intensity</p>
-                  <p className="text-xl font-bold font-mono text-slate-900 mt-1">{Number(costCarbon.carbon_intensity_gco2_kwh ?? 0).toFixed(1)}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">gCO₂/kWh · {costCarbon.grid_zone} · {costCarbon.carbon_tier}</p>
+                    <p className="label dark:text-zinc-300">{t('cloudCarbon.labels.gridIntensity')}</p>
+                    <p className="text-xl font-bold font-mono text-slate-900 dark:text-zinc-100 mt-1">{Number(costCarbon.carbon_intensity_gco2_kwh ?? 0).toFixed(1)}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{t('cloudCarbon.gridIntensityDetail', { intensity: String(Number(costCarbon.carbon_intensity_gco2_kwh ?? 0).toFixed(1)), zone: costCarbon.grid_zone || '', tier: costCarbon.carbon_tier || '' })}</p>
                 </Card>
                 <Card variant="inset" padding="md">
-                  <p className="label">Calibrated Energy</p>
-                  <p className="text-xl font-bold font-mono text-slate-900 mt-1">{Number(costCarbon.estimated_energy_kwh ?? 0).toFixed(2)}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">kWh · {costCarbon.instance_type} @ {costCarbon.region}</p>
+                  <p className="label dark:text-zinc-300">{t('cloudCarbon.calibratedEnergy')}</p>
+                  <p className="text-xl font-bold font-mono text-slate-900 dark:text-zinc-100 mt-1">{Number(costCarbon.estimated_energy_kwh ?? 0).toFixed(2)}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{t('cloudCarbon.energyDetail', { kwh: String(Number(costCarbon.estimated_energy_kwh ?? 0).toFixed(2)), instance: costCarbon.instance_type || '', region: costCarbon.region || '' })}</p>
                 </Card>
                 <Card variant="inset" padding="md">
-                  <p className="label">Estimated CO₂e</p>
+                  <p className="label dark:text-zinc-300">{t('cloudCarbon.estimatedCo2e')}</p>
                   <p className="text-xl font-bold font-mono text-emerald-700 mt-1">{Number(costCarbon.estimated_co2e_kg ?? 0).toFixed(3)}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">kg CO₂e · {costCarbon.period_start} → {costCarbon.period_end}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{t('cloudCarbon.co2eDetail', { co2e: String(Number(costCarbon.estimated_co2e_kg ?? 0).toFixed(3)), period: `${costCarbon.period_start || ''} → ${costCarbon.period_end || ''}` })}</p>
                 </Card>
               </div>
             ) : (
-              <p className="text-xs text-slate-400">
-                Select a linked account and press Fetch to read month-to-date AWS Budgets spend and its physics-calibrated carbon footprint.
-              </p>
+               <p className="text-xs text-slate-400 dark:text-zinc-500">
+                 {t('cloudCarbon.selectAccountFetch')}
+               </p>
             )}
           </Card>
         </div>

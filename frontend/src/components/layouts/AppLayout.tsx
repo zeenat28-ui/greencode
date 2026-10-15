@@ -1,54 +1,87 @@
-import { ReactNode, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Navbar from './Navbar';
+import Sidebar from './Sidebar';
 import AmazonTechStackModal from '../common/AmazonTechStackModal';
 import ErrorBoundary from '../common/ErrorBoundary';
 import { Layers, Github } from 'lucide-react';
-import BrandLogo from '../common/BrandLogo';
+import { useT } from '../../i18n/I18nContext';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { ScanResult } from '../../types';
 
-interface AppLayoutProps {
-  children?: ReactNode;
-}
-
-export default function AppLayout({ children }: AppLayoutProps) {
+export default function AppLayout() {
+  const t = useT();
   const [showTechModal, setShowTechModal] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  const [scanData] = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
+  const issueCount = scanData?.total_violations ?? 0;
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNavOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [navOpen]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FAFAFA] text-zinc-900 overflow-x-hidden max-w-full">
-      <Navbar />
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <ErrorBoundary>
-          {children ?? <Outlet />}
-        </ErrorBoundary>
-      </main>
-      <footer className="border-t border-zinc-200/80 bg-white mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-zinc-500">
-          <div className="flex items-center gap-2">
-            <BrandLogo size="sm" className="w-5 h-5 rounded-md" />
-            <span className="font-semibold text-zinc-800">GreenCode v2.1.0</span>
-            <span className="text-zinc-300">&middot;</span>
-            <span>Polyglot AST, Hardware Energy Telemetry &amp; FinOps Attribution</span>
+    <div className="h-[100dvh] flex bg-[var(--gc-bg-canvas)] text-[var(--gc-text-primary)] overflow-hidden">
+      <div className="hidden lg:block shrink-0">
+        <Sidebar issueCount={issueCount} />
+      </div>
+
+      {navOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            aria-label={t('nav.closeMenu')}
+            onClick={() => setNavOpen(false)}
+          />
+          <div className="relative z-10 h-full">
+            <Sidebar issueCount={issueCount} onNavigate={() => setNavOpen(false)} />
           </div>
-          <div className="flex items-center gap-3">
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        <Navbar navOpen={navOpen} onToggleNav={() => setNavOpen((v) => !v)} />
+        <main className="flex-1 overflow-auto px-4 py-3 lg:px-5">
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </main>
+        <footer className="shrink-0 border-t border-[var(--gc-border-default)] bg-[var(--gc-rail)] px-4 py-1.5 flex items-center justify-between gap-3 text-[11px] text-[var(--gc-text-tertiary)]">
+          <span className="font-medium text-[var(--gc-text-secondary)] truncate">
+            {t('footer.product', { version: t('app.versionFull') })}
+            <span className="hidden sm:inline"> · {t('footer.blurb')}</span>
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
             <button
+              type="button"
               onClick={() => setShowTechModal(true)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-zinc-200/80 text-zinc-700 font-mono text-[11px] font-medium border border-zinc-200/80 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-[var(--gc-border-default)] hover:bg-[var(--gc-bg-subtle)] text-[var(--gc-text-secondary)] font-mono"
             >
-              <Layers size={12} className="text-emerald-600" />
-              Architecture &amp; Specs
+              <Layers size={11} />
+              {t('footer.architecture')}
             </button>
             <a
               href="https://github.com/zeenat28-ui/greencode"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-900 font-mono text-[11px] transition-colors"
+              className="inline-flex items-center gap-1 hover:text-[var(--gc-text-primary)] font-mono"
             >
-              <Github size={12} />
-              <span>Apache-2.0</span>
+              <Github size={11} />
+              {t('footer.license')}
             </a>
           </div>
-        </div>
-      </footer>
+        </footer>
+      </div>
       <AmazonTechStackModal isOpen={showTechModal} onClose={() => setShowTechModal(false)} />
     </div>
   );

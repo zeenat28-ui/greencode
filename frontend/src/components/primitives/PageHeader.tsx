@@ -20,7 +20,7 @@ export const PageHeader = forwardRef<HTMLElement, PageHeaderProps>(
       <header
         ref={ref}
         className={cn(
-          'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-zinc-200/80',
+          'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-[var(--gc-border-default)]',
           className
         )}
         {...props}
@@ -47,11 +47,11 @@ export const PageHeader = forwardRef<HTMLElement, PageHeaderProps>(
               </ol>
             </nav>
           )}
-          <h1 className="text-lg font-semibold text-zinc-950 tracking-tight truncate">
+          <h1 className="text-base font-semibold text-[var(--gc-text-primary)] tracking-tight truncate">
             {title}
           </h1>
           {description && (
-            <p className="text-xs text-zinc-500 mt-0.5 truncate">
+            <p className="text-xs text-[var(--gc-text-tertiary)] mt-0.5 truncate">
               {description}
             </p>
           )}

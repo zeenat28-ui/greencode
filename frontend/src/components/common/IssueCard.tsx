@@ -3,6 +3,7 @@ import { Badge } from '../primitives/Badge';
 import type { BadgeVariant } from '../primitives/Badge';
 import { Card } from '../primitives/Card';
 import { cn } from '../../lib/utils';
+import { useT } from '../../i18n/I18nContext';
 
 const SEVERITY_BADGE_VARIANT: Record<Severity, BadgeVariant> = {
   CRITICAL: 'critical',
@@ -26,6 +27,7 @@ interface IssueCardProps {
 }
 
 export function IssueCard({ violation, onClick, isSelected = false }: IssueCardProps) {
+  const t = useT();
   const ruleCode = VIOLATION_RULE_MAP[violation.violation_type] || 'GSF-S999';
   const label    = VIOLATION_LABEL_MAP[violation.violation_type as ViolationType] || violation.title;
 
@@ -88,7 +90,7 @@ export function IssueCard({ violation, onClick, isSelected = false }: IssueCardP
       {/* Suggested fix */}
       {violation.suggested_fix && (
         <div className="flex items-start gap-2 p-2.5 bg-emerald-50/60 rounded-lg border border-emerald-200/80">
-          <span className="text-emerald-800 font-mono font-semibold text-[11px] shrink-0 mt-px">Remediation:</span>
+          <span className="text-emerald-800 dark:text-emerald-300 font-mono font-semibold text-[11px] shrink-0 mt-px">{t('issues.remediation')}:</span>
           <span className="text-xs text-zinc-700 leading-relaxed">{violation.suggested_fix}</span>
         </div>
       )}

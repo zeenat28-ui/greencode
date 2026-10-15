@@ -2,120 +2,127 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Activity, GitBranch, AlertCircle,
   Gauge, Leaf, Zap, DollarSign, Sliders,
-  FileText, History, Settings, LogOut, Leaf as LeafIcon,
+  FileText, History, Settings, LogOut,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { gridService } from '../../services/greencodeApi';
 import { useEffect, useState } from 'react';
 import BrandLogo from '../common/BrandLogo';
+import { useT } from '../../i18n/I18nContext';
 
 interface NavLeaf {
-  name: string;
+  nameKey: string;
   path: string;
   icon: typeof LayoutDashboard;
   badgeKey?: 'issues';
 }
 
 interface NavGroup {
-  label: string;
+  labelKey: string;
   items: NavLeaf[];
 }
 
-/**
- * Enterprise navigation, grouped by job-to-be-done rather than a flat list.
- * A grouped left rail is the clearest visual signal that this is a serious
- * product rather than a toy, and it scales far better than a top navbar as the
- * feature surface grows.
- */
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'Monitor',
+    labelKey: 'nav.monitor',
     items: [
-      { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-      { name: 'Overview', path: '/overview', icon: Activity },
+      { nameKey: 'nav.dashboard', path: '/dashboard', icon: LayoutDashboard },
+      { nameKey: 'nav.overview', path: '/overview', icon: Activity },
     ],
   },
   {
-    label: 'Analyze',
+    labelKey: 'nav.analyze',
     items: [
-      { name: 'Scan Repository', path: '/scan', icon: GitBranch },
-      { name: 'Issues', path: '/issues', icon: AlertCircle, badgeKey: 'issues' },
-      { name: 'Profiler', path: '/profiler', icon: Zap },
-      { name: 'Cloud Carbon', path: '/cloud-carbon', icon: Leaf },
+      { nameKey: 'nav.scan', path: '/scan', icon: GitBranch },
+      { nameKey: 'nav.issues', path: '/issues', icon: AlertCircle, badgeKey: 'issues' },
+      { nameKey: 'nav.profiler', path: '/profiler', icon: Zap },
+      { nameKey: 'nav.cloudCarbon', path: '/cloud-carbon', icon: Leaf },
     ],
   },
   {
-    label: 'Govern',
+    labelKey: 'nav.govern',
     items: [
-      { name: 'Budgets', path: '/budgets', icon: DollarSign },
-      { name: 'Policies', path: '/policies', icon: Sliders },
-      { name: 'Deployments', path: '/deployments', icon: Gauge },
+      { nameKey: 'nav.budgets', path: '/budgets', icon: DollarSign },
+      { nameKey: 'nav.policies', path: '/policies', icon: Sliders },
+      { nameKey: 'nav.deployments', path: '/deployments', icon: Gauge },
     ],
   },
   {
-    label: 'Insights',
+    labelKey: 'nav.insights',
     items: [
-      { name: 'Reports', path: '/reports', icon: FileText },
-      { name: 'History', path: '/history', icon: History },
+      { nameKey: 'nav.reports', path: '/reports', icon: FileText },
+      { nameKey: 'nav.history', path: '/history', icon: History },
     ],
   },
 ];
 
-export default function Sidebar({ issueCount = 0 }: { issueCount?: number }) {
+export default function Sidebar({
+  issueCount = 0,
+  onNavigate,
+}: {
+  issueCount?: number;
+  onNavigate?: () => void;
+}) {
+  const t = useT();
   const { user, logout } = useAuth();
   const [zone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
   const [gridIntensity, setGridIntensity] = useState<number | null>(null);
   const [isLive, setIsLive] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     gridService
       .getZoneIntensity(zone)
       .then((r) => {
+        if (cancelled) return;
         setGridIntensity(r.data.marginal_carbon_intensity ?? r.data.carbon_intensity ?? null);
         setIsLive(r.data.is_live ?? false);
       })
       .catch(() => {
+        if (cancelled) return;
         setGridIntensity(null);
         setIsLive(false);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [zone]);
 
   const displayName = user?.github_username || user?.username || 'Developer';
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 shrink-0 h-screen sticky top-0 bg-white border-r border-zinc-200/80">
-      {/* Brand */}
-      <div className="h-16 flex items-center gap-2.5 px-5 border-b border-zinc-200/80">
+    <aside className="flex flex-col w-56 h-full bg-[var(--gc-rail)] border-r border-[var(--gc-border-default)]">
+      <div className="h-12 flex items-center gap-2 px-3 border-b border-[var(--gc-border-default)]">
         <BrandLogo size="sm" />
-        <div className="flex flex-col leading-none">
-          <span className="font-semibold text-[15px] tracking-tight text-zinc-950">GreenCode</span>
-          <span className="text-[10px] font-mono text-zinc-400 mt-0.5">SCI Auditor</span>
+        <div className="flex flex-col leading-none min-w-0">
+          <span className="font-semibold text-sm tracking-tight text-[var(--gc-text-primary)]">
+            {t('app.name')}
+          </span>
+          <span className="text-[10px] font-mono text-[var(--gc-text-tertiary)] mt-0.5">
+            {t('app.tagline')}
+          </span>
         </div>
       </div>
-      {/* Live grid status chip */}
-      <div className="px-3 pt-3">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-50 border border-zinc-200/80">
-          <span
-            className={`w-1.5 h-1.5 rounded-full shrink-0 ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-400'}`}
-          />
-          <span className="text-[10px] font-mono text-zinc-500 truncate flex-1">{zone}</span>
+
+      <div className="px-2 pt-2">
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-[var(--gc-bg-subtle)] border border-[var(--gc-border-default)]">
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isLive ? 'bg-emerald-500' : 'bg-zinc-400'}`} />
+          <span className="text-[10px] font-mono text-[var(--gc-text-tertiary)] truncate flex-1">{zone}</span>
           {gridIntensity !== null && (
-            <span className="text-[11px] font-mono font-semibold text-zinc-900 shrink-0">
+            <span className="text-[11px] font-mono font-semibold text-[var(--gc-text-primary)] shrink-0">
               {gridIntensity}
-              <span className="text-zinc-400 font-normal"> gCO₂/kWh</span>
             </span>
           )}
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-1 space-y-0.5" aria-label="Primary">
+      <nav className="flex-1 overflow-y-auto px-2 pb-3 pt-1" aria-label={t('nav.primary')}>
         {NAV_GROUPS.map((group) => (
-          <div key={group.label}>
-            <p className="sidebar-group-label">{group.label}</p>
-            <div className="space-y-0.5">
+          <div key={group.labelKey}>
+            <p className="sidebar-group-label">{t(group.labelKey)}</p>
+            <div className="space-y-px">
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const showBadge = item.badgeKey === 'issues' && issueCount > 0;
@@ -123,12 +130,11 @@ export default function Sidebar({ issueCount = 0 }: { issueCount?: number }) {
                   <NavLink
                     key={item.path}
                     to={item.path}
-                    className={({ isActive }) =>
-                      `sidebar-link ${isActive ? 'sidebar-link-active' : ''}`
-                    }
+                    onClick={onNavigate}
+                    className={({ isActive }) => `sidebar-link ${isActive ? 'sidebar-link-active' : ''}`}
                   >
-                    <Icon size={16} className="shrink-0" />
-                    <span className="flex-1 truncate">{item.name}</span>
+                    <Icon size={15} className="shrink-0" />
+                    <span className="flex-1 truncate">{t(item.nameKey)}</span>
                     {showBadge && (
                       <span className="badge badge-high shrink-0">{issueCount > 99 ? '99+' : issueCount}</span>
                     )}
@@ -140,38 +146,38 @@ export default function Sidebar({ issueCount = 0 }: { issueCount?: number }) {
         ))}
       </nav>
 
-      {/* Footer: settings + user */}
-      <div className="border-t border-zinc-200/80 p-3 space-y-1">
+      <div className="border-t border-[var(--gc-border-default)] p-2 space-y-1">
         <NavLink
           to="/settings"
+          onClick={onNavigate}
           className={({ isActive }) => `sidebar-link ${isActive ? 'sidebar-link-active' : ''}`}
         >
-          <Settings size={16} className="shrink-0" />
-          <span className="flex-1">Settings</span>
+          <Settings size={15} className="shrink-0" />
+          <span className="flex-1">{t('nav.settings')}</span>
         </NavLink>
 
-        <div className="flex items-center gap-2.5 px-2 py-2 mt-1">
+        <div className="flex items-center gap-2 px-1.5 py-1.5">
           {user?.avatar_url ? (
-            <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full border border-zinc-200 object-cover shrink-0" />
+            <img src={user.avatar_url} alt="" className="w-7 h-7 rounded-full border border-[var(--gc-border-default)] object-cover shrink-0" />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-800 text-white flex items-center justify-center text-[11px] font-semibold shrink-0">
+            <div className="w-7 h-7 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px] font-semibold shrink-0">
               {initials}
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-zinc-900 truncate">{displayName}</p>
-            <p className="text-[10px] text-zinc-400 truncate flex items-center gap-1">
-              <LeafIcon size={9} className="text-emerald-500" />
-              {isLive ? 'Live telemetry' : 'Signed in'}
+            <p className="text-xs font-semibold text-[var(--gc-text-primary)] truncate">{displayName}</p>
+            <p className="text-[10px] text-[var(--gc-text-tertiary)] truncate">
+              {isLive ? t('grid.live') : t('grid.signedIn')}
             </p>
           </div>
           <button
+            type="button"
             onClick={logout}
-            className="shrink-0 text-zinc-400 hover:text-rose-600 transition-colors p-1.5 rounded-md hover:bg-rose-50"
-            title="Sign out"
-            aria-label="Sign out"
+            className="shrink-0 text-[var(--gc-text-tertiary)] hover:text-rose-600 p-1 rounded"
+            title={t('nav.signOut')}
+            aria-label={t('nav.signOut')}
           >
-            <LogOut size={15} />
+            <LogOut size={14} />
           </button>
         </div>
       </div>

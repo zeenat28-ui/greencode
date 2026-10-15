@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import AmazonTechStackModal from './AmazonTechStackModal';
+import { translateStatic as t } from '../../i18n/I18nContext';
 
 interface McpPreset {
   id: string;
@@ -27,21 +28,21 @@ interface McpPreset {
 const MCP_PRESETS: McpPreset[] = [
   {
     id: 'region_arbitrage',
-    title: 'Region Carbon Arbitrage',
+    title: t('alexa.presetTitles.regionArbitrage'),
     icon: Cloud,
     query: 'Which AWS region has the lowest marginal carbon intensity right now?',
     zone: 'IE',
   },
   {
     id: 'repo_score',
-    title: 'Repository SCI Audit',
+    title: t('alexa.presetTitles.repoScore'),
     icon: ShieldCheck,
     query: 'What is the current GSF SCI score and quality gate status of our repository?',
     zone: 'IE',
   },
   {
     id: 'ai_refactor',
-    title: 'Automated AST Refactoring',
+    title: t('alexa.presetTitles.aiRefactor'),
     icon: Zap,
     query: 'Synthesize a patch for the quadratic string allocation in payment_processor.py.',
     zone: 'IE',
@@ -117,7 +118,7 @@ export default function AlexaVoiceCockpit() {
               <Terminal size={13} />
             </div>
             <span className="font-semibold text-xs text-zinc-100 tracking-tight">
-              MCP Query Console
+               {t('alexa.queryConsole')}
             </span>
             <span className="hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
               MCP 2025-11-25 &middot; /mcp
@@ -134,14 +135,14 @@ export default function AlexaVoiceCockpit() {
               onClick={() => setShowAmazonModal(true)}
               className="text-[11px] font-mono text-zinc-400 hover:text-zinc-100 px-2 py-1 rounded hover:bg-zinc-800 transition-colors"
             >
-              Protocol Specs
+              {t('alexa.protocolSpecs')}
             </button>
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
               className="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-medium flex items-center gap-1 transition-colors"
             >
-              <span>{expanded ? 'Collapse' : 'Expand'}</span>
+              <span>{expanded ? t('alexa.collapse') : t('alexa.expand')}</span>
               {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
           </div>
@@ -150,7 +151,7 @@ export default function AlexaVoiceCockpit() {
         {/* Query Bar: presets + free-form input */}
         <div className="p-3.5 bg-zinc-50/70 border-b border-zinc-200/60 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-mono text-zinc-400 mr-1">Presets:</span>
+             <span className="text-[11px] font-mono text-zinc-400 mr-1">{t('alexa.presets')}</span>
             {MCP_PRESETS.map((p) => {
               const isSelected = selectedPreset.id === p.id;
               const Icon = p.icon;
@@ -176,7 +177,7 @@ export default function AlexaVoiceCockpit() {
             <div className="relative flex items-center">
               <input
                 type="text"
-                placeholder="Run an MCP query (e.g., compare eu-west-1 vs us-east-1 carbon intensity)..."
+                 placeholder={t('alexa.placeholder')}
                 value={customInput}
                 onChange={(e) => setCustomInput(e.target.value)}
                 className="w-full pl-3 pr-16 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600"
@@ -186,7 +187,7 @@ export default function AlexaVoiceCockpit() {
                 disabled={!customInput.trim() || status === 'loading'}
                 className="absolute right-1.5 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span>Run</span>
+                 <span>{t('alexa.run')}</span>
                 <ArrowRight size={10} />
               </button>
             </div>
@@ -199,21 +200,21 @@ export default function AlexaVoiceCockpit() {
             <div className="lg:col-span-8 space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-mono text-[11px] text-zinc-500 truncate">
-                  Query: <span className="text-zinc-800">&ldquo;{activeQuery}&rdquo;</span>
+                  {t('alexa.queryLabel')} <span className="text-zinc-800 dark:text-zinc-200">&ldquo;{activeQuery}&rdquo;</span>
                   <span className="text-zinc-400"> &middot; zone: {activeZone}</span>
                 </span>
               </div>
               {status === 'loading' && (
                 <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200/80 text-xs text-zinc-500 flex items-center gap-2">
                   <Loader2 size={13} className="animate-spin text-zinc-400" />
-                  <span>Dispatching to MCP server&hellip;</span>
-                </div>
-              )}
-              {status === 'error' && (
-                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200/80 text-xs text-rose-700 flex items-start gap-2">
-                  <AlertCircle size={13} className="mt-0.5 shrink-0" />
-                  <span>
-                    The MCP server did not return a result. Ensure the backend is running and try again.
+                  <span>{t('alexa.dispatching')}</span>
+                 </div>
+               )}
+               {status === 'error' && (
+                 <div className="p-3 rounded-lg bg-rose-50 border border-rose-200/80 text-xs text-rose-700 flex items-start gap-2">
+                   <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                   <span>
+                     {t('alexa.error')}
                   </span>
                 </div>
               )}
@@ -226,15 +227,14 @@ export default function AlexaVoiceCockpit() {
 
             <div className="lg:col-span-4 p-3 rounded-lg bg-emerald-50/50 border border-emerald-200/70 text-xs space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-emerald-950">MCP Dispatch</span>
+                <span className="text-[11px] font-semibold text-emerald-950 dark:text-emerald-300">{t('alexa.mcpDispatch')}</span>
                 <span className="font-mono text-[11px] text-emerald-800 bg-emerald-100/80 px-1.5 py-0.5 rounded">
                   {mcpTool}
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-600 leading-relaxed">
-                Routed through the self-hosted MCP server (/mcp). Every answer is computed live from
-                grid telemetry and the static analyser - nothing is hardcoded.
-              </p>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: t('alexa.mcpNote') }}
+              />
             </div>
           </div>
         )}

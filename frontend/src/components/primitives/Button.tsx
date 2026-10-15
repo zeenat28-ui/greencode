@@ -23,21 +23,21 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'text-white bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-600 hover:to-emerald-800 active:from-emerald-700 active:to-emerald-800 ring-1 ring-inset ring-emerald-700/40 shadow-sm hover:shadow disabled:hover:shadow-sm',
+    'text-white bg-emerald-600 hover:bg-emerald-700',
   'primary-outline':
-    'text-emerald-700 border border-emerald-200 hover:bg-emerald-50',
+    'text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950',
   secondary:
-    'text-zinc-700 bg-white border border-zinc-200 hover:bg-zinc-50 hover:text-zinc-900 hover:border-zinc-300 shadow-sm',
+    'text-[var(--gc-text-primary)] bg-[var(--gc-bg-default)] border border-[var(--gc-border-default)] hover:bg-[var(--gc-bg-subtle)]',
   'secondary-outline':
-    'text-zinc-600 border border-zinc-200 hover:bg-zinc-50 hover:text-zinc-900',
+    'text-[var(--gc-text-secondary)] border border-[var(--gc-border-default)] hover:bg-[var(--gc-bg-subtle)]',
   ghost:
-    'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
+    'text-[var(--gc-text-secondary)] hover:text-[var(--gc-text-primary)] hover:bg-[var(--gc-bg-subtle)]',
   dark:
-    'text-white bg-zinc-900 hover:bg-zinc-800 active:bg-zinc-950 shadow-sm ring-1 ring-inset ring-white/10',
+    'bg-[var(--gc-text-primary)] text-[var(--gc-bg-default)] hover:opacity-90',
   danger:
-    'text-white bg-rose-600 hover:bg-rose-700 shadow-sm',
+    'text-white bg-rose-600 hover:bg-rose-700',
   'ghost-danger':
-    'text-rose-600 hover:text-rose-700 hover:bg-rose-50',
+    'text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950',
   link:
     'text-emerald-600 hover:text-emerald-800 underline-offset-2 hover:underline p-0 shadow-none ring-0',
 };

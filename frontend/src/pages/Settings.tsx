@@ -13,6 +13,7 @@ import {
   Globe, CheckCircle, ShieldCheck, Github, Loader2, RefreshCw,
   AlertCircle, Key, Leaf,
 } from 'lucide-react';
+import { useT } from '../i18n/I18nContext';
 
 function getThresholdGrade(val: number) {
   if (val >= 90) return 'A+';
@@ -23,6 +24,7 @@ function getThresholdGrade(val: number) {
 }
 
 export default function Settings() {
+  const t = useT();
   const { user, refreshUser } = useAuth();
 
   const [selectedZone, setSelectedZone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
@@ -65,7 +67,7 @@ export default function Settings() {
   const handleActivateLicense = async () => {
     const trimmed = licenseKey.trim();
     if (!trimmed) {
-      setLicenseError('Enter a valid GC-LIC-... license key.');
+      setLicenseError(t('settings.license.invalidFormat'));
       return;
     }
     setActivatingLicense(true);
@@ -84,14 +86,14 @@ export default function Settings() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setLicenseError(body?.detail || 'License verification failed.');
+        setLicenseError(body?.detail || t('settings.license.verificationFailed'));
       } else {
         setLicenseKey('');
-        setLicenseMsg(`Activated ${String(body?.license?.tier || 'pro').toUpperCase()} tier (${body?.license?.seats || 1} seats).`);
+        setLicenseMsg(t('settings.license.activated', { tier: String(body?.license?.tier || 'pro').toUpperCase(), seats: body?.license?.seats || 1 }));
         await loadBillingUsage();
       }
     } catch (err: any) {
-      setLicenseError(err?.message || 'Could not reach billing service.');
+      setLicenseError(err?.message || t('settings.license.reachError'));
     } finally {
       setActivatingLicense(false);
     }
@@ -105,7 +107,7 @@ export default function Settings() {
       setGridData(res.data);
     } catch (err: any) {
       setGridData(null);
-      setGridError(err?.response?.data?.detail || 'Could not reach the grid telemetry service.');
+      setGridError(err?.response?.data?.detail || t('settings.grid.reachError'));
     } finally {
       setGridLoading(false);
     }
@@ -121,7 +123,7 @@ export default function Settings() {
       setGhUser(res.data.user as any);
     } catch (err: any) {
       setGhError(
-        err?.response?.data?.detail || 'Your stored GitHub token is no longer valid. Please reconnect.'
+        err?.response?.data?.detail || t('settings.github.invalidToken')
       );
     } finally {
       setGhTesting(false);
@@ -133,7 +135,7 @@ export default function Settings() {
   const handleRotateToken = async () => {
     const trimmed = newToken.trim();
     if (!trimmed) {
-      setRotateError('Paste a new token first.');
+      setRotateError(t('settings.github.pasteToken'));
       return;
     }
     setRotating(true);
@@ -144,9 +146,9 @@ export default function Settings() {
       await authService.updateProfile(user!.id, { github_token: trimmed });
       await refreshUser();
       setNewToken('');
-      setRotateMsg('GitHub token updated. Repositories will use it immediately.');
+      setRotateMsg(t('settings.github.tokenUpdated'));
     } catch (err: any) {
-      setRotateError(err?.response?.data?.detail || 'GitHub rejected that token.');
+      setRotateError(err?.response?.data?.detail || t('settings.github.tokenRejected'));
     } finally {
       setRotating(false);
     }
@@ -154,22 +156,22 @@ export default function Settings() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200/80 pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200/80 dark:border-slate-700 pb-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Workspace Settings</h1>
-            <Badge variant="olive">Configuration</Badge>
+            <h1 className="text-lg font-semibold text-zinc-950 dark:text-zinc-100 tracking-tight">{t('settings.title')}</h1>
+            <Badge variant="olive">{t('settings.badge')}</Badge>
           </div>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Configure quality gate thresholds, default grid carbon zones, and GitHub authentication.
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+            {t('settings.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2.5">
           <span
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg"
-            title="Zone and threshold persist to this browser instantly on change."
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-lg"
+            title={t('settings.autoSaveTitle')}
           >
-            <CheckCircle size={13} className="text-emerald-600" /> Auto-saved
+            <CheckCircle size={13} className="text-emerald-600" /> {t('settings.autoSaved')}
           </span>
         </div>
       </div>
@@ -177,27 +179,27 @@ export default function Settings() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         <div className="lg:col-span-7 space-y-5">
           {/* GitHub connection */}
-          <Card padding="lg" className="space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+          <Card padding="lg" className="space-y-4 dark:bg-slate-900 dark:border-slate-700">
+            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-slate-700 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white flex items-center justify-center">
                   <Github size={15} />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-zinc-900">GitHub Integration</h2>
-                  <p className="text-[11px] text-zinc-500">Repository read access and automated pull request creation</p>
+                  <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{t('settings.github.title')}</h2>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('settings.github.subtitle')}</p>
                 </div>
               </div>
               <Button onClick={testGitHub} disabled={ghTesting} variant="secondary" size="sm" className="text-xs">
                 {ghTesting ? <Loader2 size={11} className="animate-spin text-emerald-600" /> : <RefreshCw size={11} />}
-                Test Connection
+                {t('settings.github.testButton')}
               </Button>
             </div>
 
             {ghError && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 dark:border-red-800">
                 <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-red-700 leading-relaxed font-medium">{ghError}</p>
+                <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed font-medium">{ghError}</p>
               </div>
             )}
 
@@ -206,21 +208,21 @@ export default function Settings() {
                 {ghUser.avatar_url && <img src={ghUser.avatar_url} alt="" className="w-9 h-9 rounded-full border border-emerald-300" />}
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-xs font-semibold text-zinc-900 truncate">{ghUser.login}</p>
-                    <Badge variant="olive">Active</Badge>
+                    <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">{ghUser.login}</p>
+                    <Badge variant="olive">{t('settings.github.active')}</Badge>
                   </div>
-                  <p className="text-[11px] text-emerald-800 mt-0.5">Verified via GitHub REST API v3</p>
+                  <p className="text-[11px] text-emerald-800 dark:text-emerald-300 mt-0.5">{t('settings.github.verifiedVia')}</p>
                 </div>
               </div>
             ) : !ghError ? (
-              <div className="flex items-center gap-2 text-xs text-zinc-400 py-2">
-                <Loader2 size={13} className="animate-spin text-emerald-600" /> Validating credentials...
+              <div className="flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500 py-2">
+                <Loader2 size={13} className="animate-spin text-emerald-600" /> {t('settings.github.validating')}
               </div>
             ) : null}
 
             <div className="pt-2 border-t border-zinc-100">
-              <label htmlFor="rotate-token" className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                Rotate Personal Access Token
+              <label htmlFor="rotate-token" className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                {t('settings.github.rotateToken')}
               </label>
               <div className="flex gap-2">
                 <Input
@@ -228,38 +230,38 @@ export default function Settings() {
                   type="password"
                   value={newToken}
                   onChange={(e) => { setNewToken(e.target.value); setRotateError(null); setRotateMsg(null); }}
-                  placeholder={user?.github_token_masked ? `Stored: ${user.github_token_masked}` : 'ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx'}
+                  placeholder={user?.github_token_masked ? `Stored: ${user.github_token_masked}` : t('settings.github.tokenPlaceholder')}
                   className="text-xs font-mono flex-1"
                   autoComplete="off"
                 />
                 <Button onClick={handleRotateToken} disabled={rotating || !newToken.trim()} variant="secondary" size="sm" className="text-xs">
                   {rotating ? <Loader2 size={11} className="animate-spin" /> : <Key size={11} />}
-                  Update Token
+                  {t('settings.github.updateToken')}
                 </Button>
               </div>
               {rotateError && <p className="text-xs text-red-600 mt-1.5 font-medium">{rotateError}</p>}
               {rotateMsg && <p className="text-xs text-emerald-800 mt-1.5 font-medium">{rotateMsg}</p>}
-              <p className="text-[11px] text-zinc-500 mt-2 leading-relaxed">
-                Encrypted at rest using Fernet symmetric encryption. Used strictly for repository analysis and pull request creation.
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2 leading-relaxed">
+                {t('settings.github.tokenNote')}
               </p>
             </div>
           </Card>
 
         {/* Grid zone */}
-        <Card padding="lg" className="space-y-4">
-          <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-            <div className="w-8 h-8 rounded-xl bg-olive-50 text-olive-800 border border-olive-200 flex items-center justify-center">
+        <Card padding="lg" className="space-y-4 dark:bg-slate-900 dark:border-slate-700">
+          <div className="flex items-center gap-2.5 border-b border-slate-100 dark:border-slate-700 pb-3">
+            <div className="w-8 h-8 rounded-xl bg-olive-50 dark:bg-olive-900/20 text-olive-800 dark:text-olive-300 border border-olive-200 dark:border-olive-800 flex items-center justify-center">
               <Globe size={16} />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-900">Regional Power Grid</h2>
-              <p className="text-[11px] text-slate-500">Determines carbon emissions per kilowatt-hour of electricity consumed</p>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">{t('settings.grid.title')}</h2>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">{t('settings.grid.subtitle')}</p>
             </div>
           </div>
 
           <div>
-            <label htmlFor="zone" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-              Default Grid Region
+            <label htmlFor="zone" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+              {t('settings.grid.regionLabel')}
             </label>
             <Select
               id="zone"
@@ -274,28 +276,28 @@ export default function Settings() {
           </div>
 
             {gridLoading ? (
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <Loader2 size={13} className="animate-spin text-olive-700" /> Querying grid telemetry endpoint...
+              <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+                <Loader2 size={13} className="animate-spin text-olive-700" /> {t('settings.grid.querying')}
               </div>
             ) : gridError ? (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 dark:border-amber-800">
                 <AlertCircle size={14} className="text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-800 leading-relaxed font-medium">{gridError}</p>
+                <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed font-medium">{gridError}</p>
               </div>
             ) : gridData ? (
               <dl className="grid grid-cols-2 gap-3 text-sm">
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                  <dt className="label text-[11px]">Marginal Carbon Intensity</dt>
-                  <dd className="font-mono font-bold text-slate-900 text-base mt-0.5">{gridData.marginal_carbon_intensity ?? gridData.carbon_intensity} <span className="text-xs font-normal text-slate-500">gCO₂e/kWh</span></dd>
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <dt className="label text-[11px] text-slate-500 dark:text-slate-400">{t('settings.grid.carbonIntensity')}</dt>
+                  <dd className="font-mono font-bold text-slate-900 dark:text-slate-100 text-base mt-0.5">{gridData.marginal_carbon_intensity ?? gridData.carbon_intensity} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">gCO₂e/kWh</span></dd>
                 </div>
-                <div className="p-3.5 rounded-xl bg-olive-50/60 border border-olive-200">
-                  <dt className="label text-[11px] text-olive-900">Renewable Grid Share</dt>
-                  <dd className="font-mono font-bold text-olive-900 text-base mt-0.5">{gridData.clean_energy_percentage}% <span className="text-xs font-normal text-olive-700">clean</span></dd>
+                <div className="p-3.5 rounded-xl bg-olive-50/60 dark:bg-olive-900/20 border border-olive-200 dark:border-olive-800">
+                  <dt className="label text-[11px] text-olive-900 dark:text-olive-300">{t('settings.grid.renewableShare')}</dt>
+                  <dd className="font-mono font-bold text-olive-900 dark:text-olive-300 text-base mt-0.5">{gridData.clean_energy_percentage}% <span className="text-xs font-normal text-olive-700 dark:text-olive-400">{t('settings.grid.clean')}</span></dd>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 col-span-2">
-                  <dt className="label text-[10px]">Telemetry Source &amp; SLA</dt>
-                  <dd className="text-xs text-slate-700 font-medium mt-0.5">
-                    {gridData.name} &middot; {gridData.is_live ? 'Real-Time Marginal Telemetry (5 min cadence)' : 'Verified Historical Baseline'}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 col-span-2">
+                  <dt className="label text-[10px] text-slate-500 dark:text-slate-400">{t('settings.grid.telemetry')}</dt>
+                  <dd className="text-xs text-slate-700 dark:text-slate-300 font-medium mt-0.5">
+                    {gridData.name} &middot; {gridData.is_live ? t('settings.grid.realTime') : t('settings.grid.historical')}
                   </dd>
                 </div>
               </dl>
@@ -305,23 +307,23 @@ export default function Settings() {
 
         {/* Quality gate */}
         <div className="lg:col-span-5 space-y-5">
-          <Card padding="lg" className="space-y-4">
-            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-              <div className="w-8 h-8 rounded-xl bg-olive-50 text-olive-800 border border-olive-200 flex items-center justify-center">
+          <Card padding="lg" className="space-y-4 dark:bg-slate-900 dark:border-slate-700">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div className="w-8 h-8 rounded-xl bg-olive-50 dark:bg-olive-900/20 text-olive-800 dark:text-olive-300 border border-olive-200 dark:border-olive-800 flex items-center justify-center">
                 <ShieldCheck size={16} />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-900">CI/CD Quality Gate</h2>
-                <p className="text-[11px] text-slate-500">Minimum Green Software score required for pull request pass</p>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">{t('settings.gate.title')}</h2>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">{t('settings.gate.subtitle')}</p>
               </div>
             </div>
 
             <div>
               <div className="flex items-baseline justify-between mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Enforcement SLA</span>
-                <span className="text-2xl font-black text-slate-900 font-mono">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">{t('settings.gate.enforcementSla')}</span>
+                <span className="text-2xl font-black text-slate-900 dark:text-slate-100 font-mono">
                   {Number(qualityThreshold)}
-                  <span className="text-xs font-semibold text-slate-400 ml-1">/ 100</span>
+                  <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 ml-1">/ 100</span>
                 </span>
               </div>
               <input
@@ -332,34 +334,34 @@ export default function Settings() {
                 value={Number(qualityThreshold)}
                 onChange={(e) => setQualityThreshold(Number(e.target.value))}
                 className="w-full accent-olive-700 cursor-pointer"
-                aria-label="Quality gate threshold"
+                aria-label={t('settings.gate.thresholdAria')}
               />
-              <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-1">
-                <span>0 (Permissive)</span><span>50</span><span>100 (Strict)</span>
+              <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-1">
+                <span>{t('settings.gate.permissive')}</span><span>50</span><span>{t('settings.gate.strict')}</span>
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 text-center">
-              <p className="text-xs font-medium text-zinc-600">Repositories scoring below {Number(qualityThreshold)} are blocked in CI/CD</p>
+            <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p className="text-xs text-zinc-600 dark:text-zinc-400">{t('settings.gate.blockedBelow', { threshold: Number(qualityThreshold) })}</p>
               <p className="text-2xl font-bold mt-1 font-mono" style={{ color: Number(qualityThreshold) >= 80 ? '#059669' : '#d97706' }}>
-                Grade {getThresholdGrade(Number(qualityThreshold))}
+                {t('settings.gate.grade', { grade: getThresholdGrade(Number(qualityThreshold)) })}
               </p>
             </div>
 
-            <p className="text-[11px] text-zinc-500 leading-relaxed">
-              This threshold is enforced across GitHub Actions SARIF gates and the MCP server.
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+              {t('settings.gate.enforcedAcross')}
             </p>
           </Card>
 
-          <Card padding="lg" className="space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+          <Card padding="lg" className="space-y-4 dark:bg-slate-900 dark:border-slate-700">
+            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-slate-700 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center">
                   <Key size={15} />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-zinc-900">Plan Quota &amp; License Activation</h2>
-                  <p className="text-[11px] text-zinc-500">Activate a signed GC-LIC key or enterprise quota tier</p>
+                  <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{t('settings.license.title')}</h2>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('settings.license.subtitle')}</p>
                 </div>
               </div>
               {usageData?.tier && (
@@ -387,8 +389,8 @@ export default function Settings() {
             )}
 
             <div>
-              <label htmlFor="license-key-input" className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                License Key
+              <label htmlFor="license-key-input" className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                {t('settings.license.keyLabel')}
               </label>
               <div className="flex gap-2">
                 <Input
@@ -396,20 +398,20 @@ export default function Settings() {
                   type="text"
                   value={licenseKey}
                   onChange={(e) => { setLicenseKey(e.target.value); setLicenseError(null); setLicenseMsg(null); }}
-                  placeholder="GC-LIC-eyJvcmdfaWQiOjEsInRpZXIiOiJwcm8ifQ..."
+                  placeholder={t('settings.license.keyPlaceholder')}
                   className="text-xs font-mono flex-1"
                   autoComplete="off"
                 />
-                <Button
-                  onClick={handleActivateLicense}
-                  disabled={activatingLicense || !licenseKey.trim()}
-                  variant="primary"
-                  size="sm"
-                  className="text-xs"
-                >
-                  {activatingLicense ? <Loader2 size={11} className="animate-spin" /> : <Key size={11} />}
-                  Activate
-                </Button>
+              <Button
+                onClick={handleActivateLicense}
+                disabled={activatingLicense || !licenseKey.trim()}
+                variant="primary"
+                size="sm"
+                className="text-xs"
+              >
+                {activatingLicense ? <Loader2 size={11} className="animate-spin" /> : <Key size={11} />}
+                {t('settings.license.activateButton')}
+              </Button>
               </div>
               {licenseError && <p className="text-xs text-red-600 mt-1.5 font-medium">{licenseError}</p>}
               {licenseMsg && <p className="text-xs text-emerald-800 mt-1.5 font-medium">{licenseMsg}</p>}
@@ -418,13 +420,13 @@ export default function Settings() {
 
           <Card padding="lg">
             <div className="flex items-start gap-3">
-              <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0 mt-0.5">
+              <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-emerald-700 dark:text-emerald-300 shrink-0 mt-0.5">
                 <Leaf size={14} />
               </div>
               <div>
-                <p className="text-xs font-semibold text-zinc-900">Standards &amp; Telemetry Specifications</p>
-                <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
-                  Audits conform to <strong>ISO/IEC 21031:2024 (GSF SCI v1.0)</strong>, <strong>FinOps FOCUS 1.4</strong>, and <strong>OpenTelemetry OTLP/HTTP v1</strong>.
+                <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">{t('settings.standards.title')}</p>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed">
+                  Audits conform to ISO/IEC 21031:2024 (GSF SCI v1.0), FinOps FOCUS 1.4, and OpenTelemetry OTLP/HTTP v1.
                 </p>
               </div>
             </div>

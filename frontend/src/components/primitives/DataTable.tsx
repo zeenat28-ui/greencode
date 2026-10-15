@@ -1,5 +1,5 @@
-import { forwardRef } from 'react';
 import { cn } from '../../lib/utils';
+import { translateStatic } from '../../i18n/I18nContext';
 
 export type ColumnAlign = 'left' | 'center' | 'right';
 
@@ -38,7 +38,7 @@ export function DataTable<T extends Record<string, unknown>>({
   columns,
   data,
   keyField = 'id' as keyof T,
-  emptyMessage = 'No data to display.',
+  emptyMessage = translateStatic('empty.noData'),
   emptyIcon,
   loading = false,
   striped = true,
@@ -53,9 +53,9 @@ export function DataTable<T extends Record<string, unknown>>({
   if (loading) {
     return (
       <div className="animate-pulse">
-        <div className="h-10 bg-zinc-100 border-b border-zinc-200 rounded-t-lg" />
+        <div className="h-10 bg-[var(--gc-bg-subtle)] border-b border-[var(--gc-border-default)] rounded-t-lg" />
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-12 bg-zinc-50 border-b border-zinc-100" />
+          <div key={i} className="h-12 bg-[var(--gc-bg-default)] border-b border-[var(--gc-border-subtle)]" />
         ))}
       </div>
     );
@@ -63,7 +63,7 @@ export function DataTable<T extends Record<string, unknown>>({
 
   if (data.length === 0) {
     return (
-      <div className="text-center py-10 text-zinc-500">
+      <div className="text-center py-8 text-[var(--gc-text-tertiary)]">
         {emptyIcon && <div className="mb-3 flex justify-center">{emptyIcon}</div>}
         <p className="text-sm">{emptyMessage}</p>
       </div>
@@ -73,13 +73,12 @@ export function DataTable<T extends Record<string, unknown>>({
   return (
     <div
       className={cn(
-        'overflow-x-auto rounded-xl border border-zinc-200/80 bg-white',
-        'divide-y divide-zinc-100',
+        'overflow-x-auto rounded-lg border border-[var(--gc-border-default)] bg-[var(--gc-bg-default)]',
         className
       )}
     >
       <table className="w-full text-left text-sm">
-        <thead className={cn('bg-zinc-50 text-zinc-500 uppercase', headerClassName)}>
+        <thead className={cn('bg-[var(--gc-bg-subtle)] text-[var(--gc-text-tertiary)] uppercase', headerClassName)}>
           <tr>
             {columns.map((col) => (
               <th
@@ -100,15 +99,15 @@ export function DataTable<T extends Record<string, unknown>>({
             <tr
               key={getRowKey(row, keyField, i)}
               className={cn(
-                striped && i % 2 === 1 && 'bg-zinc-50/50',
-                hover && 'hover:bg-zinc-50/80',
+                striped && i % 2 === 1 && 'bg-[var(--gc-bg-subtle)]/50',
+                hover && 'hover:bg-[var(--gc-row-hover)]',
                 rowClassName?.(row)
               )}
             >
               {columns.map((col) => (
                 <td
                   key={col.key}
-                  className={cn(pad, 'text-zinc-900 align-top')}
+                  className={cn(pad, 'text-[var(--gc-text-primary)] align-top')}
                   style={{ textAlign: col.align ?? 'left' }}
                 >
                   {typeof col.cell === 'function' ? col.cell(row) : col.cell}

@@ -12,9 +12,11 @@ import {
   Calendar, ExternalLink, RefreshCw, GitBranch, Search,
   Eye, RotateCw, Leaf, Zap, AlertTriangle, FolderGit2,
 } from 'lucide-react';
+import { useT } from '../i18n/I18nContext';
 
 export default function History() {
   const navigate = useNavigate();
+  const t = useT();
   const [historyData, setHistoryData] = useLocalStorage<RepositoryPage | null>('greencode_history', null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -148,9 +150,9 @@ export default function History() {
 
   if (loading && !historyData) {
     return (
-      <div className="flex flex-col items-center justify-center py-28 text-slate-500">
+      <div className="flex flex-col items-center justify-center py-28 text-slate-500 dark:text-slate-400">
         <RefreshCw size={28} className="animate-spin text-emerald-600 mb-3" />
-        <p className="text-sm font-medium">Loading repository audit archives...</p>
+        <p className="text-sm font-medium">{t('history.loadingRecords')}</p>
       </div>
     );
   }
@@ -160,13 +162,13 @@ export default function History() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Badge variant="olive">Audit History</Badge>
-            <span className="text-[11px] font-mono font-medium text-slate-500">Repository Archives</span>
+       <div className="flex items-center gap-2 mb-1">
+            <Badge variant="olive">{t('history.badge')}</Badge>
+            <span className="text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400">{t('history.subtitle')}</span>
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Audit History &amp; Reports</h1>
-          <p className="text-sm text-slate-600 mt-0.5">
-            Review past scans, track Green Score trends, and inspect automated Amazon Bedrock optimizations.
+          <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">{t('history.title')}</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
+            {t('history.description')}
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -178,12 +180,12 @@ export default function History() {
             className="text-xs font-semibold shadow-sm"
           >
             <RefreshCw size={13} className={refreshing ? 'animate-spin text-olive-700' : ''} />
-            {refreshing ? 'Refreshing...' : 'Refresh List'}
+            {refreshing ? t('history.refreshing') : t('history.refreshButton')}
           </Button>
           <Button asChild variant="primary" size="sm" className="text-xs font-semibold shadow-sm">
             <Link to="/scan">
               <GitBranch size={13} />
-              New Audit
+              {t('history.newAudit')}
             </Link>
           </Button>
         </div>
@@ -191,17 +193,17 @@ export default function History() {
 
       {/* Rescan Error Notice */}
       {rescanError && (
-        <div className="p-4 rounded-xl bg-red-50 border border-red-200 flex items-start gap-3 text-red-900 text-sm">
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-start gap-3 text-red-900 dark:text-red-200 text-sm">
           <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="font-bold">Re-Scan Error</p>
-            <p className="text-xs text-red-700 mt-0.5">{rescanError}</p>
+            <p className="font-bold">{t('history.rescanError')}</p>
+            <p className="text-xs text-red-700 dark:text-red-300 mt-0.5">{rescanError}</p>
           </div>
           <button
             onClick={() => setRescanError(null)}
-            className="text-xs text-red-700 hover:text-red-900 underline font-semibold"
+            className="text-xs text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-100 underline font-semibold"
           >
-            Dismiss
+            {t('history.dismissError')}
           </button>
         </div>
       )}
@@ -209,42 +211,42 @@ export default function History() {
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card padding="lg">
-          <p className="label mb-1">Repositories Audited</p>
-          <p className="text-2xl font-black text-slate-900">{records.length}</p>
-          <p className="text-xs text-slate-500 mt-1">Archived audits</p>
+          <p className="label mb-1">{t('history.kpi.repositoriesAudited')}</p>
+          <p className="text-2xl font-black text-slate-900 dark:text-slate-100">{records.length}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{t('history.kpi.archivedAudits')}</p>
         </Card>
         <Card padding="lg">
-          <p className="label mb-1">Average Green Score</p>
+          <p className="label mb-1">{t('history.kpi.avgGreenScore')}</p>
           <div className="flex items-center gap-2">
             <p className="text-2xl font-black text-olive-800">{records.length ? avgScore : '—'}</p>
             {records.length > 0 && (
               <Badge variant={avgScore >= threshold ? 'success' : 'critical'} className="text-[10px] px-2 py-0.5 rounded-full">
-                {avgScore >= threshold ? 'Passed' : 'Needs Review'}
+                {avgScore >= threshold ? t('history.kpi.passed') : t('history.kpi.needsReview')}
               </Badge>
             )}
           </div>
-          <p className="text-xs text-slate-500 mt-1">Pass threshold: &ge; {threshold}/100</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{t('history.kpi.passThreshold', { threshold })}</p>
         </Card>
         <Card padding="lg">
-          <p className="label mb-1">Carbon Abated</p>
+          <p className="label mb-1">{t('history.kpi.carbonAbated')}</p>
           <p className="text-2xl font-black text-olive-800 flex items-center gap-1.5">
             <Leaf size={18} className="text-olive-700" />
             {cumulative?.total_carbon_saved_gco2_10k_runs != null
               ? `${cumulative.total_carbon_saved_gco2_10k_runs.toFixed(1)} g`
               : '0.0 g'}
           </p>
-          <p className="text-xs text-slate-500 mt-1">Estimated savings per 10k runs</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{t('history.kpi.savingsPer10k')}</p>
         </Card>
         <Card padding="lg">
-          <p className="label mb-1">AI Fixes Applied</p>
+          <p className="label mb-1">{t('history.kpi.aiFixes')}</p>
           <p className="text-2xl font-black text-blue-700 flex items-center gap-1.5">
             <Zap size={18} className="text-blue-600" />
             {cumulative?.total_refactoring_operations ?? 0}
           </p>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {cumulative?.average_energy_reduction_pct != null
-              ? `${cumulative.average_energy_reduction_pct.toFixed(0)}% average energy cut`
-              : 'Bedrock optimizations'}
+              ? t('history.kpi.avgEnergyCut', { pct: cumulative.average_energy_reduction_pct.toFixed(0) })
+              : t('history.kpi.bedrockOptimizations')}
           </p>
         </Card>
       </div>
@@ -254,13 +256,13 @@ export default function History() {
           <div className="w-14 h-14 rounded-2xl bg-olive-50 border border-olive-200 flex items-center justify-center mx-auto mb-4 text-olive-800 shadow-sm">
             <FolderGit2 size={26} />
           </div>
-          <h3 className="font-bold text-slate-900 text-base mb-1">No repositories audited yet</h3>
-          <p className="text-sm text-slate-500 max-w-sm mx-auto mb-6">
-            Repositories and archives you scan will be recorded here with complete audit reports, violation counts, and Green Scores.
+          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base mb-1">{t('history.empty.title')}</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-6">
+            {t('history.empty.description')}
           </p>
           <Button asChild variant="primary" className="inline-flex items-center gap-2">
             <Link to="/scan">
-              <GitBranch size={15} /> Run First Audit
+              <GitBranch size={15} /> {t('history.empty.runFirstAudit')}
             </Link>
           </Button>
         </Card>
@@ -272,27 +274,27 @@ export default function History() {
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input
                 type="text"
-                placeholder="Search audit records by repo name or slug..."
+                placeholder={t('history.searchPlaceholder')}
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="pl-9 py-2 text-xs w-full bg-white focus:ring-olive-600 focus:border-olive-600"
+                className="pl-9 py-2 text-xs w-full bg-white dark:bg-slate-800 focus:ring-olive-600 focus:border-olive-600"
               />
             </div>
-            <span className="text-xs text-slate-600 font-medium">
-              Showing <strong className="font-mono text-slate-900">{filteredRecords.length}</strong> of {records.length} registered repositories
+            <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+              {t('history.showingRecords', { shown: filteredRecords.length, total: records.length })}
             </span>
           </div>
 
           <div className="overflow-x-auto max-w-full">
             <table className="w-full text-sm text-left min-w-[600px]">
-              <thead className="bg-slate-50 border-b border-slate-200/80 text-slate-500 text-xs font-semibold">
+              <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200/80 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs font-semibold">
                 <tr>
-                  <th className="label px-4 py-3.5">Repository Identifier</th>
-                  <th className="label px-4 py-3.5">Green Score</th>
-                  <th className="label px-4 py-3.5">Scope / Scale</th>
-                  <th className="label px-4 py-3.5">Audit Status</th>
-                  <th className="label px-4 py-3.5">Timestamp</th>
-                  <th className="label px-4 py-3.5 text-right">Actions</th>
+                  <th className="label px-4 py-3.5">{t('history.table.columns.repositoryIdentifier')}</th>
+                  <th className="label px-4 py-3.5">{t('history.table.columns.greenScore')}</th>
+                  <th className="label px-4 py-3.5">{t('history.table.columns.scopeScale')}</th>
+                  <th className="label px-4 py-3.5">{t('history.table.columns.auditStatus')}</th>
+                  <th className="label px-4 py-3.5">{t('history.table.columns.timestamp')}</th>
+                  <th className="label px-4 py-3.5 text-right">{t('history.table.columns.actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -302,15 +304,15 @@ export default function History() {
                   const isRescanning = rescanningId === record.id;
 
                   return (
-                    <tr key={record.id} className="hover:bg-slate-50/80 transition-colors">
+                       <tr key={record.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="px-4 py-3.5">
                         <div className="flex items-start gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-olive-50 border border-olive-200 flex items-center justify-center shrink-0 text-olive-800 mt-0.5">
+                          <div className="w-7 h-7 rounded-lg bg-olive-50 dark:bg-olive-900/20 border border-olive-200 dark:border-olive-800 flex items-center justify-center shrink-0 text-olive-800 dark:text-olive-300 mt-0.5">
                             <GitBranch size={13} />
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-slate-900 text-sm truncate max-w-xs">
+                              <span className="font-bold text-slate-900 dark:text-slate-100 text-sm truncate max-w-xs">
                                 {record.full_name || record.name}
                               </span>
                               {record.html_url && (
@@ -318,7 +320,7 @@ export default function History() {
                                   href={record.html_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded hover:bg-slate-200 transition-colors"
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                                 >
                                   GitHub
                                   <ExternalLink size={9} className="opacity-70" />
@@ -326,7 +328,7 @@ export default function History() {
                               )}
                             </div>
                             {record.default_branch && (
-                              <p className="text-xs text-slate-500 font-mono truncate max-w-sm mt-0.5">
+                              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-sm mt-0.5">
                                 @{record.default_branch}
                               </p>
                             )}
@@ -340,54 +342,54 @@ export default function History() {
                             <span
                               className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                                 isPass
-                                  ? 'bg-olive-50 text-olive-900 border border-olive-200'
-                                  : 'bg-red-50 text-red-700 border border-red-200'
+                                  ? 'bg-olive-50 dark:bg-olive-900/30 text-olive-900 dark:text-olive-200 border border-olive-200 dark:border-olive-800'
+                                  : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-200 border dark:border-red-800'
                               }`}
                             >
-                              {isPass ? 'Passed Gate' : 'Blocked'}
+                              {isPass ? t('history.status.verified') : t('history.status.actionRequired')}
                             </span>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-xs text-slate-700 font-medium">
-                        {record.total_files} <span className="text-slate-400 font-normal">files</span>
-                        <div className="text-[11px] text-slate-500 font-mono">
+                      <td className="px-4 py-3.5 text-xs text-slate-700 dark:text-slate-300 font-medium">
+                        {record.total_files} <span className="text-slate-400 dark:text-slate-500 font-normal">{t('history.table.files')}</span>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                           {record.total_lines?.toLocaleString() || 0} LOC
                         </div>
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
-                          {isPass ? 'Verified' : 'Action Required'}
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                          {isPass ? t('history.table.status.verified') : t('history.table.status.blocked')}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5 text-xs text-slate-500 whitespace-nowrap">
+                      <td className="px-4 py-3.5 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
                         <span className="flex items-center gap-1.5 font-mono">
-                          <Calendar size={12} className="text-slate-400" />
+                          <Calendar size={12} className="text-slate-400 dark:text-slate-500" />
                           {record.created_at ? new Date(record.created_at).toLocaleDateString() : '—'}
                         </span>
                       </td>
-                        <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              onClick={() => handleViewRecord(record)}
-                              variant="ghost"
-                              size="sm"
-                              className="text-xs text-slate-700"
-                              title="Load this audit into Dashboard"
-                            >
-                              <Eye size={12} />
-                              Inspect
-                            </Button>
-                            <Button
-                              onClick={() => handleRescan(record)}
-                              disabled={isRescanning}
-                              variant="secondary"
-                              size="sm"
-                              className="text-xs text-olive-900 border border-olive-300"
-                            >
-                              <RotateCw size={12} className={isRescanning ? 'animate-spin text-olive-800' : ''} />
-                              {isRescanning ? 'Re-Auditing...' : 'Re-Audit'}
-                            </Button>
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            onClick={() => handleViewRecord(record)}
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs text-slate-700 dark:text-slate-300"
+                            title={t('history.inspectButton')}
+                          >
+                            <Eye size={12} />
+                            {t('history.inspectButton')}
+                          </Button>
+                          <Button
+                            onClick={() => handleRescan(record)}
+                            disabled={isRescanning}
+                            variant="secondary"
+                            size="sm"
+                            className="text-xs text-olive-900 dark:text-olive-200 border border-olive-300 dark:border-olive-700"
+                          >
+                            <RotateCw size={12} className={isRescanning ? 'animate-spin text-olive-800' : ''} />
+                            {isRescanning ? t('history.rescanning') : t('history.rescanButton')}
+                          </Button>
                         </div>
                       </td>
                     </tr>

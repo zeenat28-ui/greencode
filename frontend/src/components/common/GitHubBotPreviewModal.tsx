@@ -4,6 +4,7 @@ import {
   Sparkles, X, Bot, Copy, Check 
 } from 'lucide-react';
 import { Modal } from '../primitives/Modal';
+import { useT } from '../../i18n/I18nContext';
 
 interface GitHubBotPreviewModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export default function GitHubBotPreviewModal({
   onClose,
   repoName,
 }: GitHubBotPreviewModalProps) {
+  const t = useT();
   const [isPatched, setIsPatched] = useState(false);
   const [isPatching, setIsPatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,19 +139,19 @@ export default function GitHubBotPreviewModal({
               <Bot size={18} />
             </div>
             <div>
-              <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-                GreenCode Autonomous GitHub Bot
-                <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30 font-mono">
-                  Dependabot for Energy
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 font-bold">
-                  Live AST + Bedrock Engine
-                </span>
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Zero-friction developer adoption: blocks carbon regressions and synthesizes verified PR patches
-              </p>
-            </div>
+               <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                 {t('modals.githubBot.title')}
+                 <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30 font-mono">
+                   {t('modals.githubBot.subtitle')}
+                 </span>
+                 <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 font-bold">
+                   {t('modals.githubBot.engineBadge')}
+                 </span>
+               </h3>
+               <p className="text-[11px] text-slate-400">
+                 {t('modals.githubBot.tagline')}
+               </p>
+             </div>
           </div>
           <button
             onClick={onClose}
@@ -164,59 +166,59 @@ export default function GitHubBotPreviewModal({
           <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm space-y-3">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full text-white ${
-                    isPatched ? 'bg-purple-600' : 'bg-emerald-600'
-                  }`}>
-                    <GitPullRequest size={12} />
-                    {isPatched ? 'Patch Verified' : 'Preview PR'}
-                  </span>
-                  <span className="text-sm font-bold text-slate-900">
-                    feat(checkout): update warehouse stock matching logic
-                  </span>
-                  <span className="text-xs text-slate-400 font-mono">{repoName ? `${repoName} (example)` : 'example PR'}</span>
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  Illustrative preview of a bot-authored PR &mdash; target branch: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-800">main</code> &larr; <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-800">feature/order-sync</code>
-                </p>
+               <div className="flex items-center gap-2">
+                   <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full text-white ${
+                     isPatched ? 'bg-purple-600' : 'bg-emerald-600'
+                   }`}>
+                     <GitPullRequest size={12} />
+                     {isPatched ? t('modals.githubBot.patchVerified') : t('modals.githubBot.previewPr')}
+                   </span>
+                   <span className="text-sm font-bold text-slate-900">
+                     {t('modals.githubBot.prTitle')}
+                   </span>
+                   <span className="text-xs text-slate-400 font-mono">{repoName ? t('modals.githubBot.exampleRepo', { repo: repoName }) : t('modals.githubBot.examplePr')}</span>
+                 </div>
+                 <p className="text-xs text-slate-500 mt-1">
+                   {t('modals.githubBot.targetBranchLabel', { branch: t('modals.githubBot.targetBranch') })} <code className="bg-slate-100 dark:bg-zinc-800 px-1 py-0.5 rounded font-mono text-slate-800 dark:text-zinc-200">{t('modals.githubBot.sourceBranch')}</code>
+                 </p>
               </div>
 
-              {isPatched ? (
-                <button
-                  onClick={handleReset}
-                  className="btn-secondary text-xs px-2.5 py-1"
-                >
-                  Reset Diff
-                </button>
-              ) : null}
+               {isPatched ? (
+                 <button
+                   onClick={handleReset}
+                   className="btn-secondary text-xs px-2.5 py-1"
+                 >
+                   {t('modals.githubBot.resetDiff')}
+                 </button>
+               ) : null}
             </div>
 
             {/* CI Status Checks Widget */}
-            <div className={`p-3 rounded-lg border text-xs flex items-center justify-between ${
-              isPatched 
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
-                : 'bg-rose-50 border-rose-200 text-rose-900'
-            }`}>
-              <div className="flex items-center gap-2">
-                {isPatched ? (
-                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                ) : (
-                  <AlertTriangle size={16} className="text-rose-600 shrink-0" />
-                )}
-                <div className="font-medium">
-                  {isPatched ? (
-                    <span>
-                      <strong>GreenCode Quality Gate: {refactorMeta?.gateVerdict || 'PASSED'}</strong> — Behaviour verified: {refactorMeta?.behaviourVerified ? 'AST + Sandbox Equivalence Passed' : 'Verified'}
-                    </span>
-                  ) : (
-                    <span><strong>GreenCode Quality Gate: PENDING</strong> — Apply the bot patch to run the gate &amp; get a verdict</span>
-                  )}
-                </div>
-              </div>
-              <span className="font-mono text-[11px] font-semibold">
-                {isPatched ? 'Checks running' : 'Not yet run'}
-              </span>
-            </div>
+             <div className={`p-3 rounded-lg border text-xs flex items-center justify-between ${
+               isPatched 
+                 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
+                 : 'bg-rose-50 border-rose-200 text-rose-900'
+             }`}>
+               <div className="flex items-center gap-2">
+                 {isPatched ? (
+                   <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                 ) : (
+                   <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+                 )}
+                 <div className="font-medium">
+                   {isPatched ? (
+                     <span>
+                       <strong>{t('modals.githubBot.qualityGate', { status: refactorMeta?.gateVerdict || 'PASSED' })}</strong> — {t('modals.githubBot.behaviourVerified', { status: refactorMeta?.behaviourVerified ? t('modals.githubBot.behaviourVerifiedPassed') : t('modals.githubBot.behaviourVerifiedDefault') })}
+                     </span>
+                   ) : (
+                     <span><strong>{t('modals.githubBot.qualityGate', { status: 'PENDING' })}</strong> — {t('modals.githubBot.applyPatchHint')}</span>
+                   )}
+                 </div>
+               </div>
+               <span className="font-mono text-[11px] font-semibold">
+                 {isPatched ? t('modals.githubBot.checksRunning') : t('modals.githubBot.notYetRun')}
+               </span>
+             </div>
 
             {error && (
               <div className="p-3 rounded-lg border bg-rose-50 border-rose-200 text-rose-900 text-xs flex items-start gap-2">
@@ -234,12 +236,12 @@ export default function GitHubBotPreviewModal({
                 <div className="w-5 h-5 rounded-full bg-olive-800 text-white flex items-center justify-center text-[10px] font-bold">
                   GC
                 </div>
-                <span className="text-xs font-bold text-slate-900">greencode-bot</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-medium">bot</span>
-                <span className="text-xs text-slate-400">&middot; live via /api/refactor</span>
-              </div>
-              <span className="text-[11px] text-slate-500 font-mono">
-                {refactorMeta ? `${refactorMeta.model} (${refactorMeta.source})` : 'POST /api/refactor'}
+                 <span className="text-xs font-bold text-slate-900 dark:text-zinc-200">{t('modals.githubBot.botName')}</span>
+                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-medium">{t('modals.githubBot.botTag')}</span>
+                 <span className="text-xs text-slate-400 dark:text-zinc-400">&middot; {t('modals.githubBot.apiRef')}</span>
+               </div>
+               <span className="text-[11px] text-slate-500 dark:text-zinc-400 font-mono">
+                 {refactorMeta ? `${refactorMeta.model} (${refactorMeta.source})` : t('modals.githubBot.apiRefPost')}
               </span>
             </div>
 
@@ -250,14 +252,14 @@ export default function GitHubBotPreviewModal({
                   <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-900 space-y-1">
                     <div className="font-bold flex items-center gap-1.5">
                       <CheckCircle2 size={14} className="text-emerald-600" />
-                      Live Unified Diff Synthesized ({refactorMeta?.energyReductionPct ?? 0}% Estimated Energy Reduction)
+                      {t('modals.githubBot.diffSynthesized', { pct: String(refactorMeta?.energyReductionPct ?? 0) })}
                     </div>
                     <p className="text-[11px] text-emerald-800">
-                      Generated by <code className="bg-emerald-100/60 px-1 rounded font-mono">{refactorMeta?.model}</code>. Copy the unified patch or GitHub PR suggestion block below to commit directly.
+                      {t('modals.githubBot.generatedBy', { model: refactorMeta?.model || 'Deterministic AST Engine' })}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-bold text-slate-900">Generated Unified .diff Patch</span>
+                    <span className="font-bold text-slate-900">{t('modals.githubBot.diffLabel')}</span>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -265,7 +267,7 @@ export default function GitHubBotPreviewModal({
                         className="px-2.5 py-1 rounded border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[11px] font-medium flex items-center gap-1"
                       >
                         {copiedField === 'diff' ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
-                        {copiedField === 'diff' ? 'Copied .diff' : 'Copy Unified .diff'}
+                        {copiedField === 'diff' ? t('modals.githubBot.copiedDiff') : t('modals.githubBot.copyDiff')}
                       </button>
                       {liveSuggestionMd && (
                         <button
@@ -273,8 +275,8 @@ export default function GitHubBotPreviewModal({
                           onClick={() => copyText(liveSuggestionMd, 'suggestion')}
                           className="px-2.5 py-1 rounded border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-medium flex items-center gap-1"
                         >
-                          {copiedField === 'suggestion' ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
-                          {copiedField === 'suggestion' ? 'Copied PR Suggestion' : 'Copy GitHub Suggestion'}
+                           {copiedField === 'suggestion' ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                           {copiedField === 'suggestion' ? t('modals.githubBot.copiedSuggestion') : t('modals.githubBot.copySuggestion')}
                         </button>
                       )}
                     </div>
@@ -288,17 +290,17 @@ export default function GitHubBotPreviewModal({
                   <div className="p-3 bg-rose-50/70 rounded-lg border border-rose-200 text-rose-950 space-y-1">
                     <div className="font-bold flex items-center gap-1.5">
                       <AlertTriangle size={14} className="text-rose-700" />
-                      Algorithmic Energy Leak Detected in Pull Request
+                      {t('modals.githubBot.leakTitle')}
                     </div>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      This pull request introduces a quadratic <code>O(N²)</code> nested loop in <code className="font-mono text-slate-800">checkout/inventory.py:48</code>. Click below to invoke the live <code>/api/refactor</code> engine and generate a verified unified diff.
-                    </p>
+                    <p className="text-[11px] text-slate-600 leading-relaxed"
+                      dangerouslySetInnerHTML={{ __html: t('modals.githubBot.leakDesc', { file: 'checkout/inventory.py', line: '48' }) }}
+                    />
                   </div>
 
                   <div>
                     <div className="font-bold text-slate-900 mb-1.5 flex items-center justify-between">
-                      <span>Unoptimized PR Hunk</span>
-                      <span className="text-[10px] font-mono text-rose-700 font-bold">Violation: nested_loop_lookup</span>
+                       <span>{t('modals.githubBot.unoptimizedHunk')}</span>
+                       <span className="text-[10px] font-mono text-rose-700 font-bold">{t('modals.githubBot.violation', { type: 'nested_loop_lookup' })}</span>
                     </div>
                     <pre className="p-3 rounded-lg bg-slate-900 text-slate-200 font-mono text-[11px] overflow-x-auto leading-relaxed">
                       <code>{displayedDiff}</code>
@@ -306,16 +308,16 @@ export default function GitHubBotPreviewModal({
                   </div>
 
                   <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
-                    <div className="text-[11px] text-slate-500">
-                      Executes live AST refactoring &amp; PR carbon budget gate evaluation.
-                    </div>
-                    <button
-                      onClick={handleApplyBotPatch}
-                      disabled={isPatching}
-                      className="btn-primary text-xs px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 flex items-center gap-1.5 w-full sm:w-auto justify-center"
-                    >
-                      <Sparkles size={12} />
-                      {isPatching ? 'Synthesizing Live Patch...' : 'Generate Live PR Patch'}
+                     <div className="text-[11px] text-slate-500">
+                       {t('modals.githubBot.executionNote')}
+                     </div>
+                     <button
+                       onClick={handleApplyBotPatch}
+                       disabled={isPatching}
+                       className="btn-primary text-xs px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 flex items-center gap-1.5 w-full sm:w-auto justify-center"
+                     >
+                       <Sparkles size={12} />
+                       {isPatching ? t('modals.githubBot.synthesizing') : t('modals.githubBot.generatePatch')}
                     </button>
                   </div>
                 </>
@@ -324,19 +326,19 @@ export default function GitHubBotPreviewModal({
           </div>
 
           {/* Why This Matters for World Tech */}
-          <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-2 text-xs">
-            <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
-              Why Every Developer Will Use This:
+          <div className="p-4 rounded-xl border border-slate-200 bg-white dark:bg-zinc-800/50 space-y-2 text-xs">
+            <h4 className="font-bold text-slate-900 dark:text-zinc-100 uppercase tracking-wider text-[11px]">
+              {t('modals.githubBot.whyThisMatters')}
             </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px] text-slate-600">
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                <strong>Zero Context Switching:</strong> Developers never have to leave GitHub. The bot comments and opens patches directly in their PRs.
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px] text-slate-600 dark:text-zinc-300">
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-zinc-800/30 border border-slate-100 dark:border-zinc-700">
+                <strong>{t('modals.githubBot.valueProps.zeroContextSwitching')}</strong>
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                <strong>Automatic Gatekeeping:</strong> Prevents junior or rushed commits from introducing expensive CPU bottlenecks into production.
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-zinc-800/30 border border-slate-100 dark:border-zinc-700">
+                <strong>{t('modals.githubBot.valueProps.automaticGatekeeping')}</strong>
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                <strong>Instant ROI:</strong> Every merged patch immediately reduces the monthly cloud hosting bill.
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-zinc-800/30 border border-slate-100 dark:border-zinc-700">
+                <strong>{t('modals.githubBot.valueProps.instantRoi')}</strong>
               </div>
             </div>
           </div>

@@ -10,6 +10,7 @@ import {
   Title,
 } from 'chart.js';
 import { BarChart3, ListFilter, CheckCircle2 } from 'lucide-react';
+import { useT } from '../../i18n/I18nContext';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, Title);
 
@@ -37,6 +38,7 @@ function formatLabel(key: string): { label: string; desc: string; color: string 
 }
 
 export default function ViolationChart({ breakdown }: ViolationChartProps) {
+  const t = useT();
   const [viewMode, setViewMode] = useState<'bars' | 'chart'>('bars');
 
   const entries = Object.entries(breakdown || {}).sort((a, b) => b[1] - a[1]);
@@ -48,8 +50,8 @@ export default function ViolationChart({ breakdown }: ViolationChartProps) {
         <div className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 mb-2">
           <CheckCircle2 size={18} />
         </div>
-        <p className="text-xs font-semibold text-zinc-900">Zero Efficiency Bottlenecks</p>
-        <p className="text-[11px] text-zinc-500 mt-0.5">All analyzed modules pass GSF SCI rules.</p>
+        <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">{t('charts.empty.title')}</p>
+        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{t('charts.empty.body')}</p>
       </div>
     );
   }
@@ -60,10 +62,10 @@ export default function ViolationChart({ breakdown }: ViolationChartProps) {
     labels: entries.map(([k]) => formatLabel(k).label),
     datasets: [
       {
-        label: 'Findings',
+        label: t('charts.findings'),
         data: entries.map(([, v]) => v),
-        backgroundColor: '#18181B',
-        hoverBackgroundColor: '#059669',
+        backgroundColor: 'var(--gc-color-accent-emerald)',
+        hoverBackgroundColor: 'var(--gc-color-emerald-hover)',
         borderRadius: 6,
         barThickness: 16,
       },
@@ -76,7 +78,7 @@ export default function ViolationChart({ breakdown }: ViolationChartProps) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: '#09090B',
+        backgroundColor: 'var(--gc-color-surface-elevated)',
         titleFont: { size: 12, weight: 600 as const },
         bodyFont: { size: 11 },
         padding: 10,
@@ -86,11 +88,11 @@ export default function ViolationChart({ breakdown }: ViolationChartProps) {
     scales: {
       x: {
         grid: { display: false },
-        ticks: { color: '#71717A', font: { size: 11 } },
+        ticks: { color: 'var(--gc-color-text-tertiary)', font: { size: 11 } },
       },
       y: {
-        grid: { color: '#F4F4F5' },
-        ticks: { color: '#71717A', font: { size: 11 }, stepSize: 1 },
+        grid: { color: 'var(--gc-color-border)' },
+        ticks: { color: 'var(--gc-color-text-tertiary)', font: { size: 11 }, stepSize: 1 },
       },
     },
   };
@@ -99,36 +101,36 @@ export default function ViolationChart({ breakdown }: ViolationChartProps) {
     <div className="space-y-3.5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-zinc-500">Rule Distribution</span>
-          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
-            {totalCount} findings
+          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{t('charts.ruleBreakdown')}</span>
+          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium">
+            {t('charts.findingsCount', { count: totalCount })}
           </span>
         </div>
 
-        <div className="flex items-center p-0.5 rounded-lg bg-zinc-100 border border-zinc-200/80 text-xs">
+        <div className="flex items-center p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 text-xs">
           <button
             type="button"
             onClick={() => setViewMode('bars')}
             className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all ${
               viewMode === 'bars'
-                ? 'bg-white text-zinc-900 shadow-sm'
-                : 'text-zinc-500 hover:text-zinc-800'
+                ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800'
             }`}
           >
             <ListFilter size={11} />
-            List
+            {t('charts.viewModes.list')}
           </button>
           <button
             type="button"
             onClick={() => setViewMode('chart')}
             className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all ${
               viewMode === 'chart'
-                ? 'bg-white text-zinc-900 shadow-sm'
-                : 'text-zinc-500 hover:text-zinc-800'
+                ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800'
             }`}
           >
             <BarChart3 size={11} />
-            Chart
+            {t('charts.viewModes.chart')}
           </button>
         </div>
       </div>
@@ -141,28 +143,28 @@ export default function ViolationChart({ breakdown }: ViolationChartProps) {
             const barWidth = Math.max(8, Math.round((count / maxCount) * 100));
 
             return (
-              <div key={key} className="p-3 rounded-lg bg-zinc-50/70 border border-zinc-200/70 hover:border-zinc-300 transition-all space-y-1.5">
+              <div key={key} className="p-3 rounded-lg bg-zinc-50/70 dark:bg-zinc-800/50 border border-zinc-200/70 dark:border-zinc-700/70 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all space-y-1.5">
                 <div className="flex items-center justify-between text-xs gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${meta.color}`} />
-                    <span className="font-semibold text-zinc-900 truncate">{meta.label}</span>
+                    <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate">{meta.label}</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="font-mono text-[11px] text-zinc-400">{percent}%</span>
-                    <span className="font-mono font-semibold text-[11px] bg-white px-1.5 py-0.5 rounded border border-zinc-200 text-zinc-800">
+                    <span className="font-mono text-[11px] text-zinc-400 dark:text-zinc-500">{percent}%</span>
+                    <span className="font-mono font-semibold text-[11px] bg-white dark:bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">
                       {count}
                     </span>
                   </div>
                 </div>
 
-                <div className="w-full bg-zinc-200/70 rounded-full h-1.5 overflow-hidden">
+                <div className="w-full bg-zinc-200/70 dark:bg-zinc-700/50 rounded-full h-1.5 overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-all duration-500 bg-zinc-900"
+                    className="h-full rounded-full transition-all duration-500 bg-zinc-900 dark:bg-zinc-600"
                     style={{ width: `${barWidth}%` }}
                   />
                 </div>
 
-                <p className="text-[11px] text-zinc-500 leading-tight">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight">
                   {meta.desc}
                 </p>
               </div>
@@ -183,11 +185,12 @@ interface LanguageChartProps {
 }
 
 export function LanguageChart({ breakdown }: LanguageChartProps) {
+  const t = useT();
   const entries = Object.entries(breakdown || {}).sort((a, b) => b[1] - a[1]);
   const total = entries.reduce((acc, [, val]) => acc + val, 0);
 
   if (entries.length === 0 || total === 0) {
-    return <div className="text-center py-8 text-xs text-zinc-400">No language data recorded</div>;
+    return <div className="text-center py-8 text-xs text-zinc-400 dark:text-zinc-500">{t('charts.empty.noLanguageData')}</div>;
   }
 
   return (
@@ -197,10 +200,10 @@ export function LanguageChart({ breakdown }: LanguageChartProps) {
         return (
           <div key={lang} className="space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-zinc-800 capitalize">{lang}</span>
-              <span className="font-mono text-zinc-500">{count} files ({pct}%)</span>
+              <span className="font-semibold text-zinc-800 dark:text-zinc-200 capitalize">{lang}</span>
+              <span className="font-mono text-zinc-500 dark:text-zinc-400">{count} files ({pct}%)</span>
             </div>
-            <div className="w-full bg-zinc-100 rounded-full h-1.5 overflow-hidden">
+            <div className="w-full bg-zinc-100 dark:bg-zinc-700/50 rounded-full h-1.5 overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-500 bg-emerald-600"
                 style={{ width: `${pct}%` }}
@@ -219,9 +222,10 @@ interface ScoreGaugeProps {
 }
 
 export function ScoreGauge({ score, threshold }: ScoreGaugeProps) {
+  const t = useT();
   const pct = Math.max(0, Math.min(100, Math.round(score)));
   const isPass = pct >= threshold;
-  const strokeColor = isPass ? '#059669' : '#E11D48';
+  const strokeColor = isPass ? 'var(--gc-color-emerald)' : 'var(--gc-color-rose)';
 
   return (
     <div className="text-center">
@@ -232,7 +236,7 @@ export function ScoreGauge({ score, threshold }: ScoreGaugeProps) {
             cy="50"
             r="40"
             fill="none"
-            stroke="#F4F4F5"
+            stroke="var(--gc-color-border)"
             strokeWidth="8"
           />
           <circle
@@ -253,17 +257,17 @@ export function ScoreGauge({ score, threshold }: ScoreGaugeProps) {
           <span className="text-3xl font-bold font-mono" style={{ color: strokeColor }}>
             {pct}
           </span>
-          <span className="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider">Score</span>
+          <span className="text-[10px] uppercase font-semibold text-zinc-400 dark:text-zinc-500 tracking-wider">{t('charts.score')}</span>
         </div>
       </div>
-      <p className="text-xs text-zinc-500 font-medium">
-        Target: <span className="font-mono font-semibold text-zinc-700">&ge; {threshold}</span>
+      <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+        {t('charts.target', { threshold: String(threshold) })}
       </p>
       <div className="mt-1">
         <span className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
-          isPass ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+          isPass ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-900 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700' : 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-700'
         }`}>
-          {isPass ? 'Quality Gate Passed' : 'Optimization Required'}
+          {isPass ? t('charts.gate.passed') : t('charts.gate.required')}
         </span>
       </div>
     </div>

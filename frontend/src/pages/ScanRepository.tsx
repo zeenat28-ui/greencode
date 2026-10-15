@@ -13,6 +13,7 @@ import {
   Lock, Globe, ChevronDown, CheckCircle2, Cpu, ArrowRight,
   Play, FileCode2
 } from 'lucide-react';
+import { useT } from '../i18n/I18nContext';
 
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -23,6 +24,7 @@ function formatSize(kb: number): string {
 }
 
 export default function ScanRepository() {
+  const t = useT();
   const navigate = useNavigate();
   const [, setScanData] = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
   const [activeZone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
@@ -53,7 +55,7 @@ export default function ScanRepository() {
       if (res.data.message && list.length === 0) setReposError(res.data.message);
     } catch (err: any) {
       setRepos([]);
-      setReposError(err?.response?.data?.detail || 'Could not load your repositories from GitHub.');
+      setReposError(err?.response?.data?.detail || t('scan.couldNotLoadRepos'));
     } finally {
       setReposLoading(false);
     }
@@ -118,7 +120,7 @@ export default function ScanRepository() {
       const startedAt = Date.now();
       const tick = async () => {
         if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
-          reject(new Error('The audit is taking longer than expected. Check the History page shortly.'));
+          reject(new Error(t('scan.takingLonger')));
           return;
         }
         try {
@@ -127,13 +129,13 @@ export default function ScanRepository() {
           if (task.progress_message) setStatusMessage(task.progress_message);
           if (task.status === 'Completed' && task.result) { resolve(task.result); return; }
           if (task.status === 'Failed') {
-            reject(new Error(task.error || 'The audit failed.'));
+            reject(new Error(task.error || t('scan.failed')));
             return;
           }
           setStatusMessage(task.progress_message || 'Auditing source tree...');
           pollTimer.current = window.setTimeout(tick, POLL_INTERVAL_MS);
         } catch (err: any) {
-          reject(err?.response?.data?.detail || 'Lost contact with the audit worker.');
+           reject(err?.response?.data?.detail || t('scan.lostContact'));
         }
       };
       tick();
@@ -143,18 +145,18 @@ export default function ScanRepository() {
     if (!selected) return;
     setIsScanning(true);
     setScanError(null);
-    setStatusMessage('Starting audit...');
+    setStatusMessage(t('scan.starting'));
 
     try {
       let result: ScanResult;
       try {
         const res = await scanService.scanGitHub(selected.full_name, ref || undefined);
         result = res.data;
-        setStatusMessage('Audit complete.');
+        setStatusMessage(t('scan.auditComplete'));
       } catch (err: any) {
         const status = err?.response?.status;
         if (status !== 413) throw err;
-        setStatusMessage('Repository is large - running in the background...');
+        setStatusMessage(t('scan.largeRepo'));
         const queued = await scanService.scanGitHubAsync(selected.full_name, ref || undefined);
         result = await pollTask(queued.data.task_id);
       }
@@ -162,7 +164,7 @@ export default function ScanRepository() {
       setScanData(applyEnergyEstimates(result));
       navigate('/dashboard');
     } catch (err: any) {
-      setScanError(err?.response?.data?.detail || err?.message || 'The audit could not be completed.');
+      setScanError(err?.response?.data?.detail || err?.message || t('scan.couldNotComplete'));
       setStatusMessage('');
     } finally {
       setIsScanning(false);
@@ -175,7 +177,7 @@ export default function ScanRepository() {
   const handleScanLocalSubpath = async (subpath: string, repoLabel: string) => {
     setIsScanning(true);
     setScanError(null);
-    setStatusMessage(`Auditing local workspace path '${subpath}'...`);
+    setStatusMessage(t('scan.localPath', { path: subpath }));
     try {
       const res = await fetch('/api/scan/local-workspace', {
         method: 'POST',
@@ -193,7 +195,7 @@ export default function ScanRepository() {
       setScanData(applyEnergyEstimates(body));
       navigate('/dashboard');
     } catch (err: any) {
-      setScanError(err?.message || 'Could not complete workspace audit.');
+        setScanError(err?.message || t('scan.couldNotCompleteWorkspace'));
     } finally {
       setIsScanning(false);
     }
@@ -206,18 +208,18 @@ export default function ScanRepository() {
       .replace(/\/$/, '')
       .trim();
     if (!clean.includes('/')) {
-      setScanError('Enter a valid GitHub repository slug (e.g. zeenat28-ui/greencode) or URL.');
+      setScanError(t('scan.invalidSlug'));
       return;
     }
     setIsScanning(true);
     setScanError(null);
-    setStatusMessage(`Auditing GitHub repository '${clean}'...`);
+    setStatusMessage(t('scan.githubRepo', { repo: clean }));
     try {
       const res = await scanService.scanGitHub(clean);
       setScanData(applyEnergyEstimates(res.data));
       navigate('/dashboard');
     } catch (err: any) {
-      setScanError(err?.response?.data?.detail || err?.message || 'Could not audit GitHub repository.');
+      setScanError(err?.response?.data?.detail || err?.message || t('scan.couldNotAuditGitHub'));
     } finally {
       setIsScanning(false);
     }
@@ -227,29 +229,29 @@ export default function ScanRepository() {
     {
       subpath: 'app',
       repo_name: 'greencode-org/greencode-backend',
-      name: 'app/ (GreenCode Core Engine)',
-      language: 'Python',
-      description: 'Live self-audit of GreenCode FastAPI routers, AST/Tree-sitter parser, and calibrated energy profiler.',
+      name: t('scan.targets.backend.name'),
+      language: t('scan.targets.backend.language'),
+      description: t('scan.targets.backend.description'),
     },
     {
       subpath: 'frontend/src',
       repo_name: 'greencode-org/greencode-frontend',
-      name: 'frontend/src/ (React + TypeScript UI)',
-      language: 'TypeScript',
-      description: 'Live lexical & CST static analysis of all React pages, hooks, and API client services.',
+      name: t('scan.targets.frontend.name'),
+      language: t('scan.targets.frontend.language'),
+      description: t('scan.targets.frontend.description'),
     },
   ];
 
   return (
     <div className="space-y-5">
-      <div className="border-b border-zinc-200/80 pb-3">
+      <div className="border-b border-zinc-200/80 dark:border-slate-700 pb-3">
         <div className="flex items-center gap-2">
-           <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Repository Scanner</h1>
+           <h1 className="text-lg font-semibold text-zinc-950 dark:text-zinc-100 tracking-tight">{t('scan.title')}</h1>
            <Badge variant="olive">Polyglot AST &amp; Call-Graph</Badge>
-         </div>
-        <p className="text-xs text-zinc-500 mt-0.5">
-          Audit a public GitHub repository, connected organization repo, or local workspace directory.
-        </p>
+          </div>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+            {t('scan.subtitle')}
+          </p>
       </div>
 
       {scanError && (
@@ -262,15 +264,15 @@ export default function ScanRepository() {
       {/* Direct Public GitHub URL / Local Path Scanner */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card padding="lg" className="space-y-2.5">
-          <label className="block text-xs font-semibold text-zinc-800">
-            Public GitHub Repository (URL or owner/repo)
+          <label className="block text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+            {t('scan.githubPublic')}
           </label>
           <div className="flex gap-2">
             <Input
               type="text"
               value={directSlug}
               onChange={(e) => setDirectSlug(e.target.value)}
-              placeholder="e.g. zeenat28-ui/greencode"
+              placeholder={t('scan.githubPlaceholder')}
               className="text-xs font-mono flex-1"
             />
             <Button
@@ -280,21 +282,21 @@ export default function ScanRepository() {
               size="sm"
               className="text-xs px-3.5 py-2"
             >
-              <Play size={11} /> Scan GitHub
+              <Play size={11} /> {t('scan.scanGitHub')}
             </Button>
           </div>
         </Card>
 
         <Card padding="lg" className="space-y-2.5">
-          <label className="block text-xs font-semibold text-zinc-800">
-            Local Workspace Subdirectory
+          <label className="block text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+            {t('scan.localSubdir')}
           </label>
           <div className="flex gap-2">
             <Input
               type="text"
               value={localSubpath}
               onChange={(e) => setLocalSubpath(e.target.value)}
-              placeholder="e.g. app, frontend/src, scripts"
+              placeholder={t('scan.localPlaceholder')}
               className="text-xs font-mono flex-1"
             />
             <Button
@@ -304,25 +306,25 @@ export default function ScanRepository() {
               size="sm"
               className="text-xs px-3.5 py-2"
             >
-              <Play size={11} /> Scan Path
+              <Play size={11} /> {t('scan.scanPath')}
             </Button>
           </div>
         </Card>
       </div>
 
       {/* Reference Workspace Targets */}
-      <Card padding="lg">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2.5 border-b border-zinc-100">
-          <div>
-            <h2 className="section-title">Reference Workspace Targets</h2>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
-              Execute multi-language AST and call-graph static analysis against on-disk targets.
-            </p>
+        <Card padding="lg">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2.5 border-b border-zinc-100 dark:border-slate-700">
+            <div>
+              <h2 className="section-title">{t('scan.referenceTargets')}</h2>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                {t('scan.referenceDesc')}
+              </p>
+            </div>
+            <Badge variant="olive" className="w-fit">
+              AST + Call-Graph Engine
+            </Badge>
           </div>
-          <Badge variant="olive" className="w-fit">
-            AST + Call-Graph Engine
-          </Badge>
-        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {LIVE_WORKSPACE_TARGETS.map((target) => (
@@ -359,7 +361,7 @@ export default function ScanRepository() {
                   className="text-xs px-2.5 py-1"
                 >
                   <Play size={10} />
-                  Run Live Audit
+                  {t('scan.runLiveAudit')}
                 </Button>
               </div>
             </div>
@@ -369,35 +371,35 @@ export default function ScanRepository() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <Card padding="lg" className="lg:col-span-2">
-          <div className="flex items-center justify-between gap-3 mb-3 pb-2 border-b border-slate-100">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">Your GitHub Repositories</h2>
+          <div className="flex items-center justify-between gap-3 mb-3 pb-2 border-b border-slate-100 dark:border-slate-700">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">{t('scan.yourRepos')}</h2>
             <Button onClick={loadRepos} disabled={reposLoading} variant="secondary" size="sm" className="text-xs px-2.5 py-1">
               <RefreshCw size={11} className={reposLoading ? 'animate-spin' : ''} />
-              Refresh
+              {t('scan.refresh')}
             </Button>
           </div>
 
           <div className="relative mb-3">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by repository name..." className="pl-9 text-xs py-2 bg-white" />
+            <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('scan.searchPlaceholder')} className="pl-9 text-xs py-2 bg-white dark:bg-slate-800" />
           </div>
 
           {reposLoading ? (
-            <div className="flex flex-col items-center justify-center py-14 text-slate-400">
+            <div className="flex flex-col items-center justify-center py-14 text-slate-400 dark:text-slate-500">
               <Loader2 size={22} className="animate-spin text-olive-700 mb-2.5" />
-              <p className="text-xs">Loading repositories from GitHub...</p>
+              <p className="text-xs">{t('scan.loadingRepos')}</p>
             </div>
           ) : reposError ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <AlertCircle size={22} className="text-rose-500 mb-2" />
               <p className="text-xs text-slate-600 max-w-sm">{reposError}</p>
-              <Button onClick={loadRepos} variant="secondary" size="sm" className="text-xs mt-3 px-3 py-1.5">Retry Sync</Button>
+              <Button onClick={loadRepos} variant="secondary" size="sm" className="text-xs mt-3 px-3 py-1.5">{t('scan.retrySync')}</Button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <GitBranch size={22} className="text-slate-300 mb-2" />
-              <p className="text-xs text-slate-500 font-mono">
-                {repos.length === 0 ? 'No repositories found under this token scope.' : 'No repositories match active query filter.'}
+              <GitBranch size={22} className="text-slate-300 dark:text-slate-600 mb-2" />
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                {repos.length === 0 ? t('scan.noReposToken') : t('scan.noReposMatch')}
               </p>
             </div>
           ) : (
@@ -415,7 +417,7 @@ export default function ScanRepository() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs font-bold text-slate-900 font-mono truncate">{repo.full_name}</span>
                             {repo.private ? <Lock size={10} className="text-amber-500 shrink-0" /> : <Globe size={10} className="text-slate-300 shrink-0" />}
-                            {repo.archived && <Badge variant="default" className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 font-mono">ARCHIVED</Badge>}
+                            {repo.archived && <Badge variant="default" className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-mono">{t('scan.archived')}</Badge>}
                           </div>
                           {repo.description && <p className="text-[11px] text-slate-500 truncate mt-0.5">{repo.description}</p>}
                           <div className="flex items-center gap-2.5 mt-1 text-[10px] text-slate-400 font-mono">
@@ -437,57 +439,57 @@ export default function ScanRepository() {
 
         <div className="space-y-4">
           <Card padding="lg">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 mb-3 pb-2 border-b border-slate-100">
-              Audit Configuration
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100 mb-3 pb-2 border-b border-slate-100 dark:border-slate-700">
+              {t('scan.auditConfig')}
             </h2>
             {selected ? (
               <div className="space-y-3.5">
                 <div>
-                  <p className="label mb-0.5">Selected Repository</p>
-                  <p className="text-xs font-bold text-slate-900 font-mono truncate">{selected.full_name}</p>
+                  <p className="label mb-0.5">{t('scan.selectedRepo')}</p>
+                  <p className="text-xs font-bold text-slate-900 dark:text-slate-100 font-mono truncate">{selected.full_name}</p>
                 </div>
                 <div>
-                  <label className="label mb-1 block" htmlFor="ref-select">Target Branch</label>
+                  <label className="label mb-1 block" htmlFor="ref-select">{t('scan.targetBranch')}</label>
                   <div className="relative">
-                    <Select id="ref-select" value={ref} onChange={(e) => setRef(e.target.value)} className="appearance-none pr-8 text-xs font-mono py-1.5 bg-white">
+                    <Select id="ref-select" value={ref} onChange={(e) => setRef(e.target.value)} className="appearance-none pr-8 text-xs font-mono py-1.5 bg-white dark:bg-slate-800">
                       {branches.length === 0 && <option value={ref}>{ref || selected.default_branch}</option>}
                       {branches.map((b) => <option key={b} value={b}>{b}</option>)}
                     </Select>
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   </div>
-                  {branchesLoading && <p className="text-[10px] font-mono text-slate-400 mt-1 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Fetching branches...</p>}
+                  {branchesLoading && <p className="text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-1 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> {t('scan.fetchingBranches')}</p>}
                 </div>
                 <Button onClick={handleScan} disabled={isScanning} variant="primary" className="w-full flex items-center justify-center gap-2 py-2.5 shadow-sm">
-                  {isScanning ? (<><Loader2 size={14} className="animate-spin text-white" /> Auditing Code...</>) : (<><ArrowRight size={14} /> Start Code Audit</>)}
+                  {isScanning ? (<><Loader2 size={14} className="animate-spin text-white" /> {t('scan.auditingCode')}</>) : (<><ArrowRight size={14} /> {t('scan.startAudit')}</>)}
                 </Button>
               </div>
             ) : (
               <div className="text-center py-8">
-                <Cpu size={20} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-xs text-slate-500">Select a repository from the list to audit</p>
+                <Cpu size={20} className="text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                <p className="text-xs text-slate-500 dark:text-slate-400">{t('scan.selectRepo')}</p>
               </div>
             )}
           </Card>
 
           {isScanning && (
-            <Card padding="sm" className="border-olive-300 bg-olive-50/70">
+            <Card padding="sm" className="border-olive-300 bg-olive-50/70 dark:bg-olive-900/20">
               <div className="flex items-start gap-3">
                 <Loader2 size={15} className="animate-spin text-olive-700 shrink-0 mt-0.5" />
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-slate-900">Audit in Progress</p>
-                  <p className="text-[11px] text-slate-600 mt-0.5 break-words">{statusMessage || 'Analyzing source files and checking energy patterns...'}</p>
+                  <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{t('scan.auditInProgress')}</p>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 break-words">{statusMessage || t('scan.analyzingSource')}</p>
                 </div>
               </div>
             </Card>
           )}
 
           <Card padding="lg">
-            <h3 className="text-xs font-bold text-slate-900 mb-2">What GreenCode Checks:</h3>
-            <ul className="space-y-2 text-xs text-slate-600">
-              <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> High-complexity nested loops and recursive calls</li>
-              <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> Unindexed database queries and memory leaks</li>
-              <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> Heavy uncompressed payloads and blocking network I/O</li>
-              <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> Carbon emissions calculated for active grid: {activeZone}</li>
+            <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 mb-2">{t('scan.whatWeCheck')}</h3>
+            <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
+              <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> {t('scan.check.nestedLoops')}</li>
+              <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> {t('scan.check.dbQueries')}</li>
+              <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> {t('scan.check.payloads')}</li>
+              <li className="flex gap-2"><CheckCircle2 size={13} className="text-olive-700 shrink-0 mt-0.5" /> {t('scan.check.gridEmissions', { zone: activeZone })}</li>
             </ul>
           </Card>
         </div>

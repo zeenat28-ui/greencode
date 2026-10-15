@@ -4,6 +4,7 @@ import {
   Code2 
 } from 'lucide-react';
 import { Modal } from '../primitives/Modal';
+import { translateStatic } from '../../i18n/I18nContext';
 
 interface CiCdBadgeModalProps {
   isOpen: boolean;
@@ -21,7 +22,7 @@ export default function CiCdBadgeModal({
 
   if (!isOpen) return null;
 
-  const grade = score >= 80 ? 'Grade A' : score >= 65 ? 'Grade B' : 'Grade C';
+  const grade = score >= 80 ? translateStatic('modals.cicd.gradeA') : score >= 65 ? translateStatic('modals.cicd.gradeB') : translateStatic('modals.cicd.gradeC');
   const badgeColor = score >= 80 ? '384C3B' : score >= 65 ? 'D97706' : 'E11D48';
   const encodedGrade = encodeURIComponent(`${score}/100 (${grade})`);
   
@@ -78,19 +79,19 @@ jobs:
     >
         {/* Header */}
         <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-olive-700 flex items-center justify-center text-white">
-              <ShieldCheck size={16} />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold tracking-tight text-white">
-                CI/CD Gate &amp; Repository Badges
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Automate algorithmic carbon audits in your GitHub Pull Requests
-              </p>
-            </div>
-          </div>
+         <div className="flex items-center gap-2.5">
+             <div className="w-7 h-7 rounded-lg bg-olive-700 flex items-center justify-center text-white">
+               <ShieldCheck size={16} />
+             </div>
+             <div>
+               <h3 className="text-sm font-bold tracking-tight text-white">
+                 {translateStatic('modals.cicd.title')}
+               </h3>
+               <p className="text-[11px] text-slate-400">
+                 {translateStatic('modals.cicd.subtitle')}
+               </p>
+             </div>
+           </div>
           <button
             onClick={onClose}
             className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
@@ -102,51 +103,51 @@ jobs:
         <div className="p-6 space-y-6 text-slate-800 max-h-[80vh] overflow-y-auto">
           {/* Badge Preview */}
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-2">
-              Live README Badge Preview
-            </label>
-            <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="inline-flex items-center shadow-sm rounded overflow-hidden">
-                <span className="bg-slate-800 text-white text-xs font-semibold px-2.5 py-1 flex items-center gap-1 font-mono">
-                  GreenCode SCI
-                </span>
-                <span className="bg-olive-800 text-white text-xs font-bold px-2.5 py-1 font-mono">
-                  {score}/100 ({grade})
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => copyToClipboard(badgeMarkdown, 'markdown')}
-                  className="btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
-                >
-                  {copiedType === 'markdown' ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
-                  {copiedType === 'markdown' ? 'Copied Markdown' : 'Copy Markdown'}
-                </button>
-                <button
-                  onClick={() => copyToClipboard(badgeHtml, 'html')}
-                  className="btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
-                >
-                  {copiedType === 'html' ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
-                  {copiedType === 'html' ? 'Copied HTML' : 'Copy HTML'}
-                </button>
-              </div>
-            </div>
+             <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-2">
+               {translateStatic('modals.cicd.badgePreview')}
+             </label>
+             <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+               <div className="inline-flex items-center shadow-sm rounded overflow-hidden">
+                 <span className="bg-slate-800 text-white text-xs font-semibold px-2.5 py-1 flex items-center gap-1 font-mono">
+                   {translateStatic('modals.cicd.badgeLabel')}
+                 </span>
+                 <span className="bg-olive-800 text-white text-xs font-bold px-2.5 py-1 font-mono">
+                   {score}/100 ({grade})
+                 </span>
+               </div>
+               <div className="flex items-center gap-2">
+                 <button
+                   onClick={() => copyToClipboard(badgeMarkdown, 'markdown')}
+                   className="btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
+                 >
+                   {copiedType === 'markdown' ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                   {copiedType === 'markdown' ? translateStatic('modals.cicd.copiedMarkdown') : translateStatic('modals.cicd.copyMarkdown')}
+                 </button>
+                 <button
+                   onClick={() => copyToClipboard(badgeHtml, 'html')}
+                   className="btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
+                 >
+                   {copiedType === 'html' ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                   {copiedType === 'html' ? translateStatic('modals.cicd.copiedHtml') : translateStatic('modals.cicd.copyHtml')}
+                 </button>
+               </div>
+             </div>
           </div>
 
           {/* GitHub Actions Workflow */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <GitPullRequest size={13} className="text-olive-700" />
-                GitHub Actions Quality Gate Workflow (.github/workflows/greencode-ci.yml)
-              </label>
-              <button
-                onClick={() => copyToClipboard(workflowYaml, 'yaml')}
-                className="btn-primary text-xs px-2.5 py-1 flex items-center gap-1.5 bg-olive-700 hover:bg-olive-800"
-              >
-                {copiedType === 'yaml' ? <Check size={12} /> : <Copy size={12} />}
-                {copiedType === 'yaml' ? 'Copied Workflow' : 'Copy Workflow YAML'}
-              </button>
+           <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                 <GitPullRequest size={13} className="text-olive-700" />
+                 {translateStatic('modals.cicd.workflowLabel')}
+               </label>
+               <button
+                 onClick={() => copyToClipboard(workflowYaml, 'yaml')}
+                 className="btn-primary text-xs px-2.5 py-1 flex items-center gap-1.5 bg-olive-700 hover:bg-olive-800"
+               >
+                 {copiedType === 'yaml' ? <Check size={12} /> : <Copy size={12} />}
+                 {copiedType === 'yaml' ? translateStatic('modals.cicd.copiedWorkflow') : translateStatic('modals.cicd.copyWorkflow')}
+               </button>
             </div>
             <div className="relative rounded-lg bg-slate-900 border border-slate-800 overflow-hidden text-xs font-mono text-slate-200">
               <pre className="p-4 overflow-x-auto leading-relaxed">
@@ -159,22 +160,22 @@ jobs:
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1">
               <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                <Terminal size={13} className="text-olive-700" />
-                Deterministic Quality Gate
-              </div>
-              <p className="text-slate-500 leading-relaxed text-[11px]">
-                Blocks pull requests that introduce algorithmic regressions or nested quadratic loops below your threshold.
-              </p>
-            </div>
+                 <Terminal size={13} className="text-olive-700" />
+                 {translateStatic('modals.cicd.features.deterministic.title')}
+               </div>
+               <p className="text-slate-500 leading-relaxed text-[11px]">
+                 {translateStatic('modals.cicd.features.deterministic.desc')}
+               </p>
+             </div>
 
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1">
-              <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                <Code2 size={13} className="text-olive-700" />
-                Automated Diff Comments
-              </div>
-              <p className="text-slate-500 leading-relaxed text-[11px]">
-                Posts an automated PR comment comparing Joules and carbon footprint before and after the code change.
-              </p>
+             <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1">
+               <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                 <Code2 size={13} className="text-olive-700" />
+                 {translateStatic('modals.cicd.features.automated.title')}
+               </div>
+               <p className="text-slate-500 leading-relaxed text-[11px]">
+                 {translateStatic('modals.cicd.features.automated.desc')}
+               </p>
             </div>
           </div>
         </div>

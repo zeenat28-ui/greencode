@@ -84,11 +84,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         role="region"
         aria-live="polite"
         aria-label="Notifications"
+        data-i18n="app.notifications"
       >
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`flex items-start gap-2.5 p-3 rounded-xl border shadow-lg animate-fade-in ${KIND_STYLES[t.kind].wrap}`}
+            className={`flex items-start gap-2.5 p-3 rounded-lg border shadow-lg animate-fade-in bg-[var(--gc-bg-default)] ${KIND_STYLES[t.kind].wrap}`}
           >
             <span className="shrink-0 mt-0.5">{KIND_STYLES[t.kind].icon}</span>
             <p className="text-xs leading-relaxed flex-1 text-zinc-700">{t.message}</p>

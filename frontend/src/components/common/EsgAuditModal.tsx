@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { ScanResult } from '../../types';
 import { Modal } from '../primitives/Modal';
+import { translateStatic as t } from '../../i18n/I18nContext';
 
 interface EsgAuditModalProps {
   isOpen: boolean;
@@ -90,7 +91,7 @@ export default function EsgAuditModal({
         <div className="bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-300">
             <FileText size={15} className="text-olive-400" />
-            ESG &amp; SCI Audit Report &mdash; Modeled Projections
+            {t('modals.esg.actionBar')}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -98,14 +99,14 @@ export default function EsgAuditModal({
               className="btn-secondary text-xs px-2.5 py-1 bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700 flex items-center gap-1.5"
             >
               {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-              {copied ? 'Copied JSON' : 'Copy JSON'}
+              {copied ? t('modals.esg.copiedJson') : t('modals.esg.copyJson')}
             </button>
             <button
               onClick={handlePrint}
               className="btn-primary text-xs px-3 py-1 flex items-center gap-1.5 bg-olive-700 hover:bg-olive-800"
             >
               <Printer size={12} />
-              Print / Save PDF
+              {t('modals.esg.printPdf')}
             </button>
             <button
               onClick={onClose}
@@ -123,18 +124,18 @@ export default function EsgAuditModal({
             <div>
               <div className="flex items-center gap-2 text-olive-800 font-bold tracking-tight text-lg">
                 <Leaf size={20} className="text-olive-700" />
-                GreenCode Automated ESG &amp; SCI Audit
+                {t('modals.esg.reportTitle')}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Green Software Foundation (GSF SCI v1.0) methodology &middot; ISO 14064-1-aligned Scope 2/3 estimation
+                {t('modals.esg.reportSubtitle')}
               </p>
             </div>
             <div className="text-right sm:text-right font-mono text-xs text-slate-500">
-              <div>Certificate: <span className="font-semibold text-slate-800">{auditId}</span></div>
-              <div>Date: <span className="font-semibold text-slate-800">{auditDate}</span></div>
+              <div>{t('modals.esg.certificate', { auditId })}</div>
+              <div>{t('modals.esg.date', { date: auditDate })}</div>
               <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-olive-50 text-olive-800 border border-olive-200">
                 <ShieldCheck size={12} />
-                GSF SCI-Aligned Baseline
+                {t('modals.esg.badge')}
               </div>
             </div>
           </div>
@@ -143,27 +144,27 @@ export default function EsgAuditModal({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2 p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Audited System Scope
+                {t('modals.esg.auditedScope')}
               </div>
               <div className="font-mono text-sm font-bold text-slate-900 truncate">
-                {scanData.repo_path || 'Repository Codebase'}
+                {scanData.repo_path || t('modals.esg.repositoryCodebase')}
               </div>
               <div className="text-xs text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
-                <span>Files Audited: <strong className="text-slate-800">{scanData.total_files || 0}</strong></span>
-                <span>Total Code Scale: <strong className="text-slate-800">{(scanData.total_lines || 0).toLocaleString()} LOC</strong></span>
-                <span>Grid Zone: <strong className="text-slate-800">{activeZone}</strong></span>
+                <span>{t('modals.esg.filesAudited')}: <strong className="text-slate-800">{scanData.total_files || 0}</strong></span>
+                <span>{t('modals.esg.codeScale')}: <strong className="text-slate-800">{(scanData.total_lines || 0).toLocaleString()} LOC</strong></span>
+                <span>{t('modals.esg.gridZone')}: <strong className="text-slate-800">{activeZone}</strong></span>
               </div>
             </div>
 
             <div className="p-4 rounded-lg bg-olive-50/70 border border-olive-200 flex flex-col justify-center items-center text-center">
               <div className="text-[11px] font-bold uppercase tracking-wider text-olive-900 mb-1">
-                SCI Efficiency Score
+                {t('modals.esg.sciScore')}
               </div>
               <div className="text-3xl font-black text-olive-800 font-mono">
                 {score}<span className="text-sm font-normal text-slate-500">/100</span>
               </div>
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 mt-1 rounded bg-olive-100 text-olive-900 border border-olive-300">
-                {score >= 80 ? 'Grade A (Compliant)' : score >= 65 ? 'Grade B (Acceptable)' : 'Grade C (Remediation Needed)'}
+                {score >= 80 ? t('modals.esg.gradeA') : score >= 65 ? t('modals.esg.gradeB') : t('modals.esg.gradeC')}
               </span>
             </div>
           </div>
@@ -171,37 +172,37 @@ export default function EsgAuditModal({
           {/* Core Metrics Table */}
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 mb-2">
-              Software Carbon Intensity (SCI) Breakdown
+              {t('modals.esg.sciBreakdown')}
             </h4>
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <table className="w-full text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-left">
                   <tr>
-                    <th className="py-2 px-3">Metric Parameter</th>
-                    <th className="py-2 px-3">Measurement Standard</th>
-                    <th className="py-2 px-3 text-right">Value</th>
+                    <th className="py-2 px-3">{t('modals.esg.metricParameter')}</th>
+                    <th className="py-2 px-3">{t('modals.esg.measurementStandard')}</th>
+                    <th className="py-2 px-3 text-right">{t('modals.esg.value')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono">
                   <tr>
-                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800">Operational Energy ($E$)</td>
-                    <td className="py-2.5 px-3 font-sans text-slate-500">RAPL HW microjoules + modeled CPU/RAM</td>
+                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800">{t('modals.esg.operationalEnergy')}</td>
+                    <td className="py-2.5 px-3 font-sans text-slate-500">{t('modals.esg.operationalEnergyStandard')}</td>
                     <td className="py-2.5 px-3 text-right font-bold text-slate-900">{(energyWh * 1000).toFixed(2)} mWh / op</td>
                   </tr>
                   <tr>
-                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800">Marginal Grid Carbon ($I$)</td>
-                    <td className="py-2.5 px-3 font-sans text-slate-500">Electricity Maps telemetry ({activeZone})</td>
+                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800">{t('modals.esg.marginalGridCarbon')}</td>
+                    <td className="py-2.5 px-3 font-sans text-slate-500">{t('modals.esg.marginalGridCarbonStandard', { zone: activeZone })}</td>
                     <td className="py-2.5 px-3 text-right font-bold text-slate-900">{marginalRate ?? '—'} {marginalRate != null && 'gCO₂e/kWh'}</td>
                   </tr>
                   <tr>
-                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800">Total Operational Carbon ($O$)</td>
-                    <td className="py-2.5 px-3 font-sans text-slate-500">Product of Energy &amp; Grid Intensity ($E \times I$)</td>
+                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800">{t('modals.esg.totalOperationalCarbon')}</td>
+                    <td className="py-2.5 px-3 font-sans text-slate-500">{t('modals.esg.totalOperationalCarbonStandard')}</td>
                     <td className="py-2.5 px-3 text-right font-bold text-slate-900">{carbonG.toFixed(4)} gCO₂e</td>
                   </tr>
                   <tr>
-                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800">Algorithmic Anti-Patterns</td>
-                    <td className="py-2.5 px-3 font-sans text-slate-500">Tree-sitter AST Multi-Language Rules</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-slate-900">{violations} detected</td>
+                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800">{t('modals.esg.antiPatterns')}</td>
+                    <td className="py-2.5 px-3 font-sans text-slate-500">{t('modals.esg.antiPatternsStandard')}</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-slate-900">{t('modals.esg.violationsDetected', { count: String(violations) })}</td>
                   </tr>
                 </tbody>
               </table>
@@ -211,61 +212,57 @@ export default function EsgAuditModal({
           {/* Annual Cloud & ESG ROI Projections */}
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 mb-2">
-              Enterprise ESG &amp; Cloud Infrastructure ROI Projection
+              {t('modals.esg.esgRoi')}
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50">
                 <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
                   <Leaf size={14} className="text-olive-700" />
-                  Annual CO₂ Offset
+                  {t('modals.esg.co2Offset')}
                 </div>
                 <div className="text-lg font-bold text-slate-900 font-mono">
                   {annualKgCo2Saved.toFixed(1)} kgCO₂e
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">Modeled: violations × ~1.8 W × 8,760 h</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">{t('modals.esg.modeledCo2')}</div>
               </div>
 
               <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50">
                 <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
                   <Zap size={14} className="text-olive-700" />
-                  Electricity Reduction
+                  {t('modals.esg.electricityReduction')}
                 </div>
                 <div className="text-lg font-bold text-slate-900 font-mono">
                   {annualKwhSaved.toFixed(0)} kWh / yr
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">Reduced CPU cycle wastage</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">{t('modals.esg.electricityDesc')}</div>
               </div>
 
               <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50">
                 <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
                   <DollarSign size={14} className="text-emerald-700" />
-                  Projected Cloud Savings
+                  {t('modals.esg.projectedSavings')}
                 </div>
                 <div className="text-lg font-bold text-emerald-800 font-mono">
                   ~${annualDollarSaved.toLocaleString()} / yr
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">Modeled at ~$0.12/kWh grid rate</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">{t('modals.esg.modeledGridRate')}</div>
               </div>
             </div>
           </div>
 
           {/* Projection methodology disclosure */}
           <p className="text-[10px] leading-relaxed text-slate-500">
-            <strong className="text-slate-600">About these projections:</strong> annual savings are
-            modeled estimates derived from the detected violation count (&times; 1.8 W continuous
-            draw &times; 8,760 h) and a stated &sim;$0.12/kWh grid rate &mdash; not metered
-            measurements or a cost quote. Per-scan energy and carbon figures above come from the actual
-            RAPL-instrumented scan of this repository.
+            <strong className="text-slate-600">{t('modals.esg.aboutProjections')}</strong>
           </p>
 
           {/* Verification Sign-off Footer */}
           <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500">
             <div className="flex items-center gap-2">
               <Award size={16} className="text-olive-700" />
-              <span>Scan metrics verified with Amazon Bedrock AST analysis &amp; RAPL sandbox execution; ROI figures are modeled estimates</span>
+              <span>{t('modals.esg.verifiedWith')}</span>
             </div>
             <div className="font-mono text-[11px] text-slate-400">
-              Methodology aligned to ISO 14064-1 (not a certified audit)
+              {t('modals.esg.methodology')}
             </div>
           </div>
         </div>

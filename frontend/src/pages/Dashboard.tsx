@@ -25,6 +25,7 @@ import {
   Bot,
   Code2,
 } from 'lucide-react';
+import { useT } from '../i18n/I18nContext';
 import AlexaVoiceCockpit from '../components/common/AlexaVoiceCockpit';
 import EsgAuditModal from '../components/common/EsgAuditModal';
 import CiCdBadgeModal from '../components/common/CiCdBadgeModal';
@@ -32,6 +33,7 @@ import FinOpsCalculatorModal from '../components/common/FinOpsCalculatorModal';
 import GitHubBotPreviewModal from '../components/common/GitHubBotPreviewModal';
 
 export default function Dashboard() {
+  const t = useT();
   const [scanData, setScanData] = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
   const [threshold] = useLocalStorage('greencode_threshold', 75);
   const [activeZone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
@@ -70,11 +72,11 @@ export default function Dashboard() {
   if (isMounting) {
     return (
       <div className="space-y-5 animate-pulse">
-        <div className="h-8 w-56 bg-zinc-200 rounded-lg" />
-        <div className="h-28 bg-zinc-100 rounded-xl" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="h-8 w-56 bg-[var(--gc-bg-subtle)] rounded-lg" />
+        <div className="h-28 bg-[var(--gc-bg-subtle)] rounded-xl" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-24 bg-zinc-100 rounded-xl" />
+            <div key={i} className="h-24 bg-[var(--gc-bg-subtle)] rounded-lg" />
           ))}
         </div>
       </div>
@@ -82,13 +84,12 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Row 1: Unified Enterprise Workspace Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-1 border-b border-zinc-200/80">
+    <div className="space-y-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-1 border-b border-[var(--gc-border-default)]">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">
-              Repository Telemetry
+            <h1 className="text-base font-semibold text-[var(--gc-text-primary)] tracking-tight">
+              {t('dashboard.title')}
             </h1>
             {scanData && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-100 border border-zinc-200/80 text-xs font-mono text-zinc-700 truncate max-w-xs">
@@ -96,8 +97,8 @@ export default function Dashboard() {
                 <span className="truncate">{scanData.repo_path}</span>
               </span>
             )}
-            <span className="hidden sm:inline-block text-[11px] font-mono text-zinc-400">
-              ISO/IEC 21031:2024 (GSF SCI)
+            <span className="hidden sm:inline-block text-[11px] font-mono text-[var(--gc-text-tertiary)]">
+              {t('dashboard.standard')}
             </span>
           </div>
         </div>
@@ -110,41 +111,41 @@ export default function Dashboard() {
                  variant="secondary"
                  size="sm"
                  className="whitespace-nowrap"
-                 title="FinOps FOCUS 1.4 Cloud Cost Attribution"
+                  title={t('dashboard.finopsTooltip')}
                  onClick={() => setShowFinOpsModal(true)}
                >
                  <DollarSign size={13} className="text-emerald-600" />
-                 <span>FinOps ROI</span>
+                 <span>{t('actions.finops')}</span>
                </Button>
                <Button
                  variant="secondary"
                  size="sm"
                  className="whitespace-nowrap"
-                 title="Preview Automated PR Diff Comment"
+                  title={t('dashboard.botTooltip')}
                  onClick={() => setShowBotModal(true)}
                >
                  <Bot size={13} className="text-zinc-600" />
-                 <span>PR Bot</span>
+                 <span>{t('actions.prBot')}</span>
                </Button>
                <Button
                  variant="secondary"
                  size="sm"
                  className="whitespace-nowrap"
-                 title="Export GSF SCI Audit Certificate"
+                  title={t('dashboard.esgTooltip')}
                  onClick={() => setShowEsgModal(true)}
                >
                  <FileText size={13} className="text-zinc-600" />
-                 <span>ESG Report</span>
+                 <span>{t('actions.esgReport')}</span>
                </Button>
                <Button
                  variant="secondary"
                  size="sm"
                  className="whitespace-nowrap"
-                 title="GitHub Actions & SARIF 2.1.0 Gate"
+                  title={t('dashboard.cicdTooltip')}
                  onClick={() => setShowCiCdModal(true)}
                >
                  <ShieldCheck size={13} className="text-zinc-600" />
-                 <span>CI/CD Gate</span>
+                 <span>{t('actions.cicdGate')}</span>
                </Button>
              </>
            )}
@@ -156,7 +157,7 @@ export default function Dashboard() {
           >
             <Link to="/scan">
               <GitBranch size={13} />
-              <span>Scan Repository</span>
+              <span>{t('actions.scan')}</span>
             </Link>
           </Button>
         </div>
@@ -179,23 +180,27 @@ export default function Dashboard() {
                     className="uppercase tracking-wider text-[10px] px-2 py-0.5"
                   >
                     {isPass ? <ShieldCheck size={12} /> : <ShieldX size={12} />}
-                    {isPass ? 'Quality Gate Passed' : 'Gate Failed'}
+                    {isPass ? t('dashboard.gatePassed') : t('dashboard.gateFailed')}
                   </Badge>
                   <span className="text-xs text-zinc-400 font-mono">
-                    Threshold &ge; {threshold}/100
+                    {t('dashboard.threshold', { threshold })}
                   </span>
                 </div>
 
-                <h2 className="text-sm font-semibold text-zinc-950 leading-snug">
+                <h2 className="text-sm font-semibold text-[var(--gc-text-primary)] leading-snug">
                   {totalViolations === 0
-                    ? 'Zero algorithmic or I/O energy bottlenecks detected across scanned modules.'
-                    : `${totalViolations} efficiency bottleneck${totalViolations !== 1 ? 's' : ''} detected across ${totalFiles} analyzed files (${totalLines.toLocaleString()} LOC).`}
+                    ? t('dashboard.noBottlenecks')
+                    : t('dashboard.bottlenecks', {
+                        count: totalViolations,
+                        files: totalFiles,
+                        lines: totalLines.toLocaleString(),
+                      })}
                 </h2>
 
                 <div className="flex flex-wrap items-center gap-2.5 mt-1.5 text-xs text-zinc-500 font-mono">
-                  <span>{totalFiles} files</span>
+                  <span>{t('dashboard.files', { count: totalFiles })}</span>
                   <span>&middot;</span>
-                  <span>{totalLines.toLocaleString()} lines</span>
+                  <span>{t('dashboard.lines', { count: totalLines.toLocaleString() })}</span>
                   {marginalRate !== null && (
                     <>
                       <span>&middot;</span>
@@ -214,14 +219,14 @@ export default function Dashboard() {
                  <Button asChild variant="primary" size="sm" className="whitespace-nowrap text-xs">
                    <Link to="/issues" className="flex items-center gap-1.5">
                      <AlertTriangle size={13} className="text-amber-400" />
-                     <span>Inspect &amp; Patch {totalViolations} Findings</span>
+                     <span>{t('actions.inspectFindings')}</span>
                      <ArrowRight size={13} />
                    </Link>
                   </Button>
                 ) : (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-900 text-xs font-medium border border-emerald-200 font-mono">
                   <CheckCircle2 size={14} className="text-emerald-600" />
-                  <span>100% Optimal</span>
+                  <span>{t('dashboard.optimal')}</span>
                 </div>
               )}
             </div>
@@ -230,28 +235,28 @@ export default function Dashboard() {
           {/* 4 High-Precision Engineering Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard
-              title="Static & Call-Graph Issues"
+              title={t('dashboard.metricIssues')}
               value={totalViolations}
-              subtitle={totalViolations === 0 ? 'Zero bottlenecks detected' : `${totalViolations} hotspots flagged in AST`}
+              subtitle={totalViolations === 0 ? t('dashboard.metricIssuesOk') : t('dashboard.metricIssuesHot', { count: totalViolations })}
               icon={<Activity size={15} />}
               accentColor={totalViolations > 0 ? '#E11D48' : '#059669'}
             />
             <MetricCard
-              title="Runtime Energy Draw"
+              title={t('dashboard.metricEnergy')}
               value={energyWh > 0 ? `${(energyWh * 1000).toFixed(2)} mWh` : '0.00 mWh'}
-              subtitle="RAPL / cgroup v2 attribution"
+              subtitle={t('dashboard.metricEnergySub')}
               icon={<Zap size={15} />}
             />
             <MetricCard
-              title="SCI Carbon Intensity"
+              title={t('dashboard.metricSci')}
               value={carbonG > 0 ? `${carbonG.toFixed(4)} g` : '0.0000 g'}
-              subtitle={marginalRate !== null ? `${marginalRate} gCO₂/kWh (${activeZone})` : 'Regional marginal grid'}
+              subtitle={marginalRate !== null ? t('dashboard.metricSciZone', { rate: marginalRate, zone: activeZone }) : t('dashboard.metricSciSub')}
               icon={<Leaf size={15} />}
             />
             <MetricCard
-              title="Languages Analyzed"
+              title={t('dashboard.metricLangs')}
               value={languagesAnalyzed}
-              subtitle={topLanguages || 'Across scanned modules'}
+              subtitle={topLanguages || t('dashboard.metricLangsSub')}
               icon={<Code2 size={15} />}
             />
           </div>
@@ -263,7 +268,7 @@ export default function Dashboard() {
               <div className="px-5 py-3.5 border-b border-zinc-200/80 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Code2 size={15} className="text-zinc-500" />
-                  <h3 className="section-title">Detected Code Hotspots</h3>
+                  <h3 className="section-title">{t('dashboard.hotspots')}</h3>
                   <Badge variant="outline" size="sm" className="text-zinc-600 bg-zinc-100 border-zinc-200/80 font-mono">
                     {scanData.violations?.length || 0}
                   </Badge>
@@ -272,7 +277,7 @@ export default function Dashboard() {
                   to="/issues"
                   className="text-xs font-medium text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
                 >
-                  <span>Open Diff Remediator</span>
+                  <span>{t('actions.openIssues')}</span>
                   <ArrowRight size={12} />
                 </Link>
               </div>
@@ -301,7 +306,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <Button asChild variant="ghost" size="sm" className="text-[11px] font-mono font-medium text-zinc-600 border border-zinc-200 hover:border-zinc-300 hover:bg-white">
-                          <Link to="/issues">Patch &rarr;</Link>
+                          <Link to="/issues">{t('actions.patch')}</Link>
                         </Button>
                       </div>
                     );
@@ -309,7 +314,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="p-8 text-center text-xs text-zinc-500">
-                  No efficiency violations detected in this repository scan.
+                  {t('empty.noIssues')}
                 </div>
               )}
             </Card>
@@ -318,9 +323,9 @@ export default function Dashboard() {
             <div className="lg:col-span-5 space-y-5">
               <Card variant="default" padding="lg">
                 <div className="mb-3">
-                  <h3 className="section-title">Algorithmic Rule Breakdown</h3>
-                  <p className="text-[11px] text-zinc-500 mt-0.5">
-                    Grouped by AST &amp; call-graph violation pattern
+                  <h3 className="section-title">{t('dashboard.ruleBreakdown')}</h3>
+                  <p className="text-[11px] text-[var(--gc-text-tertiary)] mt-0.5">
+                    {t('dashboard.ruleHint')}
                   </p>
                 </div>
                 <ViolationChart breakdown={scanData.violation_breakdown} />
@@ -329,10 +334,10 @@ export default function Dashboard() {
               {scanData.file_results && scanData.file_results.length > 0 && (
                 <Card variant="default" padding="lg">
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="section-title">Language Telemetry</h3>
+                    <h3 className="section-title">{t('dashboard.languages')}</h3>
                     <span className="text-[11px] font-mono text-zinc-500">
                       <FileCode2 size={12} className="inline mr-1" />
-                      {scanData.file_results.length} files
+                      <span>{t('dashboard.fileResults', { count: scanData.file_results.length })}</span>
                     </span>
                   </div>
                   <LanguageBreakdown fileResults={scanData.file_results} />
@@ -347,15 +352,15 @@ export default function Dashboard() {
           <div className="w-11 h-11 rounded-xl bg-zinc-100 border border-zinc-200 flex items-center justify-center mx-auto mb-3 text-zinc-700">
             <GitBranch size={20} />
           </div>
-          <h2 className="text-sm font-semibold text-zinc-900 mb-1">No Active Repository Telemetry</h2>
-          <p className="text-xs text-zinc-500 max-w-md mx-auto mb-5 leading-relaxed">
-            Audit a local directory, upload a source archive, or connect a GitHub repository to compute GSF SCI metrics and synthesize AST remediations.
+          <h2 className="text-sm font-semibold text-[var(--gc-text-primary)] mb-1">{t('empty.noScanTitle')}</h2>
+          <p className="text-xs text-[var(--gc-text-tertiary)] max-w-md mx-auto mb-5 leading-relaxed">
+            {t('empty.noScanBody')}
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
             <Button asChild variant="primary" size="md" className="text-xs">
               <Link to="/scan" className="flex items-center gap-2">
                 <GitBranch size={13} />
-                <span>Scan Repository</span>
+                <span>{t('actions.scan')}</span>
               </Link>
             </Button>
           </div>
@@ -399,9 +404,10 @@ export default function Dashboard() {
 }
 
 function LanguageBreakdown({ fileResults }: { fileResults: any[] }) {
+  const t = useT();
   const langCount: Record<string, number> = {};
   fileResults.forEach((f) => {
-    const lang = f.language || 'unknown';
+    const lang = f.language || t('dashboard.unknownLanguage');
     langCount[lang] = (langCount[lang] || 0) + 1;
   });
 
@@ -415,7 +421,7 @@ function LanguageBreakdown({ fileResults }: { fileResults: any[] }) {
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-zinc-700 uppercase tracking-wide">{lang}</span>
             <span className="font-mono text-zinc-500">
-              {count} {count === 1 ? 'file' : 'files'}
+              {count} {count === 1 ? t('dashboard.file') : t('dashboard.filesLabel')}
             </span>
           </div>
           <div className="w-full bg-zinc-100 rounded-full h-1.5 overflow-hidden">

@@ -10,25 +10,24 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const variantClasses: Record<CardVariant, string> = {
-  default: 'bg-white rounded-xl border border-zinc-200/90 shadow-sm transition-all duration-150',
-  elevated: 'bg-white rounded-2xl border border-zinc-200/90 shadow-md transition-all duration-150',
-  inset: 'bg-zinc-50/80 rounded-xl border border-zinc-200/80',
-  interactive:
-    'bg-white rounded-xl border border-zinc-200/90 shadow-sm hover:border-zinc-300 hover:-translate-y-0.5 transition-all duration-150',
+  default: 'card',
+  elevated: 'card-elevated',
+  inset: 'card-inset',
+  interactive: 'card hover:border-[var(--gc-text-tertiary)]',
 };
 
 const paddingClasses: Record<CardPadding, string> = {
   none: '',
   sm: 'p-3',
   md: 'p-4',
-  lg: 'p-5',
+  lg: 'p-4',
 };
 
 const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant = 'default', padding = 'md', ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('card', variantClasses[variant], paddingClasses[padding], className)}
+      className={cn(variantClasses[variant], paddingClasses[padding], className)}
       {...props}
     />
   )
@@ -37,21 +36,21 @@ Card.displayName = 'Card';
 
 export const CardHeader = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('flex flex-col gap-2 pb-3', className)} {...props} />
+    <div ref={ref} className={cn('flex flex-col gap-1 pb-2', className)} {...props} />
   )
 );
 CardHeader.displayName = 'CardHeader';
 
 export const CardTitle = forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
   ({ className, ...props }, ref) => (
-    <h3 ref={ref} className={cn('text-sm font-semibold text-zinc-900 tracking-tight', className)} {...props} />
+    <h3 ref={ref} className={cn('section-title', className)} {...props} />
   )
 );
 CardTitle.displayName = 'CardTitle';
 
 export const CardDescription = forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
   ({ className, ...props }, ref) => (
-    <p ref={ref} className={cn('text-[11px] text-zinc-500', className)} {...props} />
+    <p ref={ref} className={cn('text-[11px] text-[var(--gc-text-tertiary)]', className)} {...props} />
   )
 );
 CardDescription.displayName = 'CardDescription';

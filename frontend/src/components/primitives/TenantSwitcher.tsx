@@ -58,15 +58,15 @@ export default function TenantSwitcher({ className = '' }: TenantSwitcherProps) 
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 text-xs font-mono"
       >
-        {displayOrg?.name || 'Select workspace'}
+        {displayOrg?.name || 'Workspace'}
         <ChevronDown size={12} className="text-zinc-400" />
       </Button>
 
       {open && (
-        <div className="absolute right-0 mt-1.5 w-56 card p-1 shadow-lg z-50 border border-zinc-200/80">
-          <div className="px-3 py-2 border-b border-zinc-100">
-            <p className="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider">
-              Switch Workspace
+        <div className="absolute right-0 mt-1.5 w-56 card p-1 shadow-lg z-50">
+          <div className="px-3 py-2 border-b border-[var(--gc-border-default)]">
+            <p className="text-[10px] uppercase font-semibold text-[var(--gc-text-tertiary)] tracking-wider">
+              Workspace
             </p>
           </div>
           <div className="py-1">

@@ -84,3 +84,4 @@ export { default as ViolationChart } from './charts/ViolationChart';
 export { LanguageChart, ScoreGauge } from './charts/ViolationChart';
 
 export { default as TenantSwitcher } from './primitives/TenantSwitcher';
+export { default as ThemeToggle } from './primitives/ThemeToggle';

@@ -15,15 +15,13 @@ import Reports from './pages/Reports';
 import Deployments from './pages/Deployments';
 import ProtectedRoute from './components/layouts/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
+import { useT } from './i18n/I18nContext';
 
-/**
- * Enterprise Application Routing
- */
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
 
   return (
-      <Routes>
+    <Routes>
       <Route
         path="/login"
         element={isLoading ? <FullScreenLoader /> : isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />}
@@ -44,16 +42,20 @@ function App() {
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Route>
-      {/* Any unknown path lands on the dashboard; ProtectedRoute bounces to /login if needed. */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
 
 function FullScreenLoader() {
+  const t = useT();
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="w-10 h-10 border-[3px] border-emerald-600 border-t-transparent rounded-full animate-spin" />
+    <div className="min-h-screen flex items-center justify-center bg-[var(--gc-bg-canvas)]">
+      <div
+        className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"
+        role="status"
+        aria-label={t('app.loading')}
+      />
     </div>
   );
 }

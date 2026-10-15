@@ -16,6 +16,7 @@ import {
   Search, Zap, Github, Copy, GitBranch, RefreshCw,
   CheckCircle, Loader2, AlertCircle, ExternalLink, X, ArrowUpRight
 } from 'lucide-react';
+import { useT } from '../i18n/I18nContext';
 
 function getFallbackSnippet(violationType: string, language: string = 'python'): string {
   const lang = (language || 'python').toLowerCase();
@@ -73,11 +74,12 @@ for (const chunk of largeDataset) {
 }
 
 export default function Issues() {
+  const t = useT();
   const [scanData]        = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
   const [ghToken]        = useLocalStorage<string>('greencode_gh_token', '');
   const [searchQuery, setSearchQuery]       = useState('');
   const [severityFilter, setSeverityFilter] = useState('All');
-  const [sortOrder, setSortOrder]           = useState('Highest Penalty');
+  const [sortOrder, setSortOrder]           = useState('highest_penalty');
   const [selectedViolation, setSelectedViolation] = useState<Violation | null>(null);
   const [refactorResults, setRefactorResults] = useState<Record<string, any>>({});
   const [refactoring, setRefactoring]       = useState<Set<string>>(new Set());
@@ -96,7 +98,11 @@ export default function Issues() {
   const violations: Violation[] = scanData?.violations || [];
 
   const SEVERITIES   = ['All', 'CRITICAL', 'HIGH', 'MEDIUM'];
-  const SORT_OPTIONS = ['Highest Penalty', 'Severity', 'File Name'];
+  const SORT_OPTIONS = [
+    { value: t('issues.sort.highestPenalty'), key: 'highest_penalty' },
+    { value: t('issues.sort.severity'), key: 'severity' },
+    { value: t('issues.sort.fileName'), key: 'file_name' },
+  ];
 
   const filteredViolations = violations.filter(v => {
     const matchesSeverity = severityFilter === 'All' || v.severity === severityFilter;
@@ -106,14 +112,14 @@ export default function Issues() {
     return matchesSeverity && (!q || corpus.includes(q));
   });
 
-  const sortedViolations = [...filteredViolations].sort((a, b) => {
-    if (sortOrder === 'Highest Penalty') return b.deduction - a.deduction;
-    if (sortOrder === 'Severity') {
-      const rank: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
-      return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9);
-    }
-    return a.file_path.localeCompare(b.file_path);
-  });
+   const sortedViolations = [...filteredViolations].sort((a, b) => {
+     if (sortOrder === 'highest_penalty') return b.deduction - a.deduction;
+     if (sortOrder === 'severity') {
+       const rank: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+       return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9);
+     }
+     return a.file_path.localeCompare(b.file_path);
+   });
 
   const getViolationKey = (v: Violation, idx: number) => {
     return `${v.file_path}-${v.line_number}-${v.violation_type}-${idx}`;
@@ -249,13 +255,13 @@ export default function Issues() {
         <div className="w-12 h-12 rounded-xl bg-zinc-100 border border-zinc-200 flex items-center justify-center mb-3 text-zinc-700">
           <GitBranch size={20} />
         </div>
-        <h2 className="text-base font-semibold text-zinc-900 mb-1">No Active Repository Scan</h2>
-        <p className="text-xs text-zinc-500 mb-5 max-w-sm">
-          Audit a repository to inspect algorithmic and I/O hotspots and synthesize verified AST patches.
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-1">{t('issues.noActiveScan')}</h2>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-5 max-w-sm">
+          {t('issues.noActiveScanBody')}
         </p>
         <Button asChild variant="primary" size="md">
           <Link to="/scan" className="flex items-center gap-2 text-xs">
-            <RefreshCw size={13} /> Scan Repository
+            <RefreshCw size={13} /> {t('issues.scanRepositoryBtn')}
           </Link>
         </Button>
       </div>
@@ -269,13 +275,18 @@ export default function Issues() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-zinc-200/80 pb-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-zinc-950 tracking-tight">Code Issues &amp; AST Remediation</h1>
-            <Badge variant="olive" className="py-1">GSF SCI Engine</Badge>
+             <h1 className="text-lg font-semibold text-zinc-950 dark:text-zinc-100 tracking-tight">{t('issues.pageTitle')}</h1>
+             <Badge variant="olive" className="py-1">{t('issues.engine')}</Badge>
+           </div>
+           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+             {t('issues.findingsSummary', {
+               count: String(violations.length),
+               plural: violations.length !== 1 ? 's' : '',
+               files: String(scanData.total_files),
+               repo: scanData.repo_path || ''
+              })}
+            </p>
           </div>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            {violations.length} finding{violations.length !== 1 ? 's' : ''} across {scanData.total_files} analyzed files ({scanData.repo_path}).
-          </p>
-        </div>
         {sortedViolations.length > 0 && (
           <Button
             variant="primary"
@@ -287,12 +298,12 @@ export default function Issues() {
             {batchRefactoring ? (
               <>
                 <Loader2 size={13} className="animate-spin text-emerald-400" />
-                <span>Synthesizing Patches ({batchProgress?.done}/{batchProgress?.total})...</span>
-              </>
-            ) : (
-              <>
-                <Zap size={13} className="text-emerald-400" />
-                <span>Synthesize All Patches</span>
+                <span>{t('issues.synthesizingAll', { done: String(batchProgress?.done), total: String(batchProgress?.total) })}</span>
+               </>
+             ) : (
+               <>
+                 <Zap size={13} className="text-emerald-400" />
+                 <span>{t('issues.synthesizeAll')}</span>
               </>
             )}
           </Button>
@@ -302,10 +313,10 @@ export default function Issues() {
        {/* Filters Toolbar */}
        <div className="flex flex-col sm:flex-row gap-3">
          <div className="relative flex-1">
-           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500" size={15} />
            <Input
              type="text"
-             placeholder="Search by rule, pattern, filename, or description..."
+              placeholder={t('issues.searchPlaceholder')}
              className="text-xs py-2.5 pl-10"
              value={searchQuery}
              onChange={e => setSearchQuery(e.target.value)}
@@ -315,41 +326,41 @@ export default function Issues() {
            className="w-full sm:w-48 text-xs py-2.5 font-medium"
            value={severityFilter}
            onChange={e => setSeverityFilter(e.target.value)}
-         >
-           {SEVERITIES.map(s => (
-             <option key={s} value={s}>{s === 'All' ? 'All Severities' : `${s} Severity`}</option>
-           ))}
-         </Select>
-         <Select
-           className="w-full sm:w-48 text-xs py-2.5 font-medium"
-           value={sortOrder}
-           onChange={e => setSortOrder(e.target.value)}
-         >
-           {SORT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+          >
+            {SEVERITIES.map(s => (
+              <option key={s} value={s}>{s === 'All' ? t('issues.allSeverities') : t('issues.severityOption', { severity: t(`severity.${s}`) })}</option>
+            ))}
+          </Select>
+          <Select
+            className="w-full sm:w-48 text-xs py-2.5 font-medium"
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value)}
+          >
+            {SORT_OPTIONS.map(s => <option key={s.key} value={s.key}>{s.value}</option>)}
          </Select>
        </div>
 
       {/* Subheader status count */}
-      <div className="flex items-center justify-between text-xs text-slate-500 px-0.5">
-        <div className="flex items-center gap-2 font-medium">
-          <span>Showing <strong>{filteredViolations.length}</strong> of {violations.length} issues</span>
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="text-emerald-700 hover:text-emerald-900 font-bold ml-1">
-              Clear search
-            </button>
-          )}
-        </div>
-        <span className="text-slate-400 font-mono text-[11px]">GSF Pattern Catalogue v1.0 &middot; ISO/IEC 21031</span>
-      </div>
-
-      {/* Issues List */}
-      {sortedViolations.length === 0 ? (
-        <Card variant="default" padding="lg" className="text-center border-slate-200/80 shadow-xs">
-          <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
-            <CheckCircle size={22} />
+        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-zinc-400 px-0.5">
+          <div className="flex items-center gap-2 font-medium">
+            <span dangerouslySetInnerHTML={{ __html: t('issues.showingCount', { shown: String(filteredViolations.length), total: String(violations.length) }) }} />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="text-emerald-700 hover:text-emerald-900 font-bold ml-1">
+                {t('issues.clearSearch')}
+              </button>
+            )}
           </div>
-          <h3 className="font-bold text-slate-800 mb-1">No violations match your filters</h3>
-          <p className="text-xs text-slate-500">Try broadening your search query or switching to All Severities.</p>
+          <span className="text-slate-400 dark:text-zinc-400 font-mono text-[11px]">{t('issues.patternCatalogue')}</span>
+        </div>
+
+        {/* Issues List */}
+        {sortedViolations.length === 0 ? (
+          <Card variant="default" padding="lg" className="text-center border-slate-200/80 dark:border-zinc-700 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+              <CheckCircle size={22} />
+            </div>
+            <h3 className="font-bold text-slate-800 dark:text-zinc-100 mb-1">{t('issues.noMatchTitle')}</h3>
+            <p className="text-xs text-slate-500 dark:text-zinc-400">{t('issues.noMatchBody')}</p>
         </Card>
       ) : (
         <div className="space-y-4">
@@ -374,11 +385,11 @@ export default function Issues() {
                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                        <div className="flex items-center gap-2">
                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                         <h3 className="font-bold text-xs uppercase tracking-wider text-slate-800">
-                           Automated Eco-Refactoring
-                         </h3>
-                         <Badge variant="outline" size="sm" className="text-[10px] bg-slate-900 text-emerald-400 border-slate-800 font-mono">
-                           Amazon Bedrock Converse
+                        <h3 className="font-bold text-xs uppercase tracking-wider text-slate-800 dark:text-zinc-200">
+                            {t('issues.ecoRefactoring')}
+                          </h3>
+                          <Badge variant="outline" size="sm" className="text-[10px] bg-slate-900 text-emerald-400 border-slate-800 font-mono">
+                            {t('issues.bedrockConverse')}
                          </Badge>
                        </div>
                        <Button
@@ -390,12 +401,12 @@ export default function Issues() {
                          {copiedKey === `copy-${key}` ? (
                            <>
                              <CheckCircle size={13} className="text-emerald-600" />
-                             <span className="text-emerald-800 font-bold">Copied</span>
-                           </>
-                         ) : (
-                           <>
-                             <Copy size={13} />
-                             <span>Copy Patch</span>
+                            <span className="text-emerald-800 font-bold">{t('actions.copied')}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={13} />
+                              <span>{t('codeDiff.copyPatch')}</span>
                            </>
                          )}
                        </Button>
@@ -403,17 +414,17 @@ export default function Issues() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="card-inset p-3 text-center bg-slate-50/80">
-                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
-                          Energy Reduction
-                        </p>
+                         <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
+                           {t('issues.energyReduction')}
+                         </p>
                         <p className="text-2xl font-black text-emerald-600">
                           -{refactorResult.energy_reduction_pct}%
                         </p>
                       </div>
                       <div className="card-inset p-3 text-center bg-slate-50/80">
-                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
-                          CO₂ Saved / 10k runs
-                        </p>
+                         <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
+                           {t('issues.co2Saved')}
+                         </p>
                         <p className="text-2xl font-black text-emerald-700">
                           {refactorResult.carbon_saved_gco2_10k_runs} g
                         </p>
@@ -437,7 +448,7 @@ export default function Issues() {
                       <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
                         <span className="flex items-center gap-2 font-medium">
                           <CheckCircle size={15} className="text-emerald-600" />
-                          Pull Request opened successfully!
+                          {t('issues.prOpened')}
                         </span>
                         <a
                           href={prResult.url}
@@ -445,7 +456,7 @@ export default function Issues() {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 font-bold underline hover:text-emerald-950"
                         >
-                          View PR on GitHub <ArrowUpRight size={13} />
+                          {t('issues.viewPr')} <ArrowUpRight size={13} />
                         </a>
                       </div>
                     )}
@@ -466,15 +477,15 @@ export default function Issues() {
                          onClick={() => initiatePR(v, key)}
                          disabled={isPrLoading}
                        >
-                         {isPrLoading ? (
-                           <>
-                             <Loader2 size={13} className="animate-spin" /> Committing &amp; Opening PR...
-                           </>
-                         ) : (
-                           <>
-                             <Github size={13} /> Open Pull Request
-                           </>
-                         )}
+                          {isPrLoading ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" /> {t('issues.committingPr')}
+                            </>
+                          ) : (
+                            <>
+                              <Github size={13} /> {t('issues.openPr')}
+                            </>
+                          )}
                        </Button>
 
                        <Button
@@ -483,15 +494,15 @@ export default function Issues() {
                          className="shadow-xs"
                          onClick={() => handleCopy(refactorResult.refactored_code, `btn-${key}`)}
                        >
-                         {copiedKey === `btn-${key}` ? (
-                           <>
-                             <CheckCircle size={13} className="text-emerald-600" /> Copied Code
-                           </>
-                         ) : (
-                           <>
-                             <Copy size={13} /> Copy Refactored Code
-                           </>
-                         )}
+                          {copiedKey === `btn-${key}` ? (
+                            <>
+                              <CheckCircle size={13} className="text-emerald-600" /> {t('actions.copied')} Code
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={13} /> {t('issues.copyRefactored')}
+                            </>
+                          )}
                        </Button>
 
                        {refactorResult.unified_diff && (
@@ -501,15 +512,15 @@ export default function Issues() {
                            className="shadow-xs"
                            onClick={() => handleCopy(refactorResult.unified_diff, `diff-${key}`)}
                          >
-                           {copiedKey === `diff-${key}` ? (
-                             <>
-                               <CheckCircle size={13} className="text-emerald-600" /> Copied .diff
-                             </>
-                           ) : (
-                             <>
-                               <Copy size={13} /> Copy Unified .diff
-                             </>
-                           )}
+                            {copiedKey === `diff-${key}` ? (
+                              <>
+                                <CheckCircle size={13} className="text-emerald-600" /> {t('actions.copied')} .diff
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={13} /> {t('issues.copyDiff')}
+                              </>
+                            )}
                          </Button>
                        )}
 
@@ -520,15 +531,15 @@ export default function Issues() {
                            className="shadow-xs"
                            onClick={() => handleCopy(refactorResult.github_suggestion_markdown, `sug-${key}`)}
                          >
-                           {copiedKey === `sug-${key}` ? (
-                             <>
-                               <CheckCircle size={13} className="text-emerald-600" /> Copied Suggestion
-                             </>
-                           ) : (
-                             <>
-                               <Copy size={13} /> Copy PR Suggestion
-                             </>
-                           )}
+                            {copiedKey === `sug-${key}` ? (
+                              <>
+                                <CheckCircle size={13} className="text-emerald-600" /> {t('issues.copiedSuggestion')}
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={13} /> {t('issues.copyPrSuggestion')}
+                              </>
+                            )}
                          </Button>
                        )}
                      </div>
@@ -537,7 +548,7 @@ export default function Issues() {
                    <Card variant="default" padding="md" className="ml-2 sm:ml-4 bg-slate-50 border-emerald-200 shadow-xs">
                      <div className="flex items-center gap-2.5 text-xs text-slate-700 font-medium">
                        <Loader2 size={15} className="animate-spin text-emerald-600" />
-                       <span>Synthesizing Amazon Bedrock eco-refactoring for {v.title}...</span>
+                        <span>{t('issues.synthesizingPatch', { file: v.title })}...</span>
                      </div>
                    </Card>
                  ) : (
@@ -548,7 +559,7 @@ export default function Issues() {
                        className="hover:border-emerald-400 hover:text-emerald-800"
                        onClick={() => handleRefactor(v, key)}
                      >
-                       <Zap size={13} className="text-amber-500" /> Synthesize Fix
+                        <Zap size={13} className="text-amber-500" /> {t('issues.synthesizeFix')}
                      </Button>
                    </div>
                  )}
@@ -575,7 +586,7 @@ export default function Issues() {
               size="sm"
               onClick={() => setPrModalViolation(null)}
             >
-              Cancel
+              {t('actions.cancel')}
             </Button>
             <Button
               type="button"
@@ -584,27 +595,27 @@ export default function Issues() {
               disabled={prLoading.has(prModalViolation?.key || '')}
               onClick={submitPR}
             >
-              {prLoading.has(prModalViolation?.key || '') ? (
-                <>
-                  <Loader2 size={13} className="animate-spin" /> Creating PR...
-                </>
-              ) : (
-                <>
-                  <ExternalLink size={13} /> Open Pull Request
-                </>
-              )}
+                {prLoading.has(prModalViolation?.key || '') ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin" /> {t('issues.creatingPr')}
+                  </>
+                ) : (
+                  <>
+                    <ExternalLink size={13} /> {t('issues.openPr')}
+                  </>
+                )}
             </Button>
           </div>
         }
       >
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-zinc-700 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-slate-900 dark:text-zinc-100 font-bold text-sm">
             <Github size={18} />
-            <span>Create GitHub Pull Request</span>
+            <span>{t('issues.createPr')}</span>
           </div>
           <button
             onClick={() => setPrModalViolation(null)}
-            className="text-slate-400 hover:text-slate-600 p-1"
+            className="text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 p-1"
           >
             <X size={16} />
           </button>
@@ -619,54 +630,54 @@ export default function Issues() {
 
         <div className="px-6 py-4 space-y-4 text-xs">
           <div>
-            <label className="block font-bold text-slate-700 mb-1 uppercase tracking-wider">
-              Target GitHub Repository
+            <label className="block font-bold text-slate-700 dark:text-zinc-300 mb-1 uppercase tracking-wider">
+              {t('issues.targetRepo')}
             </label>
             <Input
               type="text"
-              placeholder="e.g. owner/repo-name"
+              placeholder={t('issues.targetRepoPlaceholder')}
               className="text-xs font-mono"
               value={prModalRepo}
               onChange={e => setPrModalRepo(e.target.value)}
             />
-            <p className="text-[11px] text-slate-400 mt-1">
-              The repository where the automated patch branch and PR will be opened.
+            <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
+              {t('issues.targetRepoHelp')}
             </p>
           </div>
 
           <div>
-            <label className="block font-bold text-slate-700 mb-1 uppercase tracking-wider">
-              GitHub Personal Access Token
+            <label className="block font-bold text-slate-700 dark:text-zinc-300 mb-1 uppercase tracking-wider">
+              {t('issues.githubToken')}
             </label>
             <Input
               type="password"
-              placeholder="ghp_... (repo / pull request scope)"
+              placeholder={t('issues.githubTokenPlaceholder')}
               className="text-xs font-mono"
               value={prModalToken}
               onChange={e => setPrModalToken(e.target.value)}
             />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Required to create the branch and commit the patch.{' '}
+            <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
+              {t('issues.githubTokenHelp')}{' '}
               <a
                 href="https://github.com/settings/tokens"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-emerald-700 underline font-semibold"
               >
-                Generate Token
+                {t('issues.generateToken')}
               </a>
             </p>
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-            <p className="text-[11px] font-bold text-slate-700">Patch Details</p>
-            <p className="text-[11px] text-slate-500 font-mono truncate">
-              File: {prModalViolation?.violation.file_path}
+            <p className="text-[11px] font-bold text-slate-700 dark:text-zinc-300">{t('issues.patchDetails')}</p>
+            <p className="text-[11px] text-slate-500 dark:text-zinc-400 font-mono truncate">
+              {t('issues.fileLabel', { path: prModalViolation?.violation.file_path || '' })}
             </p>
-            <p className="text-[11px] text-slate-500">
-              Remediation: {prModalViolation?.violation.title}
-            </p>
-          </div>
+            <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                {t('issues.remediationLabel', { title: prModalViolation?.violation.title || '' })}
+              </p>
+            </div>
         </div>
       </Modal>
 

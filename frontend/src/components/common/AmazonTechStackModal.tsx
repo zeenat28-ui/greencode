@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Modal } from '../primitives/Modal';
+import { translateStatic as t } from '../../i18n/I18nContext';
 
 interface AmazonTechStackModalProps {
   isOpen: boolean;
@@ -88,37 +89,41 @@ export default function AmazonTechStackModal({
   const connectedAccounts = health?.connected_accounts;
   const headerStatus =
     health === null
-      ? 'Checking…'
-      : `${health.status || 'UNKNOWN'} · ${connectedAccounts ?? 0} account${connectedAccounts === 1 ? '' : 's'} linked`;
+      ? t('modals.aws.statusChecking')
+      : t('modals.aws.statusFormat', {
+          status: health.status || 'UNKNOWN',
+          accounts: String(connectedAccounts ?? 0),
+          plural: connectedAccounts === 1 ? '' : 's',
+        });
 
    return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      showCloseButton={false}
-      size="lg"
-      overlayClassName="items-center bg-slate-900/60"
-      className="!max-w-3xl border-slate-200 overflow-hidden"
-      contentClassName="p-0 overflow-visible"
-    >
-        {/* Header */}
-        <div className="bg-[#131921] text-white px-6 py-4 flex items-center justify-between border-b border-[#232F3E]">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#FF9900] text-slate-950 font-black flex items-center justify-center text-sm shadow-sm">
-              AWS
-            </div>
-            <div>
-              <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-                Amazon &amp; AWS Integration Architecture
-                <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-700/60 text-zinc-200 border border-zinc-600 font-mono">
-                  {headerStatus}
-                </span>
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Where each Amazon capability is implemented in GreenCode. Live status is read from the running backend.
-              </p>
-            </div>
-          </div>
+     <Modal
+       isOpen={isOpen}
+       onClose={onClose}
+       showCloseButton={false}
+       size="lg"
+       overlayClassName="items-center bg-slate-900/60"
+       className="!max-w-3xl border-slate-200 overflow-hidden"
+       contentClassName="p-0 overflow-visible"
+     >
+         {/* Header */}
+         <div className="bg-[#131921] text-white px-6 py-4 flex items-center justify-between border-b border-[#232F3E]">
+           <div className="flex items-center gap-3">
+             <div className="w-9 h-9 rounded-lg bg-[#FF9900] text-slate-950 font-black flex items-center justify-center text-sm shadow-sm">
+               AWS
+             </div>
+             <div>
+               <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                 {t('modals.aws.title')}
+                 <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-700/60 text-zinc-200 border border-zinc-600 font-mono">
+                   {headerStatus}
+                 </span>
+               </h3>
+               <p className="text-[11px] text-slate-400">
+                 {t('modals.aws.subtitle')}
+               </p>
+             </div>
+           </div>
           <button
             onClick={onClose}
             className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
@@ -133,43 +138,41 @@ export default function AmazonTechStackModal({
           <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50/70 via-orange-50/50 to-white border border-amber-200/90 space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-amber-950 uppercase tracking-wider">
               <ShieldCheck size={16} className="text-[#FF9900]" />
-              Amazon &amp; AWS Architecture Summary
+              {t('modals.aws.summary')}
             </div>
-            <p className="text-xs text-slate-700 leading-relaxed">
-              GreenCode integrates <strong>Amazon Alexa+ (via the Model Context Protocol / MCP)</strong> with <strong>Amazon Bedrock (Claude 3.5 Sonnet)</strong> and <strong>AWS regional telemetry</strong> for voice-driven code auditing, verified AST refactoring, and cloud carbon comparison.
-            </p>
+            <p className="text-xs text-slate-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('modals.aws.summaryDesc') }} />
           </div>
 
           {/* Product Grid */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              5 Core Amazon Technologies Integrated:
+              {t('modals.aws.tecStackTitle')}
             </h4>
             <div className="space-y-2.5">
               {AMAZON_TECH_STACK.map((item, idx) => (
                 <div 
                   key={idx}
-                  className="p-3.5 rounded-lg border border-slate-200 bg-white hover:border-amber-400 hover:shadow-xs transition-all space-y-1.5"
+                  className="p-3.5 rounded-lg border border-slate-200 bg-white dark:bg-zinc-800 hover:border-amber-400 hover:shadow-xs transition-all space-y-1.5"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                     <div className="flex items-center gap-2">
                       <span className="w-5 h-5 rounded-full bg-amber-100 text-[#FF9900] flex items-center justify-center font-bold text-xs shrink-0">
                         {idx + 1}
                       </span>
-                      <span className="font-bold text-xs text-slate-900">{item.name}</span>
+                      <span className="font-bold text-xs text-slate-900 dark:text-zinc-100">{item.name}</span>
                     </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-semibold self-start sm:self-auto">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-zinc-700 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-600 font-semibold self-start sm:self-auto">
                       {item.category}
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-600 pl-7">
+                  <p className="text-xs text-slate-600 dark:text-zinc-300 pl-7">
                     {item.role}
                   </p>
 
-                  <div className="pl-7 pt-1 flex items-center gap-2 text-[10px] font-mono text-slate-400">
-                    <Terminal size={11} className="text-slate-500" />
-                    <span>Code location: <strong className="text-slate-700">{item.codeLocation}</strong></span>
+                  <div className="pl-7 pt-1 flex items-center gap-2 text-[10px] font-mono text-slate-400 dark:text-zinc-400">
+                    <Terminal size={11} className="text-slate-500 dark:text-zinc-500" />
+                    <span>{t('modals.aws.codeLocation', { location: item.codeLocation })}</span>
                   </div>
                 </div>
               ))}
@@ -180,28 +183,28 @@ export default function AmazonTechStackModal({
           <div className="p-4 rounded-xl border border-slate-200 bg-slate-900 text-white space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
               <Layers size={14} />
-              Amazon End-to-End Execution Flow
+              {t('modals.aws.flowTitle')}
             </h4>
             <div className="text-xs font-mono text-slate-300 space-y-2 leading-relaxed">
               <div className="flex items-start gap-2">
-                <span className="text-amber-400 font-bold shrink-0">1. Voice Command:</span>
+                <span className="text-amber-400 font-bold shrink-0">{t('modals.aws.flowStep1')}</span>
                 <span>Developer asks Alexa (&quot;Alexa, ask GreenCode to audit our repository&quot;)</span>
               </div>
               <div className="flex items-start gap-2">
-                <span className="text-amber-400 font-bold shrink-0">2. Alexa+ MCP:</span>
-                <span>Alexa invokes /mcp tool <code className="text-blue-300">audit_and_score</code> over RFC 9728 secure transport</span>
+                <span className="text-amber-400 font-bold shrink-0">{t('modals.aws.flowStep2')}</span>
+                <span>Alexa invokes /mcp tool <code className="text-blue-300">audit_and_score</code> {t('modals.aws.flowStep2Desc')}</span>
               </div>
               <div className="flex items-start gap-2">
-                <span className="text-amber-400 font-bold shrink-0">3. Amazon Bedrock:</span>
-                <span>Claude 3.5 Sonnet analyzes AST nodes and synthesizes verified O(N) patch</span>
+                <span className="text-amber-400 font-bold shrink-0">{t('modals.aws.flowStep3')}</span>
+                <span>{t('modals.aws.flowStep3Desc')}</span>
               </div>
               <div className="flex items-start gap-2">
-                <span className="text-amber-400 font-bold shrink-0">4. AWS Region Arbitrage:</span>
-                <span>Telemetry shifts batch jobs to cleanest AWS datacenter (e.g., Ireland eu-west-1)</span>
+                <span className="text-amber-400 font-bold shrink-0">{t('modals.aws.flowStep4')}</span>
+                <span>{t('modals.aws.flowStep4Desc')}</span>
               </div>
               <div className="flex items-start gap-2">
-                <span className="text-amber-400 font-bold shrink-0">5. Spoken Confirmation:</span>
-                <span>Alexa vocalizes the green score, kWh saved, and opens GitHub Pull Request</span>
+                <span className="text-amber-400 font-bold shrink-0">{t('modals.aws.flowStep5')}</span>
+                <span>{t('modals.aws.flowStep5Desc')}</span>
               </div>
             </div>
           </div>

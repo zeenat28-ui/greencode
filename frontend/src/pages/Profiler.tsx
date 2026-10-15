@@ -5,6 +5,7 @@ import { ScanResult, BenchmarkScript, ProfilingResult } from '../types';
 import ScoreBadge from '../components/common/ScoreBadge';
 import MetricCard from '../components/common/MetricCard';
 import { Play, Cpu, MemoryStick, Zap, Download, Copy, CheckCircle2, AlertCircle, Terminal, Clock, Loader2 } from 'lucide-react';
+import { useT } from '../i18n/I18nContext';
 
 /**
  * Runtime Profiler
@@ -15,6 +16,7 @@ import { Play, Cpu, MemoryStick, Zap, Download, Copy, CheckCircle2, AlertCircle,
  * arbitrary-file-execution primitive.
  */
 export default function Profiler() {
+  const t = useT();
   const [scanData] = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
   const [zone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
 
@@ -106,18 +108,18 @@ export default function Profiler() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="badge-olive">Energy Profiler</span>
-            <span className="text-[11px] font-mono font-medium text-slate-500">Hardware Sandbox</span>
+           <div className="flex items-center gap-2 mb-1">
+            <span className="badge-olive">{t('profiler.badge')}</span>
+            <span className="text-[11px] font-mono font-medium text-slate-500 dark:text-zinc-400">{t('profiler.hardwareSandbox')}</span>
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Runtime Energy Profiler</h1>
-          <p className="text-sm text-slate-600 mt-0.5">
-            Run real code in an isolated sandbox to measure CPU cycles, memory footprint, and energy consumption in Joules.
+          <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">{t('profiler.pageTitle')}</h1>
+          <p className="text-sm text-slate-600 dark:text-zinc-400 mt-0.5">
+            {t('profiler.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-olive-50 border border-olive-200 text-xs font-semibold text-olive-900 shadow-sm">
           <span className="w-2.5 h-2.5 rounded-full bg-olive-600 animate-pulse" />
-          <span>Active Grid: <strong className="font-mono">{zone}</strong> &middot; <strong className="font-mono">{gridIntensity != null ? gridIntensity : '—'}</strong> {gridIntensity != null && 'gCO₂e/kWh'}</span>
+          <span>{t('profiler.activeGrid', { zone, intensity: gridIntensity != null ? String(gridIntensity) : '—' })}</span>
         </div>
       </div>
 
@@ -139,18 +141,18 @@ export default function Profiler() {
         <div className="card p-5 space-y-5">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-sm font-bold text-slate-900">Select Benchmark Workload</h2>
-              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">Safe Sandbox</span>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100">{t('profiler.selectBenchmark')}</h2>
+              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 font-semibold">{t('profiler.safeSandbox')}</span>
             </div>
-            <p className="text-xs text-slate-500 mb-3.5">
-              Choose an algorithm below to measure its live energy consumption:
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mb-3.5">
+              {t('profiler.benchmarkHint')}
             </p>
             {benchmarksLoading ? (
-              <div className="flex items-center gap-2 text-sm text-slate-400 py-6 justify-center">
-                <Loader2 size={18} className="animate-spin text-olive-700" /> Loading benchmarks...
+              <div className="flex items-center gap-2 text-sm text-slate-400 dark:text-zinc-500 py-6 justify-center">
+                <Loader2 size={18} className="animate-spin text-olive-700" /> {t('profiler.loadingBenchmarks')}
               </div>
             ) : benchmarks.length === 0 ? (
-              <p className="text-sm text-slate-500 py-4">No benchmark modules found.</p>
+              <p className="text-sm text-slate-500 dark:text-zinc-400 py-4">{t('profiler.noBenchmarks')}</p>
             ) : (
               <div className="space-y-2">
                 {benchmarks.map((b) => {
@@ -161,8 +163,8 @@ export default function Profiler() {
                       onClick={() => setSelected(b.id)}
                       className={`w-full text-left p-3.5 rounded-xl border transition-all text-xs ${
                         isSelected
-                          ? 'border-olive-500 bg-olive-50/80 ring-1 ring-olive-500/20 text-olive-950 shadow-sm'
-                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70 text-slate-800'
+                          ? 'border-olive-500 bg-olive-50/80 ring-1 ring-olive-500/20 text-olive-200 shadow-sm'
+                          : 'border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-slate-300 dark:hover:border-zinc-600 hover:bg-slate-50/70 dark:hover:bg-zinc-800 text-slate-800 dark:text-zinc-300'
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -179,11 +181,11 @@ export default function Profiler() {
 
           <div className="pt-2 border-t border-slate-100">
             <div className="flex justify-between items-center mb-1.5">
-              <label htmlFor="timeout" className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Execution Timeout
+              <label htmlFor="timeout" className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider">
+                {t('profiler.executionTimeout')}
               </label>
-              <span className="font-mono text-xs font-bold text-olive-900 bg-olive-100/60 px-2 py-0.5 rounded">
-                {timeoutSec}s limit
+              <span className="font-mono text-xs font-bold text-olive-900 dark:text-olive-300 bg-olive-100/60 dark:bg-olive-900/30 px-2 py-0.5 rounded">
+                {timeoutSec}s {t('profiler.limitSuffix')}
               </span>
             </div>
             <input
@@ -205,11 +207,11 @@ export default function Profiler() {
           >
             {isProfiling ? (
               <>
-                <Loader2 size={16} className="animate-spin text-white" /> Measuring Energy...
+                <Loader2 size={16} className="animate-spin text-white" /> {t('profiler.measuring')}
               </>
             ) : (
               <>
-                <Play size={16} className="text-white fill-white" /> Run Benchmark Test
+                <Play size={16} className="text-white fill-white" /> {t('profiler.runBenchmark')}
               </>
             )}
           </button>
@@ -222,43 +224,43 @@ export default function Profiler() {
               <div className="w-16 h-16 rounded-2xl bg-olive-50 border border-olive-200 flex items-center justify-center text-olive-700 mb-4 shadow-sm">
                 <Cpu size={32} />
               </div>
-              <p className="text-base font-bold text-slate-900">Ready to Benchmark</p>
-              <p className="text-xs text-slate-500 mt-1.5 max-w-md leading-relaxed">
+              <p className="text-base font-bold text-slate-900 dark:text-zinc-200">{t('profiler.readyToBenchmark')}</p>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1.5 max-w-md leading-relaxed">
                 {activeBenchmark
-                  ? `Selected: "${activeBenchmark.label}". Click "Run Benchmark Test" to measure real execution time, CPU load, and energy consumption.`
-                  : 'Select an algorithm on the left to start energy measurements.'}
+                  ? t('profiler.selectedBenchmark', { label: activeBenchmark.label })
+                  : t('profiler.selectAlgorithm')}
               </p>
             </div>
           ) : (
             <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricCard title="Execution Time" value={`${result.duration_sec.toFixed(2)}s`} subtitle="Total run duration" icon={<Clock size={16} />} />
-                <MetricCard title="CPU Load" value={`${result.avg_cpu_percent.toFixed(1)}%`} subtitle="Average processor usage" icon={<Cpu size={16} />} accentColor="#059669" />
-                <MetricCard title="Peak Memory (RAM)" value={`${result.peak_memory_mb.toFixed(1)} MB`} subtitle="Max memory footprint" icon={<MemoryStick size={16} />} />
-                <MetricCard title="Energy Consumed" value={`${(result.energy_wh * 1000).toFixed(3)} mWh`} subtitle={`${result.energy_joules.toFixed(2)} Joules`} icon={<Zap size={16} />} accentColor="#059669" />
+                 <MetricCard title={t('profiler.metric.executionTime')} value={`${result.duration_sec.toFixed(2)}s`} subtitle={t('profiler.metric.executionTimeSub')} icon={<Clock size={16} />} />
+                 <MetricCard title={t('profiler.metric.cpuLoad')} value={`${result.avg_cpu_percent.toFixed(1)}%`} subtitle={t('profiler.metric.cpuLoadSub')} icon={<Cpu size={16} />} accentColor="#059669" />
+                 <MetricCard title={t('profiler.metric.peakMemory')} value={`${result.peak_memory_mb.toFixed(1)} MB`} subtitle={t('profiler.metric.peakMemorySub')} icon={<MemoryStick size={16} />} />
+                 <MetricCard title={t('profiler.metric.energyConsumed')} value={`${(result.energy_wh * 1000).toFixed(3)} mWh`} subtitle={`${result.energy_joules.toFixed(2)} ${t('profiler.metric.joules')}`} icon={<Zap size={16} />} accentColor="#059669" />
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="card p-5 flex flex-col items-center justify-center text-center">
                   <ScoreBadge score={Math.max(0, Math.min(100, result.sci_score_gco2 > 0 ? (result.sci_score_gco2 * 200) / (result.sci_score_gco2 + 100) : 100))} size="lg" />
-                  <p className="label mt-3 font-bold text-slate-900">Green Score</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Software Carbon Intensity Rating</p>
+                  <p className="label mt-3 font-bold text-slate-900 dark:text-zinc-100">{t('profiler.greenScore')}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">{t('profiler.sciRating')}</p>
                 </div>
                 <div className="lg:col-span-2 card p-5">
                   <div className="flex items-center justify-between mb-3">
-                    <p className="label font-bold text-slate-900">Carbon &amp; Energy Breakdown</p>
-                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">GSF SCI Standard</span>
+                    <p className="label font-bold text-slate-900 dark:text-zinc-100">{t('profiler.carbonBreakdown')}</p>
+                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400">{t('profiler.scistandard')}</span>
                   </div>
                   <dl className="space-y-2.5 text-xs">
-                    <div className="flex justify-between py-1 border-b border-slate-100"><dt className="text-slate-600">Operational Carbon (electricity used)</dt><dd className="font-mono font-bold text-slate-900">{result.operational_carbon_gco2.toFixed(6)} gCO₂e</dd></div>
-                    <div className="flex justify-between py-1 border-b border-slate-100"><dt className="text-slate-600">Embodied Carbon (hardware lifecycle)</dt><dd className="font-mono font-bold text-slate-900">{result.embodied_carbon_gco2.toFixed(6)} gCO₂e</dd></div>
-                    <div className="flex justify-between py-1 border-b border-slate-100"><dt className="font-bold text-olive-900">Total Carbon Impact</dt><dd className="font-mono font-black text-olive-800">{result.sci_score_gco2.toFixed(6)} gCO₂e</dd></div>
-                    <div className="flex justify-between py-1 border-b border-slate-100"><dt className="text-slate-600">Grid Carbon Intensity</dt><dd className="font-mono text-slate-700">{result.grid_intensity_gco2_per_kwh} gCO₂e/kWh</dd></div>
-                    <div className="flex justify-between py-1"><dt className="text-slate-600">Exit Status</dt><dd className="font-mono font-bold text-slate-800">{result.exit_code === 0 ? 'Success (0)' : `Code ${result.exit_code}`}</dd></div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700"><dt className="text-slate-600 dark:text-zinc-400">{t('profiler.operationalCarbon')}</dt><dd className="font-mono font-bold text-slate-900 dark:text-zinc-100">{result.operational_carbon_gco2.toFixed(6)} gCO₂e</dd></div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700"><dt className="text-slate-600 dark:text-zinc-400">{t('profiler.embodiedCarbon')}</dt><dd className="font-mono font-bold text-slate-900 dark:text-zinc-100">{result.embodied_carbon_gco2.toFixed(6)} gCO₂e</dd></div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700"><dt className="font-bold text-olive-900 dark:text-olive-300">{t('profiler.totalCarbon')}</dt><dd className="font-mono font-black text-olive-800">{result.sci_score_gco2.toFixed(6)} gCO₂e</dd></div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700"><dt className="text-slate-600 dark:text-zinc-400">{t('profiler.gridIntensity')}</dt><dd className="font-mono text-slate-700 dark:text-zinc-300">{result.grid_intensity_gco2_per_kwh} gCO₂e/kWh</dd></div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700"><dt className="text-slate-600 dark:text-zinc-400">{t('profiler.exitStatus')}</dt><dd className="font-mono font-bold text-slate-800 dark:text-zinc-200">{result.exit_code === 0 ? t('profiler.successExit') : t('profiler.errorExit', { code: String(result.exit_code) })}</dd></div>
                   </dl>
-                  <div className="flex gap-2 mt-4 pt-3 border-t border-slate-100">
+                  <div className="flex gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-zinc-700">
                     <button onClick={handleExport} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5 shadow-sm">
-                      <Download size={13} className="text-olive-800" /> Export Benchmark Report (JSON)
+                      <Download size={13} className="text-olive-800" /> {t('profiler.exportReport')}
                     </button>
                   </div>
                 </div>
@@ -267,8 +269,8 @@ export default function Profiler() {
               <div className="card overflow-hidden max-w-full">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200/80 bg-slate-50/80">
                   <div className="flex items-center gap-2">
-                    <Terminal size={14} className="text-slate-700" />
-                    <span className="text-xs font-bold text-slate-900">Sandbox Output Log</span>
+                    <Terminal size={14} className="text-slate-700 dark:text-zinc-400" />
+                    <span className="text-xs font-bold text-slate-900 dark:text-zinc-100">{t('profiler.outputLog')}</span>
                   </div>
                   <button
                     onClick={() => {
@@ -279,11 +281,11 @@ export default function Profiler() {
                     className="btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
                   >
                     {copied ? <CheckCircle2 size={12} className="text-olive-700" /> : <Copy size={12} />}
-                    {copied ? 'Copied' : 'Copy'}
+                     {copied ? t('actions.copied') : t('profiler.copyBtn')}
                   </button>
                 </div>
-                <pre ref={outputRef} className="p-4 text-xs font-mono text-slate-800 bg-slate-900/5 text-slate-900 overflow-x-auto max-h-64 leading-relaxed whitespace-pre-wrap break-all max-w-full">
-                  {result.stdout_preview || result.stderr_preview || '(Execution completed with empty standard stream)'}
+                <pre ref={outputRef} className="p-4 text-xs font-mono text-slate-800 bg-slate-900/5 dark:bg-zinc-900/40 text-slate-900 dark:text-zinc-300 overflow-x-auto max-h-64 leading-relaxed whitespace-pre-wrap break-all max-w-full">
+                  {result.stdout_preview || result.stderr_preview || t('profiler.emptyOutput')}
                 </pre>
               </div>
             </>

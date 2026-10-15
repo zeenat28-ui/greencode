@@ -1,5 +1,6 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RotateCcw, RefreshCw } from 'lucide-react';
+import { translateStatic } from '../../i18n/I18nContext';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -45,12 +46,11 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
           <div className="w-12 h-12 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mx-auto mb-4">
             <AlertTriangle size={22} />
           </div>
-          <h2 className="text-base font-semibold text-zinc-900 mb-1">
-            {this.props.scope ? `${this.props.scope} hit an error` : 'Something went wrong'}
+          <h2 className="text-base font-semibold text-[var(--gc-text-primary)] mb-1">
+            {translateStatic('errors.pageCrash')}
           </h2>
-          <p className="text-xs text-zinc-500 mb-5 leading-relaxed">
-            An unexpected error occurred while rendering this view. You can retry, or reload the
-            page if the problem persists.
+          <p className="text-xs text-[var(--gc-text-tertiary)] mb-5 leading-relaxed">
+            {translateStatic('errors.pageCrashHint')}
           </p>
           {this.state.error?.message && (
             <pre className="text-[11px] font-mono text-left text-rose-700 bg-rose-50/60 border border-rose-200/80 rounded-lg p-3 mb-5 overflow-x-auto max-w-full whitespace-pre-wrap break-words">
@@ -59,10 +59,10 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
           )}
           <div className="flex items-center justify-center gap-2">
             <button onClick={this.handleReset} className="btn-secondary text-xs">
-              <RotateCcw size={13} /> Try again
+              <RotateCcw size={13} /> {translateStatic('actions.retry')}
             </button>
             <button onClick={() => window.location.reload()} className="btn-dark text-xs">
-              <RefreshCw size={13} /> Reload
+              <RefreshCw size={13} /> {translateStatic('actions.reload')}
             </button>
           </div>
         </div>

@@ -5,6 +5,7 @@ import {
   X, TrendingDown, Sparkles, ArrowRight 
 } from 'lucide-react';
 import { Modal } from '../primitives/Modal';
+import { useT } from '../../i18n/I18nContext';
 
 interface FinOpsCalculatorModalProps {
   isOpen: boolean;
@@ -81,6 +82,7 @@ export default function FinOpsCalculatorModal({
   isOpen,
   onClose,
 }: FinOpsCalculatorModalProps) {
+  const t = useT();
   const [selectedInstance, setSelectedInstance] = useState<InstanceTypeOption>(INSTANCE_OPTIONS[0]);
   const [selectedRegion, setSelectedRegion] = useState<string>('us-east-1');
   const [nodeCount, setNodeCount] = useState<number>(20);
@@ -153,13 +155,13 @@ export default function FinOpsCalculatorModal({
             </div>
             <div>
               <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-                FinOps &amp; GreenOps Cloud Cost Estimator
+                {t('modals.finops.title')}
                 <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-mono">
-                  Live AWS Cost &amp; Grid API
+                  {t('modals.finops.liveApi')}
                 </span>
               </h3>
               <p className="text-[11px] text-slate-400">
-                Model compute infrastructure savings and Scope 2 carbon reductions from algorithmic optimization
+                {t('modals.finops.subtitle')}
               </p>
             </div>
           </div>
@@ -175,195 +177,193 @@ export default function FinOpsCalculatorModal({
           {/* Controls Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Instance Selection */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
-                Target Cloud Instance Tier
-              </label>
-              <div className="space-y-2">
-                {INSTANCE_OPTIONS.map((inst) => (
-                  <button
-                    key={inst.id}
-                    onClick={() => setSelectedInstance(inst)}
-                    className={`w-full text-left p-2.5 rounded-lg border text-xs transition-all flex items-center justify-between ${
-                      selectedInstance.id === inst.id
-                        ? 'border-emerald-600 bg-emerald-50/60 ring-1 ring-emerald-600'
-                        : 'border-slate-200 hover:border-slate-300 bg-slate-50/40'
-                    }`}
-                  >
-                    <div>
-                      <div className="font-bold text-slate-900 font-mono">{inst.name}</div>
-                      <div className="text-[11px] text-slate-500">{inst.specs}</div>
-                    </div>
-                    <div className="text-right font-mono">
-                      <div className="font-bold text-emerald-700">${inst.hourlyRate}/hr</div>
-                      <div className="text-[10px] text-slate-400">{inst.watts}W draw</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
+             <div>
+               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
+                 {t('modals.finops.targetInstance')}
+               </label>
+               <div className="space-y-2">
+                 {INSTANCE_OPTIONS.map((inst) => (
+                   <button
+                     key={inst.id}
+                     onClick={() => setSelectedInstance(inst)}
+                     className={`w-full text-left p-2.5 rounded-lg border text-xs transition-all flex items-center justify-between ${
+                       selectedInstance.id === inst.id
+                         ? 'border-emerald-600 bg-emerald-50/60 ring-1 ring-emerald-600'
+                         : 'border-slate-200 hover:border-slate-300 bg-slate-50/40'
+                     }`}
+                   >
+                     <div>
+                       <div className="font-bold text-slate-900 font-mono">{inst.name}</div>
+                       <div className="text-[11px] text-slate-500">{inst.specs}</div>
+                     </div>
+                     <div className="text-right font-mono">
+                       <div className="font-bold text-emerald-700">${inst.hourlyRate}/hr</div>
+                       <div className="text-[10px] text-slate-400">{inst.watts}W draw</div>
+                     </div>
+                   </button>
+                 ))}
+               </div>
+             </div>
 
-            {/* Workload Sliders */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-4">
-              <div>
-                <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1">
-                  <span>Production Nodes / Pods</span>
-                  <span className="font-mono text-emerald-700 font-extrabold">{nodeCount} instances</span>
-                </div>
-                <input
-                  type="range"
-                  min="2"
-                  max="100"
-                  step="2"
-                  value={nodeCount}
-                  onChange={(e) => setNodeCount(Number(e.target.value))}
-                  className="w-full accent-emerald-600 cursor-pointer"
-                />
-                <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
-                  <span>2 nodes (Small)</span>
-                  <span>20 nodes</span>
-                  <span>100 nodes (Large)</span>
-                </div>
-              </div>
+             {/* Workload Sliders */}
+             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-4">
+               <div>
+                 <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1">
+                   <span>{t('modals.finops.specifications')}</span>
+                   <span className="font-mono text-emerald-700 font-extrabold">{t('modals.finops.nodesLabel', { count: String(nodeCount) })}</span>
+                 </div>
+                 <input
+                   type="range"
+                   min="2"
+                   max="100"
+                   step="2"
+                   value={nodeCount}
+                   onChange={(e) => setNodeCount(Number(e.target.value))}
+                   className="w-full accent-emerald-600 cursor-pointer"
+                 />
+                 <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
+                   <span>{t('modals.finops.nodesSmall')}</span>
+                   <span>{t('modals.finops.nodesMid')}</span>
+                   <span>{t('modals.finops.nodesLarge')}</span>
+                 </div>
+               </div>
 
-              <div>
-                <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1">
-                  <span>Algorithmic Optimization Rate</span>
-                  <span className="font-mono text-emerald-700 font-extrabold">{efficiencyGainPct}% CPU cut</span>
-                </div>
-                <input
-                  type="range"
-                  min="15"
-                  max="70"
-                  step="1"
-                  value={efficiencyGainPct}
-                  onChange={(e) => setEfficiencyGainPct(Number(e.target.value))}
-                  className="w-full accent-emerald-600 cursor-pointer"
-                />
-                <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
-                  <span>15% (Hoisting)</span>
-                  <span>38% (O(N) Lookups)</span>
-                  <span>70% (Vectorized/INT8)</span>
-                </div>
-              </div>
+               <div>
+                 <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1">
+                   <span>{t('modals.finops.optRate')}</span>
+                   <span className="font-mono text-emerald-700 font-extrabold">{t('modals.finops.optRateLabel', { pct: String(efficiencyGainPct) })}</span>
+                 </div>
+                 <input
+                   type="range"
+                   min="15"
+                   max="70"
+                   step="1"
+                   value={efficiencyGainPct}
+                   onChange={(e) => setEfficiencyGainPct(Number(e.target.value))}
+                   className="w-full accent-emerald-600 cursor-pointer"
+                 />
+                 <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
+                   <span>{t('modals.finops.optRateLow')}</span>
+                   <span>{t('modals.finops.optRateMid')}</span>
+                   <span>{t('modals.finops.optRateHigh')}</span>
+                 </div>
+               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-slate-600 block">
-                  Cloud Region &amp; Live Grid Carbon Intensity
-                </label>
-                <select
-                  value={selectedRegion}
-                  onChange={(e) => setSelectedRegion(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-mono text-slate-800"
-                >
-                  {REGION_OPTIONS.map((reg) => (
-                    <option key={reg.code} value={reg.code}>
-                      {reg.label}
-                    </option>
-                  ))}
-                </select>
-                <div className="p-2 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between">
-                  <span className="text-slate-500">Regional Grid Intensity:</span>
-                  <span className="font-mono font-bold text-slate-800">{gridIntensity} gCO₂e/kWh</span>
-                </div>
-              </div>
-            </div>
+               <div className="space-y-1.5">
+                 <label className="text-[11px] font-bold text-slate-600 block">
+                   {t('modals.finops.regionLabel')}
+                 </label>
+                 <select
+                   value={selectedRegion}
+                   onChange={(e) => setSelectedRegion(e.target.value)}
+                   className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-mono text-slate-800"
+                 >
+                   {REGION_OPTIONS.map((reg) => (
+                     <option key={reg.code} value={reg.code}>
+                       {reg.label}
+                     </option>
+                   ))}
+                 </select>
+                 <div className="p-2 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between">
+                   <span className="text-slate-500">{t('modals.finops.regionalIntensity')}</span>
+                   <span className="font-mono font-bold text-slate-800">{t('modals.finops.gridIntensity', { intensity: String(gridIntensity) })}</span>
+                 </div>
+               </div>
+             </div>
           </div>
 
-          {/* ROI Metric Cards Banner */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100/40 border border-emerald-200">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5 mb-1">
-                <TrendingDown size={14} className="text-emerald-700" />
-                Annual Cloud Bill Savings
-              </div>
-              <div className="text-2xl font-black text-emerald-950 font-mono">
-                ${Math.round(annualSavings).toLocaleString()}
-              </div>
-              <div className="text-[11px] text-emerald-800 mt-1 font-medium">
-                ~${Math.round(monthlySavings).toLocaleString()} / month direct compute reduction
-              </div>
-            </div>
+           {/* ROI Metric Cards Banner */}
+           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+             <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100/40 border border-emerald-200">
+               <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5 mb-1">
+                 <TrendingDown size={14} className="text-emerald-700" />
+                 {t('modals.finops.billSavings')}
+               </div>
+               <div className="text-2xl font-black text-emerald-950 font-mono">
+                 ${Math.round(annualSavings).toLocaleString()}
+               </div>
+               <div className="text-[11px] text-emerald-800 mt-1 font-medium">
+                 {t('modals.finops.monthlyReduction', { amount: String(Math.round(monthlySavings).toLocaleString()) })}
+               </div>
+             </div>
 
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5 mb-1">
-                <Leaf size={14} className="text-olive-700" />
-                Scope 2 Carbon Avoided
-              </div>
-              <div className="text-2xl font-black text-slate-900 font-mono">
-                {annualCo2TonnesSaved.toFixed(2)} <span className="text-sm font-normal text-slate-500">tonnes</span>
-              </div>
-              <div className="text-[11px] text-slate-500 mt-1">
-                Equivalent to ~{Math.round(annualCo2TonnesSaved * 2480)} miles driven avoided
-              </div>
-            </div>
+             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5 mb-1">
+                 <Leaf size={14} className="text-olive-700" />
+                 {t('modals.finops.carbonAvoided')}
+               </div>
+               <div className="text-2xl font-black text-slate-900 font-mono">
+                 {annualCo2TonnesSaved.toFixed(2)} <span className="text-sm font-normal text-slate-500">tonnes</span>
+               </div>
+               <div className="text-[11px] text-slate-500 mt-1">
+                 {t('modals.finops.milesAvoided', { miles: String(Math.round(annualCo2TonnesSaved * 2480)) })}
+               </div>
+             </div>
 
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5 mb-1">
-                <Zap size={14} className="text-olive-700" />
-                Electricity Reduction
-              </div>
-              <div className="text-2xl font-black text-slate-900 font-mono">
-                {Math.round(annualKwhSaved).toLocaleString()} <span className="text-sm font-normal text-slate-500">kWh</span>
-              </div>
-              <div className="text-[11px] text-slate-500 mt-1">
-                From eliminated redundant CPU loops &amp; VRAM
-              </div>
-            </div>
-          </div>
+             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5 mb-1">
+                 <Zap size={14} className="text-olive-700" />
+                 {t('modals.finops.electricityReduction')}
+               </div>
+               <div className="text-2xl font-black text-slate-900 font-mono">
+                 {Math.round(annualKwhSaved).toLocaleString()} <span className="text-sm font-normal text-slate-500">kWh</span>
+               </div>
+               <div className="text-[11px] text-slate-500 mt-1">
+                 {t('modals.finops.electricityDesc')}
+               </div>
+             </div>
+           </div>
 
-          {/* Spend Comparison Bar */}
-          <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-              <span>Monthly Cloud Spend (Before vs After GreenCode)</span>
-              <span className="font-mono text-emerald-700">
-                {(savingsPct * 75).toFixed(0)}% Budget Recaptured
-              </span>
-            </div>
-            
-            <div className="space-y-1.5 font-mono text-xs">
-              <div className="flex items-center justify-between text-slate-500">
-                <span>Baseline Compute ({nodeCount} nodes):</span>
-                <span className="font-bold text-slate-900">${Math.round(baselineMonthlySpend).toLocaleString()} / mo</span>
-              </div>
-              <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-                <div className="bg-rose-500 h-full rounded-full w-full" />
-              </div>
+           {/* Spend Comparison Bar */}
+           <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-2">
+             <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+               <span>{t('modals.finops.spendCompare')}</span>
+               <span className="font-mono text-emerald-700">
+                 {t('modals.finops.budgetRecaptured', { pct: String((savingsPct * 75).toFixed(0)) })}
+               </span>
+             </div>
+             
+             <div className="space-y-1.5 font-mono text-xs">
+               <div className="flex items-center justify-between text-slate-500">
+                 <span>{t('modals.finops.baselineLabel', { count: String(nodeCount) })}</span>
+                 <span className="font-bold text-slate-900">{t('modals.finops.baselineMonthly', { amount: String(Math.round(baselineMonthlySpend).toLocaleString()) })}</span>
+               </div>
+               <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                 <div className="bg-rose-500 h-full rounded-full w-full" />
+               </div>
 
-              <div className="flex items-center justify-between text-slate-500 pt-1">
-                <span>With GreenCode Eco-Refactoring:</span>
-                <span className="font-bold text-emerald-800">${Math.round(optimizedMonthlySpend).toLocaleString()} / mo</span>
-              </div>
-              <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-                <div 
-                  className="bg-emerald-600 h-full rounded-full transition-all duration-500" 
-                  style={{ width: `${(optimizedMonthlySpend / baselineMonthlySpend) * 100}%` }}
-                />
-              </div>
-            </div>
-          </div>
+               <div className="flex items-center justify-between text-slate-500 pt-1">
+                 <span>{t('modals.finops.optimizedLabel')}</span>
+                 <span className="font-bold text-emerald-800">{t('modals.finops.optimizedMonthly', { amount: String(Math.round(optimizedMonthlySpend).toLocaleString()) })}</span>
+               </div>
+               <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                 <div 
+                   className="bg-emerald-600 h-full rounded-full transition-all duration-500" 
+                   style={{ width: `${(optimizedMonthlySpend / baselineMonthlySpend) * 100}%` }}
+                 />
+               </div>
+             </div>
+           </div>
 
-          {/* Executive Value Proposition */}
-          <div className="p-3.5 rounded-lg bg-olive-50/70 border border-olive-200 text-xs text-olive-950 flex items-start gap-2.5">
-            <Sparkles size={16} className="text-olive-700 shrink-0 mt-0.5" />
-            <div className="leading-relaxed">
-              <strong>Enterprise Decision Maker Takeaway:</strong> GreenCode allows engineering teams to meet ESG board requirements and sustainability goals while simultaneously slashing AWS/Azure bills with <strong>zero architecture redesign</strong>.
-            </div>
-          </div>
+           {/* Executive Value Proposition */}
+           <div className="p-3.5 rounded-lg bg-olive-50/70 border border-olive-200 text-xs text-olive-950 flex items-start gap-2.5">
+             <Sparkles size={16} className="text-olive-700 shrink-0 mt-0.5" />
+             <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: t('modals.finops.takeaway') }} />
+           </div>
 
-          {/* Action to AWS Cloud FinOps Workspace */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-1">
-            <span className="text-[11px] text-slate-500 font-mono">
-              Live AWS STS AssumeRole &amp; Ember 2024 regional grid mapping
-            </span>
-            <Link
-              to="/cloud-carbon"
-              onClick={onClose}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-mono text-xs font-semibold shadow-sm transition-colors cursor-pointer"
-            >
-              <span>Launch AWS FinOps Live</span>
-              <ArrowRight size={13} />
-            </Link>
+           {/* Action to AWS Cloud FinOps Workspace */}
+           <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-1">
+             <span className="text-[11px] text-slate-500 font-mono">
+               {t('modals.finops.awsStsNote')}
+             </span>
+             <Link
+               to="/cloud-carbon"
+               onClick={onClose}
+               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-mono text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+             >
+               <span>{t('modals.finops.launchFinOpsLive')}</span>
+               <ArrowRight size={13} />
+             </Link>
           </div>
         </div>
       </Modal>

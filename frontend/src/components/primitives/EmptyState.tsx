@@ -26,10 +26,10 @@ export const EmptyState = forwardRef<HTMLDivElement, EmptyStateProps>(
       )}
       {...props}
     >
-      {icon && <div className="mb-3 text-zinc-400">{icon}</div>}
-      <h3 className="text-sm font-semibold text-zinc-900 mb-1">{title}</h3>
+      {icon && <div className="mb-3 text-[var(--gc-text-tertiary)]">{icon}</div>}
+      <h3 className="text-sm font-semibold text-[var(--gc-text-primary)] mb-1">{title}</h3>
       {description && (
-        <p className="text-xs text-zinc-500 mb-4 max-w-md leading-relaxed">{description}</p>
+        <p className="text-xs text-[var(--gc-text-tertiary)] mb-4 max-w-md leading-relaxed">{description}</p>
       )}
       {action}
     </div>

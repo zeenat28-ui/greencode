@@ -74,82 +74,86 @@ export default function Login() {
   return (
     <div className="h-screen max-h-screen w-screen overflow-hidden flex flex-col lg:flex-row bg-[#fbfcfa] font-sans text-slate-900 select-none">
       
-      {/* ════════════════════════ LEFT HERO PANE (Mint Green #ebf6ee) ════════════════════════ */}
-      <div className="lg:w-1/2 bg-[#ebf6ee] px-8 sm:px-12 xl:px-16 py-6 sm:py-8 lg:py-10 flex flex-col justify-between relative overflow-hidden border-b lg:border-b-0 lg:border-r border-[#d8ecdd] h-full">
+      {/* ════════════════════════ LEFT HERO PANE (Mint Green with Steel Shine) ════════════════════════ */}
+      <div className="lg:w-1/2 bg-[linear-gradient(135deg,#e5f3e8_0%,#edf7f1_20%,#ffffff_38%,#dceddf_46%,#f4faf6_65%,#e8f4ec_85%,#edf7f0_100%)] shadow-[inset_0_1px_2px_0_rgba(255,255,255,0.95),inset_0_-1px_1px_0_rgba(14,72,47,0.08),inset_-1px_0_0_0_rgba(255,255,255,0.7)] px-8 sm:px-12 xl:px-16 py-6 sm:py-8 lg:py-10 flex flex-col justify-between relative overflow-hidden border-b lg:border-b-0 lg:border-r border-[#b8dcbf] h-full">
         
-        {/* Subtle Geometric Wireframe Leaf + Cloud Line Art Overlay (Shifted Closer to Card Boundary, Cloud 100% Visible) */}
-        <div className="absolute right-0 top-6 lg:top-10 w-[410px] h-[350px] pointer-events-none select-none opacity-50 text-[#33684a]">
-          <svg viewBox="0 0 380 320" fill="none" stroke="currentColor" strokeWidth="1.3" className="w-full h-full">
+        {/* Steel Sheen Specular Glare Highlights (Maintains #ebf6ee with Metallic Shine) */}
+        <div className="absolute inset-0 pointer-events-none select-none bg-[linear-gradient(115deg,transparent_20%,rgba(255,255,255,0.22)_35%,rgba(255,255,255,0.42)_42%,rgba(255,255,255,0.08)_50%,transparent_65%)]" />
+        <div className="absolute inset-0 pointer-events-none select-none bg-[radial-gradient(ellipse_80%_60%_at_65%_25%,rgba(255,255,255,0.4)_0%,rgba(255,255,255,0.12)_40%,transparent_70%)]" />
+
+        {/* Subtle Geometric Wireframe Leaf + Cloud Line Art Overlay (Shifted towards Right Card Boundary, Clear of Text) */}
+        <div className="absolute -right-2 lg:right-0 top-6 lg:top-10 w-[320px] sm:w-[350px] h-[310px] pointer-events-none select-none opacity-50 text-[#2f6645]">
+          <svg viewBox="0 0 320 300" fill="none" stroke="currentColor" strokeWidth="1.3" className="w-full h-full">
             {/* ═════════ 1. COMPLETE CLOUD ON LEFT (Background, 100% Fully Visible Even in Overlap) ═════════ */}
             <path 
-              d="M 151.4 100.2 C 147.7 81.2 131.0 67.0 111.0 67.0 C 95.1 67.0 81.3 76.0 74.4 89.2 C 57.9 91.0 45.0 105.0 45.0 122.0 C 45.0 140.2 59.8 155.0 78.0 155.0 L 149.5 155.0 C 164.7 155.0 177.0 142.7 177.0 127.5 C 177.0 113.0 165.7 101.2 151.4 100.2 Z" 
+              d="M 177.0 124.2 C 173.9 108.3 159.9 96.4 143.2 96.4 C 129.9 96.4 118.4 103.9 112.6 115.0 C 98.8 116.5 88.0 128.2 88.0 142.4 C 88.0 157.6 100.4 170.0 115.6 170.0 L 175.4 170.0 C 188.1 170.0 198.4 159.7 198.4 147.0 C 198.4 134.9 189.0 125.0 177.0 124.2 Z" 
               strokeWidth="1.4"
             />
             {/* Cloud Internal Tech Pulse Node */}
-            <path d="M 111 138 L 111 110 M 105 116 L 111 110 L 117 116" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" opacity="0.65" />
-            <circle cx="111" cy="138" r="2.2" fill="currentColor" opacity="0.8" />
+            <path d="M 143.2 155 L 143.2 130 M 138 135 L 143.2 130 L 148.4 135" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" opacity="0.65" />
+            <circle cx="143.2" cy="155" r="2.2" fill="currentColor" opacity="0.8" />
 
-            {/* ═════════ 2. TECH LEAF ON RIGHT (Pure Wireframe, Transparent Fill so Cloud Remains Fully Visible) ═════════ */}
+            {/* ═════════ 2. TECH LEAF ON RIGHT (Wireframe Overlapping Over Cloud, Zero Opaque Fill) ═════════ */}
             <path 
-              d="M 205 42 C 275 98 275 215 205 272 C 135 215 135 98 205 42 Z" 
+              d="M 215 40 C 275 95 275 210 215 265 C 155 210 155 95 215 40 Z" 
               strokeWidth="1.5"
             />
             
             {/* Central Leaf Stem */}
-            <path d="M 205 42 L 205 272" strokeWidth="1.4" />
+            <path d="M 215 40 L 215 265" strokeWidth="1.4" />
             
             {/* Vein Branch Lines */}
             {/* Pair 1 */}
-            <path d="M 205 88 L 180 73" strokeWidth="1.2" />
-            <path d="M 205 88 L 230 73" strokeWidth="1.2" />
+            <path d="M 215 84 L 194 70" strokeWidth="1.2" />
+            <path d="M 215 84 L 236 70" strokeWidth="1.2" />
 
             {/* Pair 2 */}
-            <path d="M 205 128 L 162 113" strokeWidth="1.2" />
-            <path d="M 205 128 L 248 113" strokeWidth="1.2" />
+            <path d="M 215 122 L 178 108" strokeWidth="1.2" />
+            <path d="M 215 122 L 252 108" strokeWidth="1.2" />
 
             {/* Pair 3 (Widest) */}
-            <path d="M 205 172 L 156 158" strokeWidth="1.2" />
-            <path d="M 205 172 L 254 158" strokeWidth="1.2" />
+            <path d="M 215 162 L 172 150" strokeWidth="1.2" />
+            <path d="M 215 162 L 258 150" strokeWidth="1.2" />
 
             {/* Pair 4 */}
-            <path d="M 205 215 L 162 202" strokeWidth="1.2" />
-            <path d="M 205 215 L 248 202" strokeWidth="1.2" />
+            <path d="M 215 204 L 178 192" strokeWidth="1.2" />
+            <path d="M 215 204 L 252 192" strokeWidth="1.2" />
 
             {/* Pair 5 */}
-            <path d="M 205 252 L 180 242" strokeWidth="1.2" />
-            <path d="M 205 252 L 230 242" strokeWidth="1.2" />
+            <path d="M 215 240 L 194 232" strokeWidth="1.2" />
+            <path d="M 215 240 L 236 232" strokeWidth="1.2" />
 
             {/* ═════════ TECH DOTS AT EVERY SINGLE LINE END (Terminal Nodes) ═════════ */}
             {/* Stem Terminals */}
-            <circle cx="205" cy="42" r="3" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="205" cy="272" r="3" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="215" cy="40" r="3" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="215" cy="265" r="3" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Vein Pair 1 Dots */}
-            <circle cx="180" cy="73" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="230" cy="73" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="194" cy="70" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="236" cy="70" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Vein Pair 2 Dots */}
-            <circle cx="162" cy="113" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="248" cy="113" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="178" cy="108" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="252" cy="108" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Vein Pair 3 Dots */}
-            <circle cx="156" cy="158" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="254" cy="158" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="172" cy="150" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="258" cy="150" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Vein Pair 4 Dots */}
-            <circle cx="162" cy="202" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="248" cy="202" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="178" cy="192" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="252" cy="192" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Vein Pair 5 Dots */}
-            <circle cx="180" cy="242" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
-            <circle cx="230" cy="242" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="194" cy="232" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
+            <circle cx="236" cy="232" r="2.8" fill="#10b981" stroke="currentColor" strokeWidth="0.9" />
 
             {/* Stem Junction Internal Circuit Nodes */}
-            <circle cx="205" cy="88" r="2" fill="currentColor" opacity="0.65" />
-            <circle cx="205" cy="128" r="2" fill="currentColor" opacity="0.65" />
-            <circle cx="205" cy="172" r="2" fill="currentColor" opacity="0.65" />
-            <circle cx="205" cy="215" r="2" fill="currentColor" opacity="0.65" />
-            <circle cx="205" cy="252" r="2" fill="currentColor" opacity="0.65" />
+            <circle cx="215" cy="84" r="2" fill="currentColor" opacity="0.65" />
+            <circle cx="215" cy="122" r="2" fill="currentColor" opacity="0.65" />
+            <circle cx="215" cy="162" r="2" fill="currentColor" opacity="0.65" />
+            <circle cx="215" cy="204" r="2" fill="currentColor" opacity="0.65" />
+            <circle cx="215" cy="240" r="2" fill="currentColor" opacity="0.65" />
           </svg>
         </div>
 
@@ -184,11 +188,11 @@ export default function Login() {
           {/* Cards & Badges Section: Expanded Width + Generous Gap between Cards */}
           <div className="w-full max-w-[540px] space-y-3.5">
             
-            {/* Twin Metric Cards with Generous Spacing */}
+            {/* Twin Metric Cards with Generous Spacing and Steel Sheen */}
             <div className="grid grid-cols-2 gap-4 sm:gap-5 w-full">
               
               {/* Metric Card 1: Carbon & Code Performance */}
-              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-[#d3e7d8] shadow-xs flex items-center justify-between hover:border-emerald-500/30 transition">
+              <div className="bg-[linear-gradient(145deg,#ffffff_0%,#f8fcf9_50%,#edf6f0_100%)] rounded-2xl p-4 sm:p-5 border border-white/90 shadow-[0_4px_16px_rgba(14,72,47,0.06),inset_0_1px_1px_rgba(255,255,255,0.95)] flex items-center justify-between hover:border-emerald-500/40 hover:shadow-[0_6px_20px_rgba(14,72,47,0.1),inset_0_1px_2px_rgba(255,255,255,1)] transition">
                 <div>
                   <div className="text-2xl sm:text-[28px] font-black text-[#0a291c] font-sans tracking-tight leading-none">
                     14.2
@@ -207,7 +211,7 @@ export default function Login() {
               </div>
 
               {/* Metric Card 2: Cloud Cost Savings */}
-              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-[#d3e7d8] shadow-xs flex items-center justify-between hover:border-emerald-500/30 transition">
+              <div className="bg-[linear-gradient(145deg,#ffffff_0%,#f8fcf9_50%,#edf6f0_100%)] rounded-2xl p-4 sm:p-5 border border-white/90 shadow-[0_4px_16px_rgba(14,72,47,0.06),inset_0_1px_1px_rgba(255,255,255,0.95)] flex items-center justify-between hover:border-emerald-500/40 hover:shadow-[0_6px_20px_rgba(14,72,47,0.1),inset_0_1px_2px_rgba(255,255,255,1)] transition">
                 <div>
                   <div className="text-2xl sm:text-[28px] font-black text-[#0a291c] font-sans tracking-tight leading-none">
                     -$340
@@ -231,13 +235,13 @@ export default function Login() {
             <div className="grid grid-cols-2 gap-4 sm:gap-5 w-full">
               
               {/* Badge 1: Code Side */}
-              <div className="bg-white/90 backdrop-blur-xs rounded-xl px-4 py-2.5 border border-[#d3e7d8] flex items-center gap-2 text-xs font-medium text-[#14422c]">
+              <div className="bg-[linear-gradient(145deg,rgba(255,255,255,0.95)_0%,rgba(240,248,243,0.85)_100%)] backdrop-blur-xs rounded-xl px-4 py-2.5 border border-white/80 shadow-[0_2px_8px_rgba(14,72,47,0.04),inset_0_1px_0_rgba(255,255,255,0.9)] flex items-center gap-2 text-xs font-medium text-[#14422c]">
                 <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />
                 <span className="truncate">Automated Code Fixes</span>
               </div>
 
               {/* Badge 2: Business & Monitoring Side */}
-              <div className="bg-white/90 backdrop-blur-xs rounded-xl px-4 py-2.5 border border-[#d3e7d8] flex items-center gap-2 text-xs font-medium text-[#14422c]">
+              <div className="bg-[linear-gradient(145deg,rgba(255,255,255,0.95)_0%,rgba(240,248,243,0.85)_100%)] backdrop-blur-xs rounded-xl px-4 py-2.5 border border-white/80 shadow-[0_2px_8px_rgba(14,72,47,0.04),inset_0_1px_0_rgba(255,255,255,0.9)] flex items-center gap-2 text-xs font-medium text-[#14422c]">
                 <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />
                 <span className="truncate">Continuous Cost Audits</span>
               </div>

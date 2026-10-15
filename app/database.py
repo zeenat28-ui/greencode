@@ -296,7 +296,7 @@ class Organization(Base):
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
 
-    users = relationship("User", back_populates="organization", lazy="selectin")
+    users = relationship("User", back_populates="organization", foreign_keys="User.org_id", lazy="selectin")
     repositories = relationship("Repository", back_populates="organization", lazy="selectin")
     audit_logs = relationship("AuditLog", back_populates="organization", lazy="selectin")
     teams = relationship("Team", back_populates="organization", cascade="all, delete-orphan", lazy="selectin")
@@ -552,7 +552,7 @@ class EnergyPolicy(Base):
         DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False
     )
 
-    organization = relationship("Organization")
+    organization = relationship("Organization")  # No FK to avoid ambiguity
 
 
 class User(Base):
@@ -582,7 +582,7 @@ class User(Base):
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
 
-    organization = relationship("Organization", back_populates="users")
+    organization = relationship("Organization", back_populates="users", foreign_keys="User.org_id")
     repositories = relationship(
         "Repository", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -1389,9 +1389,10 @@ def user_to_dict(user: Optional[User], include_sensitive: bool = False) -> Optio
         "username": user.username,
         "full_name": user.full_name or user.username,
         "github_username": user.github_username,
-        "github_token": None,
-        "has_github_token": False,
-        "github_token_masked": None,
+          "github_token": None,
+          "has_github_token": False,
+          "github_token_masked": None,
+
         "avatar_url": user.avatar_url,
         "role": user.role,
         "is_verified": getattr(user, "is_verified", False),
@@ -1762,36 +1763,44 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
 
         now_utc = datetime.now(timezone.utc)
         if user:
-            # ZERO-KNOWLEDGE: github_token is validated but NOT stored
-            user.github_token = None
-            user.github_username = gh_login
-            if avatar_url:
-                user.avatar_url = avatar_url
-            if full_name and not user.full_name:
-                user.full_name = full_name
-            user.last_login_at = now_utc
-            db.commit()
-            db.refresh(user)
-            return user_to_dict(user, include_sensitive=False)
+          # ZERO-KNOWLEDGE: github_token is validated but NOT stored
+          user.github_token = None
+          user.github_username = gh_login
+          if avatar_url:
+              user.avatar_url = avatar_url
+          if full_name and not user.full_name:
+              user.full_name = full_name
+          user.last_login_at = now_utc
+          db.commit()
+          db.refresh(user)
+          result = user_to_dict(user, include_sensitive=False)
+          result["has_github_token"] = True
+          result["github_token_masked"] = github_token[:4] + "****" + (github_token[-4:] if len(github_token) > 4 else "")
+          result["github_token"] = None
+          return result
         else:
-            random_pwd = os.urandom(16).hex()
-            user = User(
-                email=gh_email.lower(),
-                username=gh_login.lower(),
-                password_hash=hash_password(random_pwd),
-                full_name=full_name,
-                github_username=gh_login,
-                github_token=None,  # NEVER store GitHub token
-                avatar_url=avatar_url,
-                role="developer",
-                is_verified=True,  # GitHub-authenticated emails are pre-verified by GitHub
-                created_at=now_utc,
-                last_login_at=now_utc,
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-            return user_to_dict(user, include_sensitive=False)
+          random_pwd = os.urandom(16).hex()
+          user = User(
+              email=gh_email.lower(),
+              username=gh_login.lower(),
+              password_hash=hash_password(random_pwd),
+              full_name=full_name,
+              github_username=gh_login,
+              github_token=None,  # NEVER store GitHub token
+              avatar_url=avatar_url,
+              role="developer",
+              is_verified=True,  # GitHub-authenticated emails are pre-verified by GitHub
+              created_at=now_utc,
+              last_login_at=now_utc,
+          )
+          db.add(user)
+          db.commit()
+          db.refresh(user)
+          result = user_to_dict(user, include_sensitive=False)
+          result["has_github_token"] = True
+          result["github_token_masked"] = github_token[:4] + "****" + (github_token[-4:] if len(github_token) > 4 else "")
+          result["github_token"] = None
+          return result
     except Exception:
         db.rollback()
         raise

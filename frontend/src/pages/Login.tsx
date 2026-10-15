@@ -15,6 +15,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const performLogin = async (tokenCandidate: string) => {
     const trimmed = tokenCandidate.trim();
@@ -266,10 +267,10 @@ export default function Login() {
             {/* Header */}
             <div className="text-center mb-4 sm:mb-5">
               <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                Welcome back
+                {isSignUp ? 'Create an account' : 'Welcome back'}
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Please enter your details to sign in
+                {isSignUp ? 'Start optimizing code energy and cloud costs' : 'Please enter your details to sign in'}
               </p>
             </div>
 
@@ -291,7 +292,7 @@ export default function Login() {
                 className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-full border border-slate-300 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition shadow-2xs cursor-pointer"
               >
                 <Github size={14} className="text-slate-900" />
-                <span>Continue with GitHub</span>
+                <span>{isSignUp ? 'Sign up with GitHub' : 'Continue with GitHub'}</span>
               </button>
 
               {/* Google Button */}
@@ -306,7 +307,7 @@ export default function Login() {
                   <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 9.97 0 12s.45 3.83 1.25 5.42l4.03-3.15Z" />
                   <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z" />
                 </svg>
-                <span>Continue with Google</span>
+                <span>{isSignUp ? 'Sign up with Google' : 'Continue with Google'}</span>
               </button>
 
             </div>
@@ -315,7 +316,7 @@ export default function Login() {
             <div className="relative flex py-0.5 items-center mb-3">
               <div className="flex-grow border-t border-slate-200"></div>
               <span className="shrink-0 mx-3 text-[11px] text-slate-400 font-normal">
-                or sign in with email
+                {isSignUp ? 'or register with email' : 'or sign in with email'}
               </span>
               <div className="flex-grow border-t border-slate-200"></div>
             </div>
@@ -343,14 +344,16 @@ export default function Login() {
                   <label className="block text-xs font-semibold text-slate-700">
                     Password
                   </label>
-                  <a
-                    href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=GreenCode"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] text-slate-500 hover:text-slate-800 transition"
-                  >
-                    Forgot password?
-                  </a>
+                  {!isSignUp && (
+                    <a
+                      href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=GreenCode"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-slate-500 hover:text-slate-800 transition"
+                    >
+                      Forgot password?
+                    </a>
+                  )}
                 </div>
                 
                 <div className="relative">
@@ -373,7 +376,7 @@ export default function Login() {
                 </div>
               </div>
 
-              {/* Primary Sign In Button */}
+              {/* Primary Action Button */}
               <button
                 type="submit"
                 disabled={loading}
@@ -382,14 +385,14 @@ export default function Login() {
                 {loading ? (
                   <Loader2 size={15} className="animate-spin text-white" />
                 ) : (
-                  <span>Sign In</span>
+                  <span>{isSignUp ? 'Create Account' : 'Sign In'}</span>
                 )}
               </button>
 
             </form>
 
             {/* Single Sign-On (SSO) */}
-            <div className="text-center mt-3">
+            <div className="text-center mt-2.5">
               <button
                 type="button"
                 onClick={handleSSO}
@@ -397,6 +400,23 @@ export default function Login() {
               >
                 Single Sign-On (SSO)
               </button>
+            </div>
+
+            {/* Toggle between Sign In and Sign Up */}
+            <div className="text-center mt-2.5 pt-2.5 border-t border-slate-100">
+              <p className="text-xs text-slate-500 font-normal">
+                {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp(!isSignUp);
+                    setError(null);
+                  }}
+                  className="font-semibold text-emerald-800 hover:text-emerald-950 underline underline-offset-2 transition cursor-pointer"
+                >
+                  {isSignUp ? 'Sign in' : 'Sign up'}
+                </button>
+              </p>
             </div>
 
           </div>

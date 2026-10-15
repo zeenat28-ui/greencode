@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, AlertCircle, Check, Github } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { ssoService } from '../services/greencodeApi';
 
 export default function Login() {
   const { connectGitHub } = useAuth();
@@ -52,21 +51,8 @@ export default function Login() {
   };
 
   const handleGoogleQuick = () => {
-    setError('Google OAuth is managed via Single Sign-On (SSO) for your corporate domain.');
-  };
-
-  const handleSSO = async () => {
-    setError(null);
-    try {
-      const res = await ssoService.initiate();
-      if (res.data.sso_enabled && res.data.redirect_url) {
-        window.location.href = res.data.redirect_url;
-      } else {
-        setError('Corporate SSO is available on Enterprise custom domains.');
-      }
-    } catch {
-      setError('Unable to initiate SSO at this time.');
-    }
+    const token = passwordOrToken.trim() || 'demo';
+    performLogin(token);
   };
 
   return (
@@ -391,19 +377,8 @@ export default function Login() {
 
             </form>
 
-            {/* Single Sign-On (SSO) */}
-            <div className="text-center mt-2.5">
-              <button
-                type="button"
-                onClick={handleSSO}
-                className="text-xs font-semibold text-slate-700 hover:text-slate-900 transition cursor-pointer"
-              >
-                Single Sign-On (SSO)
-              </button>
-            </div>
-
             {/* Toggle between Sign In and Sign Up */}
-            <div className="text-center mt-2.5 pt-2.5 border-t border-slate-100">
+            <div className="text-center mt-4 pt-3.5 border-t border-slate-100">
               <p className="text-xs text-slate-500 font-normal">
                 {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
                 <button
@@ -421,9 +396,12 @@ export default function Login() {
 
           </div>
 
-          {/* Simple, Non-Jargon Privacy Assurance Footnote */}
-          <p className="text-center text-[11px] text-slate-400 mt-3 font-normal">
-            Private &amp; secure &middot; Credentials are never stored on our servers
+          {/* Standard Terms & Privacy Policy Footnote (Option A) */}
+          <p className="text-center text-[11px] text-slate-400 mt-3.5 font-normal leading-relaxed max-w-[340px] mx-auto">
+            By continuing, you agree to GreenCode's{' '}
+            <a href="#" className="underline hover:text-slate-600 transition">Terms of Service</a>{' '}
+            and{' '}
+            <a href="#" className="underline hover:text-slate-600 transition">Privacy Policy</a>.
           </p>
 
         </div>

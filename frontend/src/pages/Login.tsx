@@ -77,27 +77,22 @@ export default function Login() {
       {/* ════════════════════════ LEFT HERO PANE (Mint Green #ebf6ee) ════════════════════════ */}
       <div className="lg:w-1/2 bg-[#ebf6ee] px-8 sm:px-12 xl:px-16 py-6 sm:py-8 lg:py-10 flex flex-col justify-between relative overflow-hidden border-b lg:border-b-0 lg:border-r border-[#d8ecdd] h-full">
         
-        {/* Subtle Geometric Wireframe Leaf + Cloud Line Art Overlay (Cloud on Left, Leaf on Right Overlapping) */}
-        <div className="absolute right-0 -top-6 lg:-top-2 w-[390px] h-[340px] pointer-events-none select-none opacity-45 text-[#376e4e]">
+        {/* Subtle Geometric Wireframe Leaf + Cloud Line Art Overlay (Shifted Closer to Card Boundary, Cloud 100% Visible) */}
+        <div className="absolute right-0 top-6 lg:top-10 w-[410px] h-[350px] pointer-events-none select-none opacity-50 text-[#33684a]">
           <svg viewBox="0 0 380 320" fill="none" stroke="currentColor" strokeWidth="1.3" className="w-full h-full">
-            {/* ═════════ 1. COMPLETE CLOUD ON LEFT (Background) ═════════ */}
+            {/* ═════════ 1. COMPLETE CLOUD ON LEFT (Background, 100% Fully Visible Even in Overlap) ═════════ */}
             <path 
               d="M 151.4 100.2 C 147.7 81.2 131.0 67.0 111.0 67.0 C 95.1 67.0 81.3 76.0 74.4 89.2 C 57.9 91.0 45.0 105.0 45.0 122.0 C 45.0 140.2 59.8 155.0 78.0 155.0 L 149.5 155.0 C 164.7 155.0 177.0 142.7 177.0 127.5 C 177.0 113.0 165.7 101.2 151.4 100.2 Z" 
               strokeWidth="1.4"
-              fill="currentColor"
-              fillOpacity="0.04"
             />
             {/* Cloud Internal Tech Pulse Node */}
             <path d="M 111 138 L 111 110 M 105 116 L 111 110 L 117 116" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" opacity="0.65" />
             <circle cx="111" cy="138" r="2.2" fill="currentColor" opacity="0.8" />
 
-            {/* ═════════ 2. TECH LEAF ON RIGHT (In Front, Slightly Overlapping Over Cloud) ═════════ */}
-            {/* Leaf Outer Contour with mint fill to cleanly layer over cloud */}
+            {/* ═════════ 2. TECH LEAF ON RIGHT (Pure Wireframe, Transparent Fill so Cloud Remains Fully Visible) ═════════ */}
             <path 
               d="M 205 42 C 275 98 275 215 205 272 C 135 215 135 98 205 42 Z" 
               strokeWidth="1.5"
-              fill="#ebf6ee"
-              fillOpacity="0.92"
             />
             
             {/* Central Leaf Stem */}
@@ -177,8 +172,9 @@ export default function Login() {
           
           {/* Headline & Clear Value-Driven Body Text */}
           <div className="max-w-[540px] mb-5 sm:mb-6">
-            <h1 className="text-3xl sm:text-4xl lg:text-[42px] font-black text-[#0a291c] tracking-tight leading-[1.12] mb-3">
-              Build greener<br />run leaner
+            <h1 className="text-4xl sm:text-[46px] lg:text-[50px] font-black text-[#0a291c] tracking-tight mb-4 flex flex-col gap-1.5 sm:gap-2 leading-none">
+              <span>BUILD GREENER</span>
+              <span>RUN LEANER</span>
             </h1>
             <p className="text-xs sm:text-sm text-[#2c4e3e] leading-relaxed font-normal max-w-[480px]">
               Measure real code energy, eliminate cloud compute waste, and automate green optimizations in your CI/CD pipeline.

@@ -367,8 +367,8 @@ export default function Login() {
   return (
     <div className="h-screen max-h-screen w-screen overflow-hidden flex flex-col lg:flex-row bg-[#fbfcfa] font-sans text-slate-900 select-none">
 
-      {/* ════════════════════════ LEFT HERO PANE ════════════════════════ */}
-      <div className="lg:w-1/2 bg-[linear-gradient(135deg,#e5f3e8_0%,#edf7f1_20%,#ffffff_38%,#dceddf_46%,#f4faf6_65%,#e8f4ec_85%,#edf7f0_100%)] shadow-[inset_0_1px_2px_0_rgba(255,255,255,0.95),inset_0_-1px_1px_0_rgba(14,72,47,0.08),inset_-1px_0_0_0_rgba(255,255,255,0.7)] px-8 sm:px-12 xl:px-16 py-6 sm:py-8 lg:py-10 flex flex-col justify-between relative overflow-hidden border-b lg:border-b-0 lg:border-r border-[#b8dcbf] h-full">
+      {/* ════════════════════════ LEFT HERO PANE (Vibrant Mint Green with Steel Shine) ════════════════════════ */}
+      <div className="lg:w-1/2 bg-[linear-gradient(135deg,#c3eed0_0%,#d8f5e2_20%,#f0fcf5_38%,#b6e8c5_50%,#e4f9ec_70%,#c8f0d5_100%)] shadow-[inset_0_1px_2px_0_rgba(255,255,255,0.95),inset_0_-1px_1px_0_rgba(14,72,47,0.08),inset_-1px_0_0_0_rgba(255,255,255,0.7)] px-8 sm:px-12 xl:px-16 py-6 sm:py-8 lg:py-10 flex flex-col justify-between relative overflow-hidden border-b lg:border-b-0 lg:border-r border-[#9dd9aa] h-full">
 
         {/* Steel Sheen Specular Highlights */}
         <div className="absolute inset-0 pointer-events-none select-none bg-[linear-gradient(115deg,transparent_20%,rgba(255,255,255,0.22)_35%,rgba(255,255,255,0.42)_42%,rgba(255,255,255,0.08)_50%,transparent_65%)]" />
@@ -471,14 +471,14 @@ export default function Login() {
 
       {/* ════════════════════════ RIGHT LOGIN CARD PANE ════════════════════════ */}
       <div className="lg:w-1/2 bg-[#fcfdfc] px-6 py-4 sm:py-6 flex items-center justify-center relative h-full overflow-hidden">
-        <div className="w-full max-w-[380px]">
+        <div className="w-full max-w-[380px] translate-y-2 sm:translate-y-3">
 
           {/* Main Card */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-lg shadow-slate-900/5 p-5 sm:p-6">
 
             {/* Header */}
             <div className="text-center mb-3 sm:mb-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+              <h2 className="text-lg sm:text-[20px] font-bold text-slate-900 tracking-tight">
                 {isSignUp ? 'Create an account' : 'Welcome back'}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">

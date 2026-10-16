@@ -9,10 +9,16 @@ htmlcov/
 
 # Secrets and Local Configurations
 .env
+.env.*
 .env.local
+frontend/.env
+frontend/.env.*
+*.env
 *.pem
 *.key
 *.cert
+!.env.example
+!.env.frontend.example
 
 # Node / Frontend Artifacts
 node_modules/

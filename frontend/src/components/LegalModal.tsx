@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, FileText, Download, CheckCircle2, ChevronRight, Scale } from 'lucide-react';
+import { X, ShieldCheck, FileText, Download, CheckCircle2, Scale, ExternalLink } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface LegalModalProps {
   isOpen: boolean;
@@ -29,7 +30,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'terms' }: Le
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-100/70 border border-emerald-200 flex items-center justify-center text-emerald-800">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100/70 border border-emerald-200 flex items-center justify-center text-emerald-800 shrink-0">
               <Scale size={18} />
             </div>
             <div>
@@ -37,7 +38,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'terms' }: Le
                 GreenCode Legal & Compliance Portal
               </h3>
               <p className="text-xs text-slate-500">
-                Global Standards: ISO 14064 · GHG Protocol · GSF SCI v1.0 · SOC 2 · GDPR/CCPA
+                Global Enterprise Standards: ISO 14064 · GSF SCI v1.0 · SOC 2 · GDPR / CCPA
               </p>
             </div>
           </div>
@@ -74,9 +75,9 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'terms' }: Le
             }`}
           >
             <FileText size={14} />
-            <span>Terms of Service</span>
+            <span>Master Services Agreement (Terms)</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono">
-              v2.4
+              v3.0
             </span>
           </button>
           
@@ -90,7 +91,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'terms' }: Le
             }`}
           >
             <ShieldCheck size={14} />
-            <span>Privacy Policy</span>
+            <span>Global Privacy Policy</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-mono">
               Zero-Retention
             </span>
@@ -103,165 +104,174 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'terms' }: Le
           {activeTab === 'terms' ? (
             <div className="space-y-6 animate-in fade-in duration-150">
               
-              <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-4 text-xs text-emerald-950 flex items-start gap-3">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-950 flex items-start gap-3">
                 <CheckCircle2 size={16} className="text-emerald-700 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="font-semibold text-emerald-900">Zero-Retention Code Architecture: </strong>
-                  GreenCode processes your source code and AST representations ephemerally in volatile memory. Customer source code is never retained on disk or used to train public machine learning foundation models.
+                  <strong className="font-semibold text-emerald-900">Enterprise Zero-Code Retention Covenant: </strong>
+                  GreenCode processes your source code and Abstract Syntax Tree (AST) representations exclusively in volatile, ephemeral container memory (RAM). Customer source code is never written to persistent disk storage, never retained in databases, and never used to train or fine-tune public or commercial machine learning foundation models.
                 </div>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">1. Acceptance of Terms & Enterprise Authority</h4>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">Preamble & Binding Legal Authority</h4>
                 <p>
-                  These Terms of Service ("Agreement") govern your access to and use of the GreenCode platform, APIs, dynamic execution profiler, and command-line interfaces operated by GreenCode Technologies Inc. ("GreenCode", "we", "us", or "our"). By authenticating via email, GitHub, Google, or Enterprise Single Sign-On (SSO), you agree to be bound by these terms on behalf of yourself and the organization you represent.
+                  This Master Services Agreement ("Agreement") is entered into by and between GreenCode Technologies Inc. ("GreenCode", "Provider", "we", "us", or "our") and the corporate legal entity or individual accessing or using the Services ("Customer", "User", "you", or "your"). By authenticating, executing an Order Form, or accessing the Services, you agree to be bound by this Agreement.
                 </p>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">2. Description of GreenCode Services</h4>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">1. Defined Terms</h4>
+                <ul className="list-disc pl-5 space-y-1 text-slate-600">
+                  <li><strong>"Authorized User"</strong> means Customer's employees, contractors, and agents authorized to access the Services under Customer's credentials.</li>
+                  <li><strong>"Customer Data"</strong> means electronic metadata, repository references, configurations, and logs submitted to the Services, excluding Source Materials.</li>
+                  <li><strong>"Source Materials"</strong> means source code, abstract syntax trees (ASTs), commit differentials, and scripts temporarily evaluated for computational energy profiling.</li>
+                  <li><strong>"Derived Telemetry"</strong> means aggregated, non-reconstructible computational benchmarks, energy consumption ratings (in Joules/Watt-hours), and Software Carbon Intensity (SCI) scores.</li>
+                  <li><strong>"Service Level Objective (SLO)"</strong> means Provider's commitment of 99.9% monthly platform availability across core API ingestion endpoints.</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">2. License Grant & Provision of Services</h4>
+                <p>
+                  GreenCode grants Customer a non-exclusive, non-transferable, non-sublicensable, worldwide right and license during the active Subscription Term to access and utilize the Services solely for Customer's internal engineering, code quality benchmarking, cloud infrastructure optimization, and carbon emissions auditing.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">3. Intellectual Property Rights & Zero-Code Retention Covenant</h4>
                 <p className="mb-2">
-                  GreenCode delivers an enterprise-grade Green Software Engineering platform that measures, benchmarks, and optimizes the computational energy consumption and carbon intensity of software workloads. Core capabilities include:
+                  Customer retains all right, title, and interest in and to Customer's Source Materials, repositories, and Customer Data. Provider expressly covenants and warrants that:
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-slate-600">
-                  <li><strong>Static AST Energy Audits:</strong> Multi-language static syntax analysis identifying algorithmic inefficiencies, redundant compute cycles, non-vectorized operations, and wasteful network round-trips.</li>
-                  <li><strong>Dynamic RAPL Sandboxed Profiling:</strong> Empirical hardware execution measurement via Running Average Power Limit (RAPL) energy counters and Linux kernel telemetry within isolated sandboxes.</li>
-                  <li><strong>Software Carbon Intensity (SCI) Calculation:</strong> Operational and embodied emissions quantification adhering to the Green Software Foundation SCI Specification (ISO/IEC standard track).</li>
-                  <li><strong>Cloud Telemetry Integration:</strong> Carbon footprint accounting across AWS, Azure, and Google Cloud workloads using read-only least-privilege telemetry scopes.</li>
+                  <li>All AST parsing, static analysis, and dynamic RAPL energy quantification are executed strictly in volatile ephemeral container memory (RAM).</li>
+                  <li>Upon completion of the analytical session, all memory buffers containing Source Materials are immediately destroyed and unmapped.</li>
+                  <li>Source Materials are <strong>never</strong> written to non-volatile disk storage, object stores, or persistent databases.</li>
+                  <li>Source Materials will <strong>never</strong> be used to train or fine-tune public or commercial AI models or LLMs.</li>
                 </ul>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">3. Intellectual Property & Zero Code Retention</h4>
-                <p>
-                  You retain all right, title, and interest in and to your source code, repositories, and build artifacts. GreenCode asserts zero ownership over customer code. All code analysis occurs ephemerally in isolated volatile sandboxes. Once the analysis completes and the audit summary metrics are delivered, code buffers are purged. We never store raw code in our database, nor do we disclose customer intellectual property to third parties or use it to train public AI models.
-                </p>
-              </div>
-
-              <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">4. User Authentication & Token Custody</h4>
-                <p>
-                  Users must maintain the confidentiality of their credentials. When providing GitHub Personal Access Tokens (PATs) or cloud API keys, tokens are stored solely in your browser's runtime memory session under our Zero-Knowledge security architecture and forwarded via encrypted TLS headers per request. The GreenCode server does not persist your third-party provider access tokens in persistent relational storage.
-                </p>
-              </div>
-
-              <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">5. Acceptable Use Policy</h4>
-                <p className="mb-2">You agree not to:</p>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">4. Acceptable Use Policy & Restrictions</h4>
+                <p className="mb-1">Customer shall not, and shall ensure Authorized Users do not:</p>
                 <ul className="list-disc pl-5 space-y-1 text-slate-600">
-                  <li>Attempt to compromise the security, container isolation, or sandboxing mechanisms of the runtime execution profiler.</li>
-                  <li>Submit malicious code, ransomware, or cryptocurrency mining payloads to execution queues.</li>
-                  <li>Use GreenCode's calculation models to generate intentionally deceptive or misleading ESG/sustainability disclosures.</li>
-                  <li>Reverse engineer, decompile, or disassemble proprietary AST optimization algorithms or SCI calculation engines.</li>
+                  <li>Sublicense, resell, or distribute the Services to unauthorized third parties;</li>
+                  <li>Reverse engineer, decompile, or disassemble proprietary platform bytecode or binaries;</li>
+                  <li>Circumvent security controls, sandboxing isolation boundaries, or rate limits;</li>
+                  <li>Submit malicious code, worms, trojan horses, or cryptocurrency mining scripts;</li>
+                  <li>Utilize GreenCode calculation models to produce knowingly fraudulent or misleading ESG disclosures.</li>
                 </ul>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">6. Carbon Accounting Disclaimers</h4>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">5. Zero-Knowledge Credential Custody</h4>
                 <p>
-                  Carbon emission estimates and SCI scores are calculated based on peer-reviewed Green Software Foundation standards, the GHG Protocol Corporate Standard, and regional grid carbon intensity datasets (e.g., WattTime, ElectricityMaps). While GreenCode strives for high scientific precision, estimations depend on cloud vendor operational transparency and grid reporting frequencies. GreenCode carbon scores are provided "as is" for operational engineering and sustainability optimization.
+                  When providing GitHub Personal Access Tokens (PATs) or cloud provider API credentials, such credentials remain strictly in client browser session memory under our Zero-Knowledge security architecture and are transmitted via TLS-encrypted HTTPS headers per request. The GreenCode relational database does not store unencrypted customer API secret keys.
                 </p>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">7. Limitation of Liability</h4>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">6. Scientific Standards & Carbon Accounting Disclaimers</h4>
                 <p>
-                  To the maximum extent permitted by applicable law, GreenCode and its suppliers shall not be liable for any indirect, incidental, punitive, or consequential damages, including loss of profits, data corruption, or downtime. GreenCode's aggregate liability under this agreement shall not exceed the total fees paid by you to GreenCode in the twelve (12) months preceding the claim.
+                  GreenCode calculates energy and carbon metrics adhering to the Green Software Foundation Software Carbon Intensity (GSF SCI v1.0) Specification, ISO/IEC standards track, and the GHG Protocol Corporate Standard. Calculations represent mathematical modeling based on hardware counters and regional grid factors, provided for operational optimization and not statutory financial audit certifications.
                 </p>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">8. Termination & Workspace Purge</h4>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">7. Mutual Indemnification & Limitation of Liability</h4>
                 <p>
-                  You may terminate your account at any time via Settings. Upon termination, all tenant configurations, carbon budgets, policies, and audit logs are queued for permanent cryptographic erasure in accordance with SOC 2 Type II retention cycles.
+                  To the maximum extent permitted by applicable law, neither party shall be liable for indirect, incidental, or consequential damages (including lost profits or business downtime). Each party's aggregate liability under this agreement shall not exceed the total fees paid by Customer to GreenCode in the twelve (12) months preceding the claim.
                 </p>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 text-xs text-slate-400">
-                Last updated: October 2026 · GreenCode Technologies Inc. Legal & Compliance Division
+              <div>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">8. Governing Law & Jurisdiction</h4>
+                <p>
+                  This Agreement shall be governed by and construed in accordance with the laws of the State of Delaware, United States, without regard to conflict of law principles. The parties consent to exclusive jurisdiction and venue in the courts located in New Castle County, Delaware.
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                <span>Version 3.0 · Last updated: October 2026 · GreenCode Technologies Inc.</span>
+                <Link to="/terms" target="_blank" className="text-emerald-800 hover:underline inline-flex items-center gap-1 font-semibold">
+                  <span>Open standalone page</span>
+                  <ExternalLink size={12} />
+                </Link>
               </div>
 
             </div>
           ) : (
             <div className="space-y-6 animate-in fade-in duration-150">
               
-              <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-4 text-xs text-emerald-950 flex items-start gap-3">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-950 flex items-start gap-3">
                 <ShieldCheck size={16} className="text-emerald-700 shrink-0 mt-0.5" />
                 <div>
                   <strong className="font-semibold text-emerald-900">GDPR & CCPA/CPRA Compliance Guarantee: </strong>
-                  We adhere to strict data minimization principles. We do not sell your personal information, monetize usage data, or share developer telemetry with data brokers.
+                  We adhere to strict data minimization principles. We do not sell your personal information, monetize usage data, or share developer telemetry with data brokers or advertising exchanges.
                 </div>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">1. Data Controller & Scope</h4>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">1. Data Controller & Data Protection Officer</h4>
                 <p>
-                  This Privacy Policy outlines how GreenCode Technologies Inc. ("GreenCode") collects, processes, and protects personal information through our platform, developer portal, and APIs. GreenCode acts as the Data Controller for account management data, and as a Data Processor regarding enterprise customer team configurations.
+                  GreenCode Technologies Inc. acts as a Data Controller for user accounts and corporate subscriptions, and as a Data Processor regarding enterprise organization team configurations. Inquiries or Data Subject Access Requests (DSAR) may be directed to our Data Protection Office at: <a href="mailto:dpo@greencode.io" className="text-emerald-800 underline font-medium">dpo@greencode.io</a>.
                 </p>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">2. Information We Collect</h4>
-                <p className="mb-2">We collect only information essential to providing the service:</p>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">2. Categories of Personal Data Collected</h4>
                 <ul className="list-disc pl-5 space-y-1 text-slate-600">
-                  <li><strong>Account Identity:</strong> Email address, username, full name, encrypted password hash (bcrypt with salted rounds), and organization affiliation.</li>
-                  <li><strong>OAuth Identity:</strong> GitHub or Google public user ID, username, and public avatar URL when signing in via social or SSO identity providers.</li>
-                  <li><strong>Security & Operational Telemetry:</strong> IP addresses, browser user-agent, session timestamps, and cryptographic audit logs recorded for SOC 2 Type II compliance.</li>
-                  <li><strong>Audit Metadata:</strong> Repository names, branch names, commit hashes, green scores, and SCI numerical indicators. (Source code contents are never stored).</li>
+                  <li><strong>Account Identity:</strong> Business email, full name, organization name, encrypted password hash (bcrypt with 12 salted rounds), and multi-factor authentication metadata.</li>
+                  <li><strong>OAuth Identity:</strong> Public user ID, username, and public avatar URL from GitHub or Google Cloud Identity.</li>
+                  <li><strong>Operational Telemetry:</strong> IP addresses, browser user-agents, cryptographic session tokens, and access logs recorded for SOC 2 Type II audit compliance.</li>
+                  <li><strong>Derived Metrics:</strong> Repository names, branch names, commit hashes, green scores, and SCI numerical indicators. (Customer source code is never stored).</li>
                 </ul>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">3. Zero-Knowledge Token & Code Privacy</h4>
-                <p>
-                  GreenCode employs a Zero-Knowledge architecture for external repository credentials. GitHub Personal Access Tokens and cloud credentials are kept exclusively in volatile browser session memory and transmitted via TLS-encrypted HTTPS headers. Our database never stores customer GitHub PATs. Repository code extracted during automated audits is processed in ephemeral memory and discarded upon completion of the AST analysis.
-                </p>
-              </div>
-
-              <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">4. Legal Bases for Processing (GDPR Article 6)</h4>
-                <p className="mb-2">We process personal data under the following lawful bases:</p>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">3. Lawful Bases for Processing (GDPR Art. 6)</h4>
                 <ul className="list-disc pl-5 space-y-1 text-slate-600">
-                  <li><strong>Contractual Necessity (Art. 6(1)(b)):</strong> To provide, operate, and maintain your GreenCode account and deliver carbon calculation metrics.</li>
-                  <li><strong>Legitimate Interests (Art. 6(1)(f)):</strong> To safeguard infrastructure against abuse, enforce rate limits, and ensure network security.</li>
-                  <li><strong>Legal Obligation (Art. 6(1)(c)):</strong> To maintain audit ledgers and compliance records required under financial, corporate governance, and data protection statutes.</li>
+                  <li><strong>Contractual Necessity (Art. 6(1)(b)):</strong> To operate, provision, and maintain your account and deliver computational energy analytics.</li>
+                  <li><strong>Legitimate Interests (Art. 6(1)(f)):</strong> To safeguard infrastructure against abuse, DDoS attacks, and enforce rate limits.</li>
+                  <li><strong>Legal Obligation (Art. 6(1)(c)):</strong> To maintain audit ledgers and compliance records required by law.</li>
                 </ul>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">5. Data Retention & Erasure Schedule</h4>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">4. Zero-Code Retention & Memory-Only Processing</h4>
                 <p>
-                  Account credentials and organization records are retained for the duration of your active subscription. Access tokens expire after 15 minutes. Refresh tokens expire after 7 days and undergo cryptographic rotation on each use. If an account is deleted, all associated personal identifiers and audit records are hard-purged within 30 days.
+                  Repository code extracted during energy audits is processed exclusively in volatile container RAM and permanently purged upon completion of the AST evaluation. Customer source code is never written to non-volatile disk storage, object stores, or relational databases, and is never used to train machine learning models.
                 </p>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">6. Your Rights under GDPR, CCPA & Global Regulations</h4>
-                <p className="mb-2">Regardless of your geographic location, GreenCode grants you full data autonomy:</p>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">5. Technical & Organizational Measures (TOMs)</h4>
                 <ul className="list-disc pl-5 space-y-1 text-slate-600">
-                  <li><strong>Right to Access & Portability:</strong> Request an export of your account profile and associated telemetry in JSON format.</li>
-                  <li><strong>Right to Rectification:</strong> Update or correct your profile details anytime in the Settings view.</li>
-                  <li><strong>Right to Erasure ("Right to Be Forgotten"):</strong> Request immediate and irreversible deletion of your account and personal records.</li>
-                  <li><strong>Right to Restrict or Object:</strong> Restrict processing or opt-out of non-essential communications.</li>
+                  <li><strong>In-Transit:</strong> TLS 1.3 encryption with Perfect Forward Secrecy and HSTS enforcement.</li>
+                  <li><strong>At-Rest:</strong> AES-256 standard encryption for relational tables and sensitive configuration secrets.</li>
+                  <li><strong>Access Controls:</strong> Role-Based Access Controls (RBAC), multi-factor hardware keys, and continuous SOC 2 vulnerability assessments.</li>
                 </ul>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">7. Security Controls & Encryption at Rest</h4>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">6. Data Retention & Erasure Schedule</h4>
                 <p>
-                  GreenCode implements defense-in-depth security including TLS 1.3 encryption in transit, Fernet AES-128/256 encryption at rest for sensitive configuration tables, role-based access control (RBAC), and strict network segmentation.
+                  Session tokens expire after 15 minutes. Refresh tokens expire after 7 days with mandatory rotation. Audit logs are retained for 90 days for SOC 2 security review. Upon account termination, all associated personal identifiers are hard-purged within thirty (30) days.
                 </p>
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-2">8. Contact Information & Data Protection Officer</h4>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">7. Your Rights under GDPR & California CCPA/CPRA</h4>
                 <p>
-                  For privacy inquiries, Data Subject Access Requests (DSAR), or compliance audits, contact our Data Protection Office at: <a href="mailto:privacy@greencode.io" className="text-emerald-800 underline font-medium">privacy@greencode.io</a>.
+                  You hold full rights of Access, Rectification, Erasure ("Right to Be Forgotten"), Restriction, Objection, and Data Portability. California residents may exercise CCPA rights without discrimination. GreenCode does not sell, rent, or share personal data. Submit DSAR inquiries to <a href="mailto:privacy@greencode.io" className="text-emerald-800 underline font-medium">privacy@greencode.io</a>.
                 </p>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 text-xs text-slate-400">
-                Last updated: October 2026 · GreenCode Technologies Inc. Data Protection Office
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                <span>Version 3.0 · Last updated: October 2026 · GreenCode Technologies Inc.</span>
+                <Link to="/privacy" target="_blank" className="text-emerald-800 hover:underline inline-flex items-center gap-1 font-semibold">
+                  <span>Open standalone page</span>
+                  <ExternalLink size={12} />
+                </Link>
               </div>
 
             </div>
@@ -290,4 +300,3 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'terms' }: Le
     </div>
   );
 }
-

@@ -524,14 +524,20 @@ export default function Login() {
         <div className="w-full max-w-[380px] translate-y-2 sm:translate-y-3 relative z-10">
 
           {/* Main Card with Distinct Elevated 4-Sided Glow */}
-          <div className="bg-white rounded-2xl border border-white shadow-[0_0_0_1px_rgba(255,255,255,0.25),0_0_28px_rgba(255,255,255,0.22),0_0_65px_rgba(255,255,255,0.1),0_20px_45px_rgba(0,0,0,0.85)] p-5 sm:p-6">
+          <div 
+            className="!bg-white rounded-2xl border border-white shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_28px_rgba(255,255,255,0.24),0_0_65px_rgba(255,255,255,0.12),0_20px_45px_rgba(0,0,0,0.85)] p-5 sm:p-6 !text-slate-900"
+            style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+          >
 
             {/* Header */}
             <div className="text-center mb-3 sm:mb-4">
-              <h2 className="text-sm sm:text-[15px] font-bold text-slate-900 tracking-tight">
+              <h2 
+                className="text-sm sm:text-[15px] font-bold !text-slate-900 tracking-tight"
+                style={{ color: '#0f172a' }}
+              >
                 {isSignUp ? 'Create an account' : 'Welcome back'}
               </h2>
-              <p className="text-[11px] text-slate-500 mt-0.5">
+              <p className="text-[11px] !text-slate-500 mt-0.5" style={{ color: '#64748b' }}>
                 {isSignUp ? 'Start optimizing code energy and cloud costs' : 'Please enter your details to sign in'}
               </p>
             </div>
@@ -552,7 +558,8 @@ export default function Login() {
                 type="button"
                 onClick={handleGitHubQuick}
                 disabled={loading || githubLoading || googleLoading}
-                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-full border border-slate-300 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition shadow-2xs cursor-pointer disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-full border border-slate-300 text-xs font-semibold !text-slate-700 !bg-white hover:!bg-slate-50 transition shadow-2xs cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: '#ffffff', color: '#334155' }}
               >
                 {githubLoading ? (
                   <Loader2 size={14} className="animate-spin text-slate-700" />
@@ -568,7 +575,8 @@ export default function Login() {
                 type="button"
                 onClick={handleGoogleQuick}
                 disabled={loading || githubLoading || googleLoading}
-                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-full border border-slate-300 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition shadow-2xs cursor-pointer disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-full border border-slate-300 text-xs font-semibold !text-slate-700 !bg-white hover:!bg-slate-50 transition shadow-2xs cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: '#ffffff', color: '#334155' }}
               >
                 {googleLoading ? (
                   <Loader2 size={14} className="animate-spin text-slate-700" />
@@ -588,7 +596,7 @@ export default function Login() {
             {/* Divider */}
             <div className="relative flex py-0.5 items-center mb-2.5">
               <div className="flex-grow border-t border-slate-200" />
-              <span className="shrink-0 mx-3 text-[11px] text-slate-400 font-normal">
+              <span className="shrink-0 mx-3 text-[11px] !text-slate-400 font-normal" style={{ color: '#94a3b8' }}>
                 {isSignUp ? 'or register with email' : 'or sign in with email'}
               </span>
               <div className="flex-grow border-t border-slate-200" />
@@ -599,32 +607,34 @@ export default function Login() {
 
               {isSignUp && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+                  <label className="block text-xs font-semibold !text-slate-700 mb-1" style={{ color: '#334155' }}>Full Name</label>
                   <input
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Sarah Connor"
-                    className="w-full px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition shadow-2xs"
+                    className="w-full px-3 py-1.5 sm:py-2 text-xs sm:text-sm !text-slate-800 !bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition shadow-2xs placeholder:text-slate-400"
+                    style={{ backgroundColor: '#ffffff', color: '#1e293b' }}
                   />
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Email</label>
+                <label className="block text-xs font-semibold !text-slate-700 mb-1" style={{ color: '#334155' }}>Email</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@company.com"
                   required
-                  className="w-full px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition shadow-2xs"
+                  className="w-full px-3 py-1.5 sm:py-2 text-xs sm:text-sm !text-slate-800 !bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition shadow-2xs placeholder:text-slate-400"
+                  style={{ backgroundColor: '#ffffff', color: '#1e293b' }}
                 />
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-semibold text-slate-700">Password</label>
+                  <label className="block text-xs font-semibold !text-slate-700" style={{ color: '#334155' }}>Password</label>
                   {!isSignUp && (
                     <button
                       type="button"
@@ -635,7 +645,8 @@ export default function Login() {
                         setReceivedResetToken(null);
                         setResetSuccessMsg(null);
                       }}
-                      className="text-[11px] text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                      className="text-[11px] !text-slate-500 hover:!text-slate-800 transition cursor-pointer"
+                      style={{ color: '#64748b' }}
                     >
                       Forgot password?
                     </button>
@@ -648,7 +659,8 @@ export default function Login() {
                     onChange={(e) => setPasswordOrToken(e.target.value)}
                     placeholder="••••••••"
                     required
-                    className="w-full px-3 py-1.5 sm:py-2 pr-9 text-xs sm:text-sm font-mono text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition shadow-2xs"
+                    className="w-full px-3 py-1.5 sm:py-2 pr-9 text-xs sm:text-sm font-mono !text-slate-800 !bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition shadow-2xs placeholder:text-slate-400"
+                    style={{ backgroundColor: '#ffffff', color: '#1e293b' }}
                   />
                   <button
                     type="button"
@@ -664,7 +676,8 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading || githubLoading || googleLoading}
-                className="w-full mt-1 py-2 sm:py-2.5 px-4 rounded-lg bg-[#0e482f] hover:bg-[#0b3824] text-white text-xs sm:text-sm font-semibold transition shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full mt-1 py-2 sm:py-2.5 px-4 rounded-lg bg-[#0e482f] hover:bg-[#0b3824] !text-white text-xs sm:text-sm font-semibold transition shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: '#0e482f', color: '#ffffff' }}
               >
                 {loading ? <Loader2 size={15} className="animate-spin text-white" /> : <span>{isSignUp ? 'Create Account' : 'Sign In'}</span>}
               </button>
@@ -672,7 +685,7 @@ export default function Login() {
 
             {/* Sign Up / Sign In Toggle */}
             <div className="text-center mt-3 pt-3 border-t border-slate-100">
-              <p className="text-xs text-slate-500 font-normal">
+              <p className="text-xs !text-slate-500 font-normal" style={{ color: '#64748b' }}>
                 {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
                 <button
                   type="button"

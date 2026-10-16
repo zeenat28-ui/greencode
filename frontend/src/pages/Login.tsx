@@ -523,15 +523,15 @@ export default function Login() {
 
         <div className="w-full max-w-[380px] translate-y-2 sm:translate-y-3 relative z-10">
 
-          {/* Main Card with Very Minimal Soft White Glow */}
-          <div className="bg-white rounded-2xl border border-white/80 shadow-[0_0_22px_rgba(255,255,255,0.08),0_12px_32px_rgba(0,0,0,0.5)] p-5 sm:p-6">
+          {/* Main Card with Distinct Elevated 4-Sided Glow */}
+          <div className="bg-white rounded-2xl border border-white shadow-[0_0_0_1px_rgba(255,255,255,0.25),0_0_28px_rgba(255,255,255,0.22),0_0_65px_rgba(255,255,255,0.1),0_20px_45px_rgba(0,0,0,0.85)] p-5 sm:p-6">
 
             {/* Header */}
             <div className="text-center mb-3 sm:mb-4">
-              <h2 className="text-lg sm:text-[20px] font-bold text-slate-900 tracking-tight">
+              <h2 className="text-sm sm:text-[15px] font-bold text-slate-900 tracking-tight">
                 {isSignUp ? 'Create an account' : 'Welcome back'}
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-[11px] text-slate-500 mt-0.5">
                 {isSignUp ? 'Start optimizing code energy and cloud costs' : 'Please enter your details to sign in'}
               </p>
             </div>

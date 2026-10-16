@@ -40,13 +40,13 @@
   --gc-text-tertiary:  #71717a;
   --gc-text-inverse:   #fafafa;
 
-  --gc-bg-canvas:      #f4f4f5;
+  --gc-bg-canvas:      #fbfcfa;
   --gc-bg-default:     #ffffff;
-  --gc-bg-subtle:      #f4f4f5;
+  --gc-bg-subtle:      #f0f7f2;
   --gc-bg-elevated:    #ffffff;
-  --gc-border-default: #e4e4e7;
-  --gc-border-subtle:  #f4f4f5;
-  --gc-row-hover:      rgba(9, 9, 11, 0.03);
+  --gc-border-default: #e2ede5;
+  --gc-border-subtle:  #edf5f0;
+  --gc-row-hover:      rgba(14, 72, 47, 0.03);
   --gc-rail:           #ffffff;
 
   --gc-shadow-xs:   0 1px 2px 0 rgba(9, 9, 11, 0.05);
@@ -246,13 +246,15 @@ html.dark {
     color: var(--gc-text-primary);
   }
   .sidebar-link-active {
-    background: rgba(5, 150, 105, 0.12);
-    color: #059669;
+    background: #eef7f1;
+    color: #0e482f;
     font-weight: 600;
+    box-shadow: inset 2px 0 0 0 #0e482f;
   }
   html.dark .sidebar-link-active {
     background: rgba(16, 185, 129, 0.12);
     color: #34d399;
+    box-shadow: inset 2px 0 0 0 #34d399;
   }
 
   .sidebar-group-label {

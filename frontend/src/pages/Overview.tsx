@@ -93,7 +93,7 @@ export default function Overview() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subpath: 'app',
-          repo_name: 'greencode-org/greencode',
+          repo_name: 'zeenat28-ui/greencode',
           team_id: targetTeam,
         }),
       });
@@ -244,7 +244,7 @@ export default function Overview() {
                   return (
                     <tr key={repo.id || idx} className="hover:bg-slate-50/50">
                       <td className="px-5 py-4 font-semibold text-slate-900">
-                        {repo.repo_name || repo.full_name || repo.name || 'greencode-org/greencode'}
+                        {repo.repo_name || repo.full_name || repo.name || 'zeenat28-ui/greencode'}
                       </td>
                       <td className="px-5 py-4 text-slate-600">
                         {Number(repo.total_files ?? 0)} files / {Number(repo.total_lines ?? 0).toLocaleString()} LOC

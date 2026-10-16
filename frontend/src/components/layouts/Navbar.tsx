@@ -102,10 +102,12 @@ export default function Navbar({ navOpen, onToggleNav }: NavbarProps) {
           className="flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full hover:bg-[var(--gc-bg-subtle)] border border-transparent hover:border-[var(--gc-border-default)]"
         >
           {avatar ? (
-            <img src={avatar} alt="" className="w-7 h-7 rounded-full border border-[var(--gc-border-default)] object-cover" />
+            <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-200 shrink-0 bg-slate-100 shadow-2xs">
+              <img src={avatar} alt={displayName} className="w-full h-full object-cover" />
+            </div>
           ) : (
-            <div className="w-7 h-7 rounded-full bg-[var(--gc-text-primary)] text-[var(--gc-bg-default)] flex items-center justify-center">
-              <Github size={13} />
+            <div className="w-8 h-8 rounded-full bg-[#0e482f] text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs">
+              {displayName.slice(0, 2).toUpperCase()}
             </div>
           )}
           <span className="hidden md:inline text-xs font-medium text-[var(--gc-text-secondary)] max-w-[7.5rem] truncate">

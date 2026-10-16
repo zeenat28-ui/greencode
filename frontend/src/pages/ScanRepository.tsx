@@ -228,14 +228,14 @@ export default function ScanRepository() {
   const LIVE_WORKSPACE_TARGETS = [
     {
       subpath: 'app',
-      repo_name: 'greencode-org/greencode-backend',
+      repo_name: 'zeenat28-ui/greencode',
       name: t('scan.targets.backend.name'),
       language: t('scan.targets.backend.language'),
       description: t('scan.targets.backend.description'),
     },
     {
       subpath: 'frontend/src',
-      repo_name: 'greencode-org/greencode-frontend',
+      repo_name: 'zeenat28-ui/greencode',
       name: t('scan.targets.frontend.name'),
       language: t('scan.targets.frontend.language'),
       description: t('scan.targets.frontend.description'),
@@ -300,7 +300,7 @@ export default function ScanRepository() {
               className="text-xs font-mono flex-1"
             />
             <Button
-              onClick={() => handleScanLocalSubpath(localSubpath.trim() || '.', `greencode-org/${(localSubpath.trim() || 'workspace').replace(/[^a-zA-Z0-9_-]/g, '-')}`)}
+              onClick={() => handleScanLocalSubpath(localSubpath.trim() || '.', `zeenat28-ui/${(localSubpath.trim() || 'workspace').replace(/[^a-zA-Z0-9_-]/g, '-')}`)}
               disabled={isScanning}
               variant="primary"
               size="sm"

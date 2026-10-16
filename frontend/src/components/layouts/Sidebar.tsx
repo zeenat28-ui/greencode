@@ -158,9 +158,11 @@ export default function Sidebar({
 
         <div className="flex items-center gap-2 px-1.5 py-1.5">
           {user?.avatar_url ? (
-            <img src={user.avatar_url} alt="" className="w-7 h-7 rounded-full border border-[var(--gc-border-default)] object-cover shrink-0" />
+            <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-200 shrink-0 bg-slate-100 shadow-2xs">
+              <img src={user.avatar_url} alt={displayName} className="w-full h-full object-cover" />
+            </div>
           ) : (
-            <div className="w-7 h-7 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px] font-semibold shrink-0">
+            <div className="w-8 h-8 rounded-full bg-[#0e482f] text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs">
               {initials}
             </div>
           )}

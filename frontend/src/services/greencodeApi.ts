@@ -61,7 +61,25 @@ export const authService = {
     api.post<AuthResponse>('/api/auth/register', data),
 
   googleLogin: (payload?: { id_token?: string; email?: string; name?: string }) =>
-    api.post<AuthResponse>('/api/auth/google', payload || {}),
+    api.post<AuthResponse>('/api/auth/google/oauth', payload || {}),
+
+  getGitHubAuthorize: (redirectUri?: string) =>
+    api.get<{ configured: boolean; auth_url?: string; client_id?: string; message?: string }>(
+      '/api/auth/github/authorize',
+      { params: { redirect_uri: redirectUri } },
+    ),
+
+  exchangeGitHubOAuth: (code: string, redirectUri?: string) =>
+    api.post<AuthResponse>('/api/auth/github/oauth', { code, redirect_uri: redirectUri }),
+
+  getGoogleAuthorize: (redirectUri?: string) =>
+    api.get<{ configured: boolean; auth_url?: string; client_id?: string; message?: string }>(
+      '/api/auth/google/authorize',
+      { params: { redirect_uri: redirectUri } },
+    ),
+
+  exchangeGoogleOAuth: (code?: string, idToken?: string, redirectUri?: string) =>
+    api.post<AuthResponse>('/api/auth/google/oauth', { code, id_token: idToken, redirect_uri: redirectUri }),
 
   forgotPassword: (email: string) =>
     api.post<{ success: boolean; message: string; reset_token?: string }>('/api/auth/forgot-password', { email }),

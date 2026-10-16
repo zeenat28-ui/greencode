@@ -290,3 +290,4 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'terms' }: Le
     </div>
   );
 }
+

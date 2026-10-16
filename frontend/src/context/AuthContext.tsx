@@ -8,10 +8,16 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  /** Legacy: PAT-based GitHub sign-in (still works for direct PAT entry) */
   connectGitHub: (githubToken: string) => Promise<User>;
+  /** Real GitHub OAuth2 code exchange (popup/redirect flow) */
+  loginWithGitHubCode: (code: string, redirectUri?: string) => Promise<User>;
+  /** Email + password login */
   loginWithEmail: (emailOrUsername: string, password: string) => Promise<User>;
+  /** Email + password registration */
   registerWithEmail: (email: string, password: string, fullName?: string) => Promise<User>;
-  loginWithGoogle: (payload?: { email?: string; name?: string }) => Promise<User>;
+  /** Google Identity Services ID token verification */
+  loginWithGoogleToken: (idToken: string) => Promise<User>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message: string; reset_token?: string }>;
   resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
@@ -36,8 +42,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    *
    * The access token lives only in memory, so after a page reload it is gone.
    * The persisted refresh token is exchanged for a fresh access token, which the
-   * axios interceptor stores automatically. This is what keeps a refresh from
-   * logging the user out.
+   * axios interceptor stores automatically.
    */
   useEffect(() => {
     let cancelled = false;
@@ -54,11 +59,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const res = await authService.refresh(refreshToken);
         if (!cancelled && res.data.user) {
-          setGitHubToken('demo');
           setUser(res.data.user);
         }
       } catch {
-        // Expired or revoked refresh token - start from a clean slate.
+        // Expired or revoked refresh token — start from a clean slate.
         if (!cancelled) {
           clearSession();
           setUser(null);
@@ -84,31 +88,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [navigate]);
 
+  // ---------------------------------------------------------------------------
+  // Auth actions
+  // ---------------------------------------------------------------------------
+
+  /** Legacy PAT-based GitHub sign-in */
   const connectGitHub = useCallback(async (githubToken: string) => {
     const res = await authService.signInWithGitHub(githubToken);
-    // Store GitHub token in memory only (never localStorage)
     setGitHubToken(githubToken);
     setUser(res.data.user);
     return res.data.user;
   }, []);
 
+  /** Real GitHub OAuth2 code exchange (popup/redirect callback) */
+  const loginWithGitHubCode = useCallback(async (code: string, redirectUri?: string) => {
+    const res = await authService.exchangeGitHubOAuth(code, redirectUri);
+    setUser(res.data.user);
+    return res.data.user;
+  }, []);
+
+  /** Email + password login */
   const loginWithEmail = useCallback(async (emailOrUsername: string, password: string) => {
     const res = await authService.login(emailOrUsername, password);
-    setGitHubToken('demo');
     setUser(res.data.user);
     return res.data.user;
   }, []);
 
+  /** Email + password registration */
   const registerWithEmail = useCallback(async (email: string, password: string, fullName?: string) => {
     const res = await authService.register({ email, password, full_name: fullName });
-    setGitHubToken('demo');
     setUser(res.data.user);
     return res.data.user;
   }, []);
 
-  const loginWithGoogle = useCallback(async (payload?: { email?: string; name?: string }) => {
-    const res = await authService.googleLogin(payload);
-    setGitHubToken('demo');
+  /**
+   * Google Identity Services real flow.
+   * idToken is the `credential` field from the GSI callback — a signed Google JWT.
+   * The backend verifies it against Google's tokeninfo endpoint.
+   */
+  const loginWithGoogleToken = useCallback(async (idToken: string) => {
+    const res = await authService.exchangeGoogleOAuth(undefined, idToken);
     setUser(res.data.user);
     return res.data.user;
   }, []);
@@ -147,9 +166,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: !!user,
         isLoading,
         connectGitHub,
+        loginWithGitHubCode,
         loginWithEmail,
         registerWithEmail,
-        loginWithGoogle,
+        loginWithGoogleToken,
         forgotPassword,
         resetPassword,
         logout,

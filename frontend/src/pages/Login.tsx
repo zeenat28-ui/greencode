@@ -89,6 +89,12 @@ export default function Login() {
   const [newPasswordVal, setNewPasswordVal] = useState('');
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
 
+  // GitHub PAT Fallback Modal State
+  const [githubPatModalOpen, setGithubPatModalOpen] = useState(false);
+  const [githubPatVal, setGithubPatVal] = useState('');
+  const [githubPatLoading, setGithubPatLoading] = useState(false);
+  const [githubPatError, setGithubPatError] = useState<string | null>(null);
+
   const githubPopupRef = useRef<Window | null>(null);
   const githubPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const googleButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -213,17 +219,35 @@ export default function Login() {
           }
         }, 500);
       } else {
-        // GitHub OAuth not configured — show helpful error
-        setError(
-          res.data.message ||
-          'GitHub OAuth is not configured. Add GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to your .env file.'
-        );
+        // GitHub OAuth not configured in .env — open the GitHub PAT / setup dialog
         setGithubLoading(false);
+        setGithubPatModalOpen(true);
       }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } }; message?: string };
       setError(e?.response?.data?.detail || e?.message || 'GitHub authentication failed.');
       setGithubLoading(false);
+    }
+  };
+
+  const handleGitHubPatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = githubPatVal.trim();
+    if (!token) {
+      setGithubPatError('Please enter your GitHub Personal Access Token.');
+      return;
+    }
+    setGithubPatLoading(true);
+    setGithubPatError(null);
+    try {
+      await connectGitHub(token);
+      setGithubPatModalOpen(false);
+      navigate(from, { replace: true });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } }; message?: string };
+      setGithubPatError(e?.response?.data?.detail || e?.message || 'Invalid GitHub token. Please verify permissions.');
+    } finally {
+      setGithubPatLoading(false);
     }
   };
 
@@ -745,6 +769,83 @@ export default function Login() {
                 </button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════ GITHUB PAT MODAL ════════════════════════ */}
+      {githubPatModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 text-slate-800 relative">
+            <button
+              type="button"
+              onClick={() => {
+                setGithubPatModalOpen(false);
+                setGithubPatError(null);
+              }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center">
+                <Github size={18} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">GitHub Sign In</h3>
+                <p className="text-[11px] text-slate-500">Personal Access Token (PAT)</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+              Enter your GitHub Personal Access Token (<code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-[11px]">ghp_...</code>) to authenticate directly with your GitHub account.
+            </p>
+
+            {githubPatError && (
+              <div className="mb-3 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                {githubPatError}
+              </div>
+            )}
+
+            <form onSubmit={handleGitHubPatSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  GitHub Token
+                </label>
+                <input
+                  type="password"
+                  value={githubPatVal}
+                  onChange={(e) => setGithubPatVal(e.target.value)}
+                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx or demo"
+                  required
+                  autoFocus
+                  className="w-full px-3 py-2 font-mono text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={githubPatLoading}
+                className="w-full py-2 px-3 rounded-lg bg-[#0e482f] hover:bg-[#0b3824] text-white text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {githubPatLoading ? <Loader2 size={14} className="animate-spin" /> : 'Connect GitHub'}
+              </button>
+            </form>
+
+            <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 space-y-1">
+              <p>
+                Want real OAuth 1-click popup instead? Add <code className="bg-slate-100 px-1 py-0.5 rounded">GITHUB_CLIENT_ID</code> to your <code className="bg-slate-100 px-1 py-0.5 rounded">.env</code>.
+              </p>
+              <a
+                href="https://github.com/settings/developers"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block text-emerald-800 hover:underline font-medium"
+              >
+                Create GitHub OAuth App &rarr;
+              </a>
+            </div>
           </div>
         </div>
       )}

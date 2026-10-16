@@ -453,11 +453,11 @@ export default function Login() {
           </svg>
         </div>
 
-        {/* Brand Logo & Name (Anchored Top-Left) */}
-        <div className="relative z-10 pt-0 -mt-1 sm:-mt-2 -ml-1 sm:-ml-2">
-          <div className="inline-flex items-center gap-2.5">
-            <img src="/logo.png" alt="GreenCode" className="w-8 h-8 sm:w-9 sm:h-9 object-contain select-none shrink-0" />
-            <span className="text-xl sm:text-2xl font-black tracking-tight text-[#0a291c]">GreenCode</span>
+        {/* Brand Logo & Name (Anchored to Top-Left Corner) */}
+        <div className="absolute top-4 left-5 sm:top-6 sm:left-7 z-20">
+          <div className="inline-flex items-center gap-2">
+            <img src="/logo.png" alt="GreenCode" className="w-6 h-6 sm:w-6.5 sm:h-6.5 object-contain select-none shrink-0" />
+            <span className="text-sm sm:text-base font-bold tracking-tight text-[#0a291c]">GreenCode</span>
           </div>
         </div>
 

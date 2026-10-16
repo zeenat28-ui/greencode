@@ -390,7 +390,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {repos.slice(0, 6).map((repo) => (
                 <div
-                  key={repo.id}
+                  key={repo.full_name}
                   className="p-2.5 rounded-lg border border-slate-200 hover:border-emerald-500/40 hover:bg-slate-50 transition flex items-center justify-between gap-2"
                 >
                   <div className="min-w-0">

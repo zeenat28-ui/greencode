@@ -411,7 +411,7 @@ export default function Login() {
   // Render
   // -------------------------------------------------------------------------
   return (
-    <div className="h-screen max-h-screen w-screen overflow-hidden flex flex-col lg:flex-row bg-[#fbfcfa] font-sans text-slate-900 select-none">
+    <div className="h-screen max-h-screen w-screen overflow-hidden flex flex-col lg:flex-row bg-[#090b0a] font-sans text-slate-900 select-none">
 
       {/* ════════════════════════ LEFT HERO PANE (Vibrant Mint Green with Steel Shine) ════════════════════════ */}
       <div className="lg:w-1/2 bg-[linear-gradient(135deg,#c3eed0_0%,#d8f5e2_20%,#f0fcf5_38%,#b6e8c5_50%,#e4f9ec_70%,#c8f0d5_100%)] shadow-[inset_0_1px_2px_0_rgba(255,255,255,0.95),inset_0_-1px_1px_0_rgba(14,72,47,0.08),inset_-1px_0_0_0_rgba(255,255,255,0.7)] px-8 sm:px-12 xl:px-16 py-6 sm:py-8 lg:py-10 flex flex-col justify-between relative overflow-hidden border-b lg:border-b-0 lg:border-r border-[#9dd9aa] h-full">
@@ -453,11 +453,11 @@ export default function Login() {
           </svg>
         </div>
 
-        {/* Brand */}
-        <div className="relative z-10 pt-1">
-          <div className="flex items-center gap-2.5">
-            <img src="/logo.png" alt="GreenCode" className="w-8 h-8 object-contain select-none shrink-0" />
-            <span className="text-xl font-bold tracking-tight text-[#0a291c]">GreenCode</span>
+        {/* Brand Logo & Name (Anchored Top-Left) */}
+        <div className="relative z-10 pt-0 -mt-1 sm:-mt-2 -ml-1 sm:-ml-2">
+          <div className="inline-flex items-center gap-2.5">
+            <img src="/logo.png" alt="GreenCode" className="w-8 h-8 sm:w-9 sm:h-9 object-contain select-none shrink-0" />
+            <span className="text-xl sm:text-2xl font-black tracking-tight text-[#0a291c]">GreenCode</span>
           </div>
         </div>
 
@@ -515,12 +515,16 @@ export default function Login() {
       </div>
 
 
-      {/* ════════════════════════ RIGHT LOGIN CARD PANE ════════════════════════ */}
-      <div className="lg:w-1/2 bg-[#fcfdfc] px-6 py-4 sm:py-6 flex items-center justify-center relative h-full overflow-hidden">
-        <div className="w-full max-w-[380px] translate-y-2 sm:translate-y-3">
+      {/* ════════════════════════ RIGHT LOGIN CARD PANE (Stealth Black) ════════════════════════ */}
+      <div className="lg:w-1/2 bg-[#090b0a] px-6 py-4 sm:py-6 flex items-center justify-center relative h-full overflow-hidden border-t lg:border-t-0 lg:border-l border-emerald-950/40">
+        
+        {/* Subtle dark ambient texture */}
+        <div className="absolute inset-0 pointer-events-none select-none bg-[radial-gradient(ellipse_80%_60%_at_50%_40%,rgba(16,185,129,0.04)_0%,transparent_70%)]" />
 
-          {/* Main Card */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-lg shadow-slate-900/5 p-5 sm:p-6">
+        <div className="w-full max-w-[380px] translate-y-2 sm:translate-y-3 relative z-10">
+
+          {/* Main Card with Very Minimal Soft White Glow */}
+          <div className="bg-white rounded-2xl border border-white/80 shadow-[0_0_22px_rgba(255,255,255,0.08),0_12px_32px_rgba(0,0,0,0.5)] p-5 sm:p-6">
 
             {/* Header */}
             <div className="text-center mb-3 sm:mb-4">
@@ -681,14 +685,22 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Terms & Privacy */}
-          <p className="text-center text-[11px] text-slate-400 mt-3 font-normal leading-relaxed max-w-[340px] mx-auto">
+          {/* Terms & Privacy Footnote in White */}
+          <p className="text-center text-[11px] text-white/80 mt-3 font-normal leading-relaxed max-w-[340px] mx-auto">
             By continuing, you agree to GreenCode's{' '}
-            <button type="button" onClick={() => openLegal('terms')} className="underline hover:text-slate-600 transition cursor-pointer">
+            <button
+              type="button"
+              onClick={() => openLegal('terms')}
+              className="text-white underline underline-offset-2 hover:text-emerald-400 transition cursor-pointer font-medium"
+            >
               Terms of Service
             </button>{' '}
             and{' '}
-            <button type="button" onClick={() => openLegal('privacy')} className="underline hover:text-slate-600 transition cursor-pointer">
+            <button
+              type="button"
+              onClick={() => openLegal('privacy')}
+              className="text-white underline underline-offset-2 hover:text-emerald-400 transition cursor-pointer font-medium"
+            >
               Privacy Policy
             </button>.
           </p>

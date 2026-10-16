@@ -8,6 +8,8 @@ import CloudCarbon from './pages/CloudCarbon';
 import History from './pages/History';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
+import Terms from './pages/Terms';
+import Privacy from './pages/Privacy';
 import Overview from './pages/Overview';
 import Budgets from './pages/Budgets';
 import Policies from './pages/Policies';
@@ -26,6 +28,8 @@ function App() {
         path="/login"
         element={isLoading ? <FullScreenLoader /> : <Login />}
       />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/privacy" element={<Privacy />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />

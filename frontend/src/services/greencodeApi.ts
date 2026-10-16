@@ -50,6 +50,28 @@ export const authService = {
   signInWithGitHub: (githubToken: string) =>
     api.post<AuthResponse>('/api/auth/github', { github_token: githubToken }),
 
+  login: (emailOrUsername: string, password: string) =>
+    api.post<AuthResponse>('/api/auth/login', {
+      email: emailOrUsername,
+      username_or_email: emailOrUsername,
+      password,
+    }),
+
+  register: (data: { email: string; password: string; full_name?: string; username?: string }) =>
+    api.post<AuthResponse>('/api/auth/register', data),
+
+  googleLogin: (payload?: { id_token?: string; email?: string; name?: string }) =>
+    api.post<AuthResponse>('/api/auth/google', payload || {}),
+
+  forgotPassword: (email: string) =>
+    api.post<{ success: boolean; message: string; reset_token?: string }>('/api/auth/forgot-password', { email }),
+
+  resetPassword: (token: string, newPassword: string) =>
+    api.post<{ success: boolean; message: string }>('/api/auth/reset-password', {
+      token,
+      new_password: newPassword,
+    }),
+
   refresh: (refreshToken: string) =>
     api.post<AuthResponse>('/api/auth/refresh', { refresh_token: refreshToken }),
 

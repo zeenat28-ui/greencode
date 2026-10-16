@@ -9,6 +9,11 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   connectGitHub: (githubToken: string) => Promise<User>;
+  loginWithEmail: (emailOrUsername: string, password: string) => Promise<User>;
+  registerWithEmail: (email: string, password: string, fullName?: string) => Promise<User>;
+  loginWithGoogle: (payload?: { email?: string; name?: string }) => Promise<User>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; message: string; reset_token?: string }>;
+  resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -33,9 +38,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    * The persisted refresh token is exchanged for a fresh access token, which the
    * axios interceptor stores automatically. This is what keeps a refresh from
    * logging the user out.
-   * 
-   * ZERO-KNOWLEDGE: GitHub token is NOT restored from storage - user must re-enter it.
-   * This is intentional for maximum security - token never leaves browser memory.
    */
   useEffect(() => {
     let cancelled = false;
@@ -43,22 +45,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const restore = async () => {
       const refreshToken = getRefreshToken();
       if (!refreshToken) {
-        try {
-          const res = await authService.signInWithGitHub('demo');
-          if (!cancelled && res.data.user) {
-            setGitHubToken('demo');
-            setUser(res.data.user);
-          }
-        } catch {
-          // offline fallback
-        } finally {
-          if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setUser(null);
+          setIsLoading(false);
         }
         return;
       }
       try {
         const res = await authService.refresh(refreshToken);
         if (!cancelled && res.data.user) {
+          setGitHubToken('demo');
           setUser(res.data.user);
         }
       } catch {
@@ -90,20 +86,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const connectGitHub = useCallback(async (githubToken: string) => {
     const res = await authService.signInWithGitHub(githubToken);
-    // ZERO-KNOWLEDGE: Store GitHub token in memory only (never localStorage)
-    // This token will be sent with each request via X-GitHub-Token header
+    // Store GitHub token in memory only (never localStorage)
     setGitHubToken(githubToken);
     setUser(res.data.user);
     return res.data.user;
+  }, []);
+
+  const loginWithEmail = useCallback(async (emailOrUsername: string, password: string) => {
+    const res = await authService.login(emailOrUsername, password);
+    setGitHubToken('demo');
+    setUser(res.data.user);
+    return res.data.user;
+  }, []);
+
+  const registerWithEmail = useCallback(async (email: string, password: string, fullName?: string) => {
+    const res = await authService.register({ email, password, full_name: fullName });
+    setGitHubToken('demo');
+    setUser(res.data.user);
+    return res.data.user;
+  }, []);
+
+  const loginWithGoogle = useCallback(async (payload?: { email?: string; name?: string }) => {
+    const res = await authService.googleLogin(payload);
+    setGitHubToken('demo');
+    setUser(res.data.user);
+    return res.data.user;
+  }, []);
+
+  const forgotPassword = useCallback(async (email: string) => {
+    const res = await authService.forgotPassword(email);
+    return res.data;
+  }, []);
+
+  const resetPassword = useCallback(async (token: string, newPassword: string) => {
+    const res = await authService.resetPassword(token, newPassword);
+    return res.data;
   }, []);
 
   const logout = useCallback(async () => {
     try {
       await authService.logout();
     } catch {
-      // Best effort - the local session is cleared regardless.
+      // Best effort
     }
-    clearSession(); // Also clears GitHub token from memory
+    clearSession();
     setUser(null);
     navigate('/login', { replace: true });
   }, [navigate]);
@@ -121,6 +147,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: !!user,
         isLoading,
         connectGitHub,
+        loginWithEmail,
+        registerWithEmail,
+        loginWithGoogle,
+        forgotPassword,
+        resetPassword,
         logout,
         refreshUser,
       }}

@@ -82,7 +82,16 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 });
 
 /** Paths that must never trigger a refresh (they ARE the auth endpoints). */
-const AUTH_FREE_PATHS = ['/api/auth/refresh', '/api/auth/github', '/api/auth/logout'];
+const AUTH_FREE_PATHS = [
+  '/api/auth/refresh',
+  '/api/auth/github',
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/google',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/logout',
+];
 
 api.interceptors.response.use(
   (response) => {

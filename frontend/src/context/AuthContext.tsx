@@ -18,6 +18,8 @@ interface AuthContextType {
   registerWithEmail: (email: string, password: string, fullName?: string) => Promise<User>;
   /** Google Identity Services ID token verification */
   loginWithGoogleToken: (idToken: string) => Promise<User>;
+  /** Google OAuth2 code exchange */
+  loginWithGoogleCode: (code: string, redirectUri?: string) => Promise<User>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message: string; reset_token?: string }>;
   resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
@@ -132,6 +134,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return res.data.user;
   }, []);
 
+  const loginWithGoogleCode = useCallback(async (code: string, redirectUri?: string) => {
+    const res = await authService.exchangeGoogleOAuth(code, undefined, redirectUri);
+    setUser(res.data.user);
+    return res.data.user;
+  }, []);
+
   const forgotPassword = useCallback(async (email: string) => {
     const res = await authService.forgotPassword(email);
     return res.data;
@@ -170,6 +178,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         loginWithEmail,
         registerWithEmail,
         loginWithGoogleToken,
+        loginWithGoogleCode,
         forgotPassword,
         resetPassword,
         logout,

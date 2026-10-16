@@ -61,7 +61,7 @@ function openGitHubPopup(authUrl: string): Window | null {
 // Component
 // ---------------------------------------------------------------------------
 export default function Login() {
-  const { loginWithEmail, registerWithEmail, loginWithGoogleToken, loginWithGitHubCode, connectGitHub, logout } = useAuth();
+  const { loginWithEmail, registerWithEmail, loginWithGoogleToken, loginWithGoogleCode, loginWithGitHubCode, connectGitHub, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from || '/dashboard';
@@ -111,7 +111,22 @@ export default function Login() {
     }
 
     // Full-page redirect flow fallback (no popup)
-    if (provider === 'github' || !provider) {
+    if (provider === 'google') {
+      (async () => {
+        setGoogleLoading(true);
+        setError(null);
+        try {
+          const redirectUri = `${window.location.origin}/login?provider=google`;
+          await loginWithGoogleCode(code, redirectUri);
+          navigate(from, { replace: true });
+        } catch (err: unknown) {
+          const e = err as { response?: { data?: { detail?: string } }; message?: string };
+          setError(e?.response?.data?.detail || e?.message || 'Google authentication failed.');
+        } finally {
+          setGoogleLoading(false);
+        }
+      })();
+    } else if (provider === 'github' || !provider) {
       (async () => {
         setGithubLoading(true);
         setError(null);
@@ -259,10 +274,19 @@ export default function Login() {
     });
 
     // Show the One Tap UI
-    window.google.accounts.id.prompt((notification) => {
+    window.google.accounts.id.prompt(async (notification) => {
       if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        // One Tap was suppressed (e.g. user previously dismissed it).
-        // Fall back to rendering a proper sign-in button in the existing button element.
+        // One Tap was suppressed or dismissed — fallback seamlessly to Google OAuth redirect
+        try {
+          const redirectUri = `${window.location.origin}/login?provider=google`;
+          const res = await authService.getGoogleAuthorize(redirectUri);
+          if (res.data?.auth_url) {
+            window.location.href = res.data.auth_url;
+            return;
+          }
+        } catch {
+          // fallback failed, try in-place button render
+        }
         if (googleButtonRef.current) {
           googleButtonRef.current.innerHTML = '';
           window.google!.accounts.id.renderButton(googleButtonRef.current, {
@@ -273,10 +297,8 @@ export default function Login() {
             shape: 'pill',
             text: isSignUp ? 'signup_with' : 'signin_with',
           });
-        } else {
-          setError('Google sign-in prompt was blocked. Please check your browser settings.');
-          setGoogleLoading(false);
         }
+        setGoogleLoading(false);
       }
     });
   };

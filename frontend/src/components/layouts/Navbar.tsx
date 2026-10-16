@@ -5,7 +5,6 @@ import { gridService } from '../../services/greencodeApi';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useAuth } from '../../context/AuthContext';
 import TenantSwitcher from '../primitives/TenantSwitcher';
-import ThemeToggle from '../primitives/ThemeToggle';
 import { useT } from '../../i18n/I18nContext';
 
 interface NavbarProps {
@@ -91,7 +90,6 @@ export default function Navbar({ navOpen, onToggleNav }: NavbarProps) {
       </div>
 
       <TenantSwitcher />
-      <ThemeToggle />
 
       <div className="relative" ref={menuRef}>
         <button
@@ -102,7 +100,7 @@ export default function Navbar({ navOpen, onToggleNav }: NavbarProps) {
           className="flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full hover:bg-[var(--gc-bg-subtle)] border border-transparent hover:border-[var(--gc-border-default)]"
         >
           {avatar ? (
-            <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-200 shrink-0 bg-slate-100 shadow-2xs">
+            <div className="w-8 h-8 rounded-full overflow-hidden border border-emerald-900/60 shrink-0 bg-[#161d19] shadow-2xs">
               <img src={avatar} alt={displayName} className="w-full h-full object-cover" />
             </div>
           ) : (

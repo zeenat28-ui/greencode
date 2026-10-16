@@ -5,21 +5,13 @@ export type Theme = 'light' | 'dark';
 const STORAGE_KEY = 'greencode_theme';
 
 function readStoredTheme(): Theme {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw === 'dark' || raw === 'light') return raw;
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed === 'dark' || parsed === 'light') return parsed;
-  } catch {
-    /* keep default */
-  }
-  return 'light';
+  return 'dark';
 }
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
-  root.classList.toggle('dark', theme === 'dark');
-  root.style.colorScheme = theme;
+  root.classList.add('dark');
+  root.style.colorScheme = 'dark';
 }
 
 interface ThemeContextValue {

@@ -25,34 +25,11 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    labelKey: 'nav.monitor',
-    items: [
-      { nameKey: 'nav.dashboard', path: '/dashboard', icon: LayoutDashboard },
-      { nameKey: 'nav.overview', path: '/overview', icon: Activity },
-    ],
-  },
-  {
     labelKey: 'nav.analyze',
     items: [
-      { nameKey: 'nav.scan', path: '/scan', icon: GitBranch },
+      { nameKey: 'nav.dashboard', path: '/dashboard', icon: LayoutDashboard },
       { nameKey: 'nav.issues', path: '/issues', icon: AlertCircle, badgeKey: 'issues' },
-      { nameKey: 'nav.profiler', path: '/profiler', icon: Zap },
-      { nameKey: 'nav.cloudCarbon', path: '/cloud-carbon', icon: Leaf },
-    ],
-  },
-  {
-    labelKey: 'nav.govern',
-    items: [
-      { nameKey: 'nav.budgets', path: '/budgets', icon: DollarSign },
-      { nameKey: 'nav.policies', path: '/policies', icon: Sliders },
       { nameKey: 'nav.deployments', path: '/deployments', icon: Gauge },
-    ],
-  },
-  {
-    labelKey: 'nav.insights',
-    items: [
-      { nameKey: 'nav.reports', path: '/reports', icon: FileText },
-      { nameKey: 'nav.history', path: '/history', icon: History },
     ],
   },
 ];
@@ -158,7 +135,7 @@ export default function Sidebar({
 
         <div className="flex items-center gap-2 px-1.5 py-1.5">
           {user?.avatar_url ? (
-            <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-200 shrink-0 bg-slate-100 shadow-2xs">
+            <div className="w-8 h-8 rounded-full overflow-hidden border border-emerald-900/60 shrink-0 bg-[#161d19] shadow-2xs">
               <img src={user.avatar_url} alt={displayName} className="w-full h-full object-cover" />
             </div>
           ) : (

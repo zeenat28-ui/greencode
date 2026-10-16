@@ -159,8 +159,16 @@ def count_plaintext_secrets() -> int:
 # PASSWORD POLICY: min 12 chars, 3 of 4 classes (upper, lower, digit, special)
 _BCRYPT_ROUNDS = int(os.environ.get("BCRYPT_ROUNDS", "12"))
 def validate_password_policy(password: str) -> None:
-    if not password or len(password) < 6:
-        raise ValueError("Password must be at least 6 characters long.")
+    if not password or len(password) < 12:
+        raise ValueError("Password must be at least 12 characters long and contain at least 3 character classes.")
+    classes = sum([
+        any(c.isupper() for c in password),
+        any(c.islower() for c in password),
+        any(c.isdigit() for c in password),
+        any(not c.isalnum() for c in password),
+    ])
+    if classes < 3:
+        raise ValueError("Password must contain at least 3 character classes (uppercase, lowercase, numbers, symbols).")
 
 # ---------------------------------------------------------------------------
 # DATABASE URL & ASYNC ENGINE CONFIGURATION
@@ -1756,8 +1764,7 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
 
         now_utc = datetime.now(timezone.utc)
         if user:
-          # ZERO-KNOWLEDGE: github_token is validated but NOT stored
-          user.github_token = None
+          user.github_token = encrypt_secret(github_token)
           user.github_username = gh_login
           if avatar_url:
               user.avatar_url = avatar_url
@@ -1779,7 +1786,7 @@ def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -
               password_hash=hash_password(random_pwd),
               full_name=full_name,
               github_username=gh_login,
-              github_token=None,  # NEVER store GitHub token
+              github_token=encrypt_secret(github_token),
               avatar_url=avatar_url,
               role="developer",
               is_verified=True,  # GitHub-authenticated emails are pre-verified by GitHub
@@ -1852,37 +1859,172 @@ def create_password_reset_token(email: str) -> Optional[Dict[str, Any]]:
 # ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database
 # ---------------------------------------------------------------------------
 def encrypt_plaintext_secrets(*, dry_run: bool = False) -> Dict[str, Any]:
-    """ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database.
-    
-    Returns a report indicating no tokens to migrate.
-    """
-    return {
+    """Re-encrypt GitHub tokens that were stored before a key existed."""
+    report: Dict[str, Any] = {
         "dry_run": dry_run,
-        "encryption_enabled": False,
+        "encryption_enabled": _fernet is not None,
         "scanned": 0,
         "already_encrypted": 0,
         "migrated": 0,
         "skipped": 0,
         "failed": 0,
-        "errors": ["ZERO-KNOWLEDGE: No GitHub tokens stored in database to encrypt."],
+        "errors": [],
     }
+
+    if _fernet is None:
+        report["errors"].append(
+            "SECRETS_ENCRYPTION_KEY is not set, so there is no key to encrypt with."
+        )
+        return report
+
+    init_db()
+    db = SessionLocal()
+    try:
+        users = (
+            db.query(User)
+            .filter(User.github_token.isnot(None), User.github_token != "")
+            .all()
+        )
+        for user in users:
+            report["scanned"] += 1
+            current = user.github_token
+            if not current:
+                continue
+            if is_encrypted_secret(current):
+                report["already_encrypted"] += 1
+                continue
+
+            encrypted = _fernet.encrypt(current.encode("utf-8")).decode("utf-8")
+            try:
+                if _fernet.decrypt(encrypted.encode("utf-8")).decode("utf-8") != current:
+                    raise ValueError("round trip did not reproduce the original token")
+            except Exception as exc:
+                report["failed"] += 1
+                report["errors"].append(
+                    f"user {user.id}: verification failed, left as plaintext ({exc})"
+                )
+                continue
+
+            if dry_run:
+                report["migrated"] += 1
+                continue
+
+            user.github_token = encrypted
+            report["migrated"] += 1
+
+        if not dry_run and report["migrated"]:
+            db.commit()
+        elif not dry_run:
+            db.rollback()
+    except Exception as exc:
+        db.rollback()
+        report["errors"].append(f"migration aborted, nothing committed: {exc}")
+    finally:
+        db.close()
+
+    return report
 
 
 def reencrypt_secrets(old_key: str, *, dry_run: bool = False) -> Dict[str, Any]:
-    """ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database.
-    
-    Returns a report indicating no tokens to re-encrypt.
-    """
-    return {
+    """Move stored GitHub tokens from old_key to current SECRETS_ENCRYPTION_KEY."""
+    report: Dict[str, Any] = {
         "dry_run": dry_run,
-        "current_key_configured": False,
+        "current_key_configured": _fernet is not None,
         "scanned": 0,
         "already_current": 0,
         "reencrypted": 0,
         "plaintext": 0,
         "failed": 0,
-        "errors": ["ZERO-KNOWLEDGE: No GitHub tokens stored in database to re-encrypt."],
+        "errors": [],
     }
+
+    if _fernet is None:
+        report["errors"].append("SECRETS_ENCRYPTION_KEY is not set.")
+        return report
+
+    old_fernet = _fernet_for(old_key)
+    if old_fernet is None:
+        report["errors"].append("The old key is empty or cryptography missing.")
+        return report
+
+    init_db()
+    db = SessionLocal()
+    try:
+        users = (
+            db.query(User)
+            .filter(User.github_token.isnot(None), User.github_token != "")
+            .all()
+        )
+        for user in users:
+            report["scanned"] += 1
+            current = user.github_token
+            if not current:
+                continue
+            if not is_encrypted_secret(current):
+                report["plaintext"] += 1
+                continue
+            try:
+                _fernet.decrypt(current.encode("utf-8"))
+                report["already_current"] += 1
+                continue
+            except Exception:
+                pass
+
+            try:
+                plaintext = old_fernet.decrypt(current.encode("utf-8")).decode("utf-8")
+            except Exception as exc:
+                report["failed"] += 1
+                report["errors"].append(
+                    f"user {user.id}: neither current nor old key decrypts token ({exc})"
+                )
+                continue
+
+            rotated = _fernet.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+            try:
+                if _fernet.decrypt(rotated.encode("utf-8")).decode("utf-8") != plaintext:
+                    raise ValueError("round trip did not reproduce original token")
+            except Exception as exc:
+                report["failed"] += 1
+                report["errors"].append(f"user {user.id}: verification failed ({exc})")
+                continue
+
+            if dry_run:
+                report["reencrypted"] += 1
+                continue
+            user.github_token = rotated
+            report["reencrypted"] += 1
+
+        if not dry_run and report["reencrypted"]:
+            db.commit()
+        elif not dry_run:
+            db.rollback()
+    except Exception as exc:
+        db.rollback()
+        report["errors"].append(f"rotation aborted: {exc}")
+    finally:
+        db.close()
+
+    return report
+
+
+def count_plaintext_secrets() -> int:
+    """How many users still have a GitHub token stored in the clear."""
+    if _fernet is None:
+        return 0
+    try:
+        init_db()
+        db = SessionLocal()
+        try:
+            rows = db.query(User.github_token).filter(
+                User.github_token.isnot(None), User.github_token != ""
+            ).all()
+            return sum(
+                1 for (value,) in rows if value and not is_encrypted_secret(value)
+            )
+        finally:
+            db.close()
+    except Exception:
+        return 0
 
 
 def reset_password_with_token(token: str, new_password: str) -> Dict[str, Any]:

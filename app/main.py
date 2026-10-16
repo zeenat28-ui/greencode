@@ -741,7 +741,22 @@ def resolve_github_token(
     if header_token:
         return header_token
     
-    # 3. Server-level fallback (for internal/admin use only)
+    # 3. User's stored token (AES-256 encrypted at rest)
+    try:
+        from app.database import SessionLocal, User, decrypt_secret
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user and user.github_token:
+                decrypted = decrypt_secret(user.github_token)
+                if decrypted:
+                    return decrypted
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+    # 4. Server-level fallback (for internal/admin use only)
     fallback = os.environ.get("GITHUB_TOKEN", "")
     if fallback:
         return fallback

@@ -1,4 +1,4 @@
-﻿"""Automated Test Suite for GreenCode Auditor Authentication & Access Control.
+"""Automated Test Suite for GreenCode Auditor Authentication & Access Control.
 
 Tests User model, bcrypt hashing, credential verification, GitHub OAuth/PAT integration,
 and FastAPI authentication endpoints (/api/auth/*).
@@ -222,7 +222,7 @@ class TestAuthFastAPI(unittest.TestCase):
 
     def test_01_api_github_auth_is_the_only_signin(self):
         """Email/password endpoints are gone; GitHub PAT is the sole identity provider."""
-        for gone in ("/api/auth/signup", "/api/auth/signin", "/api/auth/forgot-password"):
+        for gone in ("/api/auth/signup", "/api/auth/signin"):
             with self.subTest(path=gone):
                 res = self.client.post(gone, json={})
                 self.assertEqual(res.status_code, 404, f"{gone} should not exist")

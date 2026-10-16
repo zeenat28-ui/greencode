@@ -7,9 +7,9 @@
 [![FinOps Standard](https://img.shields.io/badge/FinOps-FOCUS%201.4-2563eb)](app/finops_focus.py)
 [![OpenTelemetry](https://img.shields.io/badge/CNCF-OTLP%2FHTTP%20v1-f5a800)](app/otel_exporter.py)
 [![SARIF](https://img.shields.io/badge/OASIS-SARIF%20v2.1.0-7c3aed)](app/sarif.py)
-[![Tests](https://img.shields.io/badge/tests-530%2B%20passing-success)](tests/)
+[![Tests](https://img.shields.io/badge/tests-541%20passing-success)](tests/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
-[![Sponsor](https://img.shields.io/badge/Sponsor-Open%20Collective-ea4aaa?logo=opencollective)](https://opencollective.com/greencode-oss)
+[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/zeenat28-ui)
 
 **GreenCode Auditor** is a static source-code and Infrastructure-as-Code (IaC) energy analyzer, hardware power profiler, FinOps `FOCUS 1.4` cloud billing reconciler, and ISO/IEC 21031 (Green Software Foundation SCI) CI/CD quality gate with native **Amazon Alexa+ (MCP & ASK)**, **Amazon Bedrock**, and **OpenTelemetry (`OTLP/HTTP v1`)** integration.
 

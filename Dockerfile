@@ -1,5 +1,5 @@
 # GreenCode Auditor - Production Container Image
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Prevent Python from writing .pyc and buffer stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \

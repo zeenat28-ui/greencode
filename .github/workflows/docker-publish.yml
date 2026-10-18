@@ -41,7 +41,7 @@ jobs:
 
       # ─── Log in to GitHub Container Registry (GHCR) ───
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -52,7 +52,7 @@ jobs:
         env:
           DOCKER_TOKEN: ${{ secrets.ZEEMLOPS || secrets.DOCKERHUB_TOKEN }}
         if: ${{ env.DOCKER_TOKEN != '' }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ steps.dockerhub-config.outputs.username }}
           password: ${{ env.DOCKER_TOKEN }}

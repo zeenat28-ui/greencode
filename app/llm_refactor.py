@@ -87,7 +87,8 @@ SYSTEM_PROMPT = (
     "2. Preserve every side effect, return value and exception behaviour.\n"
     "3. Prefer algorithmic improvements (better complexity) over micro-optimizations.\n"
     "4. Keep the same function or class name, signature and public API.\n"
-    "5. Never introduce external dependencies."
+    "5. Never introduce external dependencies.\n"
+    "6. Strictly preserve all existing variable names, collections, parameters, and identifiers from the original code. Never replace them with generic placeholder names like 'dataset', 'targets', 'lookupMap', or 'items'."
 )
 
 _FENCE_RE = re.compile(r"^\s*```[a-zA-Z0-9_+-]*\s*\n?|```\s*$", re.MULTILINE)

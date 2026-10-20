@@ -239,7 +239,7 @@ def test_enterprise_rest_endpoints(client):
     res_pol = client.post("/api/energy/policy", json={
         "project_id": 1,
         "policy": {"max_energy_regression_pct": 12.0},
-    })
+    }, headers=ADMIN)
     assert res_pol.status_code == 200
     assert res_pol.json()["max_energy_regression_pct"] == 12.0
 
@@ -250,7 +250,7 @@ def test_enterprise_rest_endpoints(client):
         "current_power_w": 290.0,
         "baseline_power_w": 180.0,
         "auto_trigger": True,
-    })
+    }, headers=ADMIN)
     assert res_rb.status_code == 200
     assert res_rb.json()["rollback_triggered"] is True
 

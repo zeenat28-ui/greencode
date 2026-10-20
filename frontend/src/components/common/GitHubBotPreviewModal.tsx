@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../primitives/Modal';
 import { useT } from '../../i18n/I18nContext';
+import { authHeaders } from '../../services/api';
 
 interface GitHubBotPreviewModalProps {
   isOpen: boolean;
@@ -46,7 +47,7 @@ export default function GitHubBotPreviewModal({
     try {
       const refactorRes = await fetch('/api/refactor', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           source_code: DEFAULT_PR_SNIPPET,
           language: 'python',
@@ -65,14 +66,18 @@ export default function GitHubBotPreviewModal({
       const data = await refactorRes.json();
       const energyReductionPct = Number(data.estimated_energy_reduction_pct ?? 0);
 
-      // Evaluate the PR using a carbon delta derived from the real refactor result
-      // (a positive energy reduction -> negative gCO2e delta). No fixed "pass" value.
+      // Evaluate the PR against the team's carbon budget. The API models the
+      // gate as *additional* projected kg CO2e (it must be >= 0), so a net
+      // reduction contributes 0 to consumption. The signed delta is kept
+      // locally for display.
+      const carbonDeltaGco2e = Number((-energyReductionPct * 0.25).toFixed(2));
       const gateRes = await fetch('/api/energy/budgets/evaluate-pr', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
-          team_name: repoName || 'core-platform',
-          pr_delta_gco2e: Number((-energyReductionPct * 0.25).toFixed(2)),
+          // The organisation comes from the verified access token.
+          team_id: 'core-infra',
+          additional_projected_kg_co2e: Math.max(0, carbonDeltaGco2e),
         }),
       });
       const gateData = gateRes.ok ? await gateRes.json() : null;
@@ -87,7 +92,7 @@ export default function GitHubBotPreviewModal({
         source: data.source || 'ast_verifier',
         behaviourVerified: Boolean(data.behaviour_verified),
         energyReductionPct,
-        gateVerdict: gateData?.evaluation?.status || 'PENDING',
+        gateVerdict: gateData?.verdict || 'PENDING',
       });
       setIsPatched(true);
     } catch (err: any) {

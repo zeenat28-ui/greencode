@@ -52,6 +52,7 @@ class AuditLogManager:
         details: Optional[Dict[str, Any]] = None,
         actor: Optional[str] = "system",
         ip_address: Optional[str] = None,
+        user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Record an immutable, hash-chained audit event."""
         db: Session = SessionLocal()
@@ -87,6 +88,7 @@ class AuditLogManager:
 
             log_entry = AuditLog(
                 org_id=org_id,
+                user_id=user_id,
                 action=action,
                 resource_type=resource_type,
                 resource_id=resource_id,

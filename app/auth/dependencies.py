@@ -117,6 +117,23 @@ def require_role(*allowed_roles: Role):
     return _guard
 
 
+def enforce_tenant_scope(actor: Dict[str, Any], org_id: int, resource: str = "resource") -> None:
+    """Refuse cross-tenant access unless the caller is a platform ``superadmin``.
+
+    This is the canonical body of the tenant check that routers apply to
+    organisation-scoped payloads (body field, query parameter or path
+    parameter).  The caller's tenant always comes from the VERIFIED token,
+    never from the client-supplied value.
+    """
+    role = normalize_role(actor.get("role"))
+    if role != Role.SUPERADMIN and actor.get("org_id") != org_id:
+        raise _forbidden(
+            f"Tenant isolation violation: token belongs to organization "
+            f"{actor.get('org_id')} but requested organization {org_id} "
+            f"for {resource}"
+        )
+
+
 async def get_tenant_actor(
     request: Request,
     org_id: int = Path(..., description="Tenant organization id"),

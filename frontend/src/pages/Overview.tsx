@@ -4,6 +4,7 @@ import {
   DollarSign, Activity, GitPullRequest, RefreshCw
 } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
+import { authHeaders, getAccessToken } from '../services/api';
 
 export default function Overview() {
   const t = useT();
@@ -22,7 +23,7 @@ export default function Overview() {
   const [scanningLocal, setScanningLocal] = useState(false);
 
   const loadOverviewData = useCallback(() => {
-    fetch('/api/repositories?limit=15')
+    fetch('/api/repositories?limit=15', { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && Array.isArray(data.repositories)) {
@@ -31,7 +32,7 @@ export default function Overview() {
       })
       .catch(() => {});
 
-    fetch('/api/energy/budgets')
+    fetch('/api/energy/budgets', { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && Array.isArray(data.budgets) && data.budgets.length > 0) {
@@ -50,7 +51,7 @@ export default function Overview() {
       })
       .catch(() => {});
 
-    fetch('/api/energy/workloads?limit=12')
+    fetch('/api/energy/workloads?limit=12', { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && typeof data === 'object') {
@@ -65,10 +66,11 @@ export default function Overview() {
       })
       .catch(() => {});
 
-    const token = localStorage.getItem('greencode_token');
-    if (token) {
+    // The access token lives in memory only (never in localStorage), so ask
+    // the API layer whether there is a session before hitting a protected route.
+    if (getAccessToken()) {
       fetch('/api/enterprise/organizations/me', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders(),
       })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
@@ -90,7 +92,7 @@ export default function Overview() {
       const targetTeam = selectedTeam === 'All Teams' ? (teams[0] || 'core-infra') : selectedTeam;
       await fetch('/api/scan/local-workspace', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           subpath: 'app',
           repo_name: 'zeenat28-ui/greencode',

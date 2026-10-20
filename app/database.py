@@ -9,6 +9,7 @@ Software Carbon Intensity (SCI) telemetry metrics.
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -115,6 +116,9 @@ if _fernet is None and not _ENCRYPTION_KEY_RAW:
         "SECRETS_ENCRYPTION_KEY is not set - GitHub tokens are being stored in "
         "PLAINTEXT in the database. Set it to a long random string before deploying."
     )
+
+
+logger = logging.getLogger("greencode.db")
 
 
 def secrets_encryption_enabled() -> bool:
@@ -1279,6 +1283,67 @@ def get_latest_repositories(
         db.close()
 
 
+def _format_violation_for_response(v: Any) -> Dict[str, Any]:
+    """Ensure violation has syntactically valid runnable refactored code and unified diff."""
+    snippet = (v.snippet or "").strip()
+    v_type = v.violation_type or ""
+    raw_fix = (v.suggested_fix or "").strip()
+
+    is_prose_advice = (
+        not raw_fix
+        or any(
+            kw in raw_fix
+            for kw in (
+                "Append strings into a list",
+                "Wrap cursor",
+                "Batch multiple requests",
+                "StringBuilder",
+                "Use re.compile",
+                "Hoist open()",
+                "Move client",
+                "Avoid calling",
+                "Optimize algorithmic patterns",
+            )
+        )
+    )
+
+    refactored_code = raw_fix
+    explanation = raw_fix if is_prose_advice else "Green Software Foundation algorithmic optimization."
+    diff = ""
+
+    if is_prose_advice and snippet:
+        try:
+            from app.optimizer import _synthesize_green_code
+            synth = _synthesize_green_code(snippet, v_type)
+            refactored_code = synth.get("refactored_code", raw_fix)
+            explanation = synth.get("explanation", explanation)
+            diff = synth.get("unified_diff", "")
+        except Exception:
+            pass
+
+    if not diff and snippet and refactored_code:
+        try:
+            from app.optimizer import generate_unified_diff
+            diff = generate_unified_diff(snippet, refactored_code, v.file_path or "code.py")
+        except Exception:
+            pass
+
+    return {
+        "id": v.id,
+        "file_path": v.file_path,
+        "line_number": v.line_number,
+        "end_line_number": v.end_line_number,
+        "violation_type": v.violation_type,
+        "severity": v.severity,
+        "deduction": v.deduction,
+        "snippet": v.snippet,
+        "context_code": v.context_code,
+        "suggested_fix": refactored_code,
+        "refactored_code": refactored_code,
+        "explanation": explanation,
+        "unified_diff": diff,
+    }
+
 def get_repository_details(repo_id: int) -> Optional[Dict[str, Any]]:
     """Sync wrapper for repository details."""
     init_db()
@@ -1301,19 +1366,7 @@ def get_repository_details(repo_id: int) -> Optional[Dict[str, Any]]:
             "total_lines": repo.total_lines,
             "green_score": repo.green_score,
             "violations": [
-                {
-                    "id": v.id,
-                    "file_path": v.file_path,
-                    "line_number": v.line_number,
-                    "end_line_number": v.end_line_number,
-                    "violation_type": v.violation_type,
-                    "severity": v.severity,
-                    "deduction": v.deduction,
-                    "snippet": v.snippet,
-                    "context_code": v.context_code,
-                    "suggested_fix": v.suggested_fix,
-                }
-                for v in repo.violations
+                _format_violation_for_response(v) for v in repo.violations
             ],
             "profiles": [
                 {
@@ -1474,30 +1527,34 @@ def record_audit_log(
     status: str = "SUCCESS",
     details: Optional[str] = None,
 ) -> int:
-    """Record immutable compliance audit log event."""
+    """Record immutable compliance audit log event.
+
+    The entry MUST be written through ``AuditLogManager.record_event`` so it
+    participates in the SHA-256 hash chain.  Writing raw rows into
+    ``audit_logs`` directly produced unparseable ``details`` payloads that
+    made ``AuditLogManager.verify_integrity`` report ``CORRUPTED_JSON`` and
+    invalidate the tamper-evidence guarantee for the whole organization.
+    """
     init_db()
-    db = SessionLocal()
+    from app.audit_logs import AuditLogManager  # local import: avoids a cycle
+
+    detail_payload: Dict[str, Any] = {"message": details} if details else {}
     try:
-        entry = AuditLog(
+        result = AuditLogManager.record_event(
+            org_id=int(org_id) if org_id is not None else 1,
             action=action,
             resource_type=resource_type,
-            resource_id=str(resource_id) if resource_id else None,
-            org_id=org_id,
-            user_id=user_id,
-            ip_address=ip_address,
+            resource_id=str(resource_id) if resource_id is not None else None,
             status=status,
-            details=details,
-            created_at=datetime.now(timezone.utc),
+            details=detail_payload,
+            actor="system" if user_id is None else f"user:{user_id}",
+            ip_address=ip_address,
+            user_id=user_id,
         )
-        db.add(entry)
-        db.commit()
-        db.refresh(entry)
-        return entry.id
+        return int(result.get("id", -1))
     except Exception:
-        db.rollback()
+        logger.exception("Failed to record audit log event %s", action)
         return -1
-    finally:
-        db.close()
 
 
 def list_audit_logs(

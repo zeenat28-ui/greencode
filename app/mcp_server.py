@@ -99,9 +99,24 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from mcp.server.mcpserver import MCPServer
-from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import LATEST_PROTOCOL_VERSION
+# The Streamable HTTP transport SDK is an OPTIONAL dependency: lean installs
+# such as the Vercel serverless build (requirements-vercel.txt) exclude the
+# 'mcp' package, yet every non-transport surface - the ASK webhook, the REST
+# voice-query tools, and this module's tool functions - must still import and
+# answer there. Only create_app() needs the real SDK.
+try:
+    from mcp.server.mcpserver import MCPServer
+    from mcp.server.transport_security import TransportSecuritySettings
+    from mcp.types import LATEST_PROTOCOL_VERSION
+
+    MCP_SDK_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised in a subprocess test
+    MCP_SDK_AVAILABLE = False
+    MCPServer = None
+    TransportSecuritySettings = None
+    # Version floor the Alexa+ track requires, so _envelope() still reports a
+    # valid protocol version to consumers when the SDK is absent.
+    LATEST_PROTOCOL_VERSION = "2025-11-25"
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
@@ -170,6 +185,21 @@ def clear_intensity_cache() -> None:
     """Drop every cached zone reading (used by tests and live checkers)."""
     with _INTENSITY_CACHE_LOCK:
         _INTENSITY_CACHE.clear()
+
+
+def warm_mcp_caches(zones: Optional[List[str]] = None) -> None:
+    """Pre-warm capabilities and regional intensity caches so the cold start is sub-500ms."""
+    default_zones = zones or ["US-CAL-CISO", "IE", "DE", "FR", "SE", "US-MIDA-PJM"]
+    try:
+        from app import energy_sensors
+        energy_sensors.probe_capabilities()
+    except Exception:
+        pass
+    for z in default_zones:
+        try:
+            _resolve_intensity(z)
+        except Exception:
+            pass
 
 
 def _resolve_intensity(zone: str) -> Dict[str, Any]:
@@ -251,20 +281,52 @@ def _severity_counts(violations: List[Dict[str, Any]]) -> Dict[str, int]:
     return counts
 
 
-mcp = MCPServer(
-    name=SERVER_NAME,
-    version=SERVER_VERSION,
-    title="GreenCode Auditor",
-    instructions=(
-        "GreenCode measures the carbon cost of software. Use audit_code for a "
-        "source snippet, audit_repository for a GitHub repository, and "
-        "audit_and_score for a single end-to-end verdict combining static "
-        "findings with Software Carbon Intensity. Always report "
-        "measurement_is_hardware to the user: a false value means the energy "
-        "figure was modelled from TDP, not read from a hardware counter, and "
-        "that distinction must never be hidden."
-    ),
-)
+if MCP_SDK_AVAILABLE:
+    mcp = MCPServer(
+        name=SERVER_NAME,
+        version=SERVER_VERSION,
+        title="GreenCode Auditor",
+        instructions=(
+            "GreenCode measures the carbon cost of software. Use audit_code for a "
+            "source snippet, audit_repository for a GitHub repository, and "
+            "audit_and_score for a single end-to-end verdict combining static "
+            "findings with Software Carbon Intensity. Always report "
+            "measurement_is_hardware to the user: a false value means the energy "
+            "figure was modelled from TDP, not read from a hardware counter, and "
+            "that distinction must never be hidden."
+        ),
+    )
+else:
+    class _TransportlessServer:
+        """Decorator-only stand-in when the optional 'mcp' package is absent.
+
+        Tool and resource decorators pass their functions through untouched,
+        so every GreenCode tool stays importable and callable for the ASK
+        webhook and the REST voice endpoints. Only the Streamable HTTP
+        transport in create_app() needs the real SDK, and it raises a clear
+        error there rather than this module failing to import.
+        """
+
+        def tool(self, *args, **kwargs):  # noqa: ANN001, ANN003
+            def _decorator(fn):  # noqa: ANN001
+                return fn
+
+            return _decorator
+
+        def resource(self, *args, **kwargs):  # noqa: ANN001, ANN003
+            def _decorator(fn):  # noqa: ANN001
+                return fn
+
+            return _decorator
+
+        def streamable_http_app(self, **kwargs):  # noqa: ANN003
+            raise RuntimeError(
+                "The optional 'mcp' package is not installed, so the MCP "
+                "Streamable HTTP transport cannot start. Install it with: "
+                "pip install 'mcp>=2.3.0'"
+            )
+
+    mcp = _TransportlessServer()
 @mcp.tool(
     description=(
         "Audit a source-code snippet for energy anti-patterns (nested loops, "
@@ -1549,6 +1611,56 @@ def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+# Client-address => recent request timestamps for the ASK webhook rate limit.
+# See alexa_request_guard for why the budget itself lives in the environment.
+_alexa_rate_buckets: Dict[str, List[float]] = {}
+
+
+def alexa_request_guard(request: Request, payload: Dict[str, Any]) -> Optional[JSONResponse]:
+    """Rate limit + applicationId verification for ASK webhook requests.
+
+    Returns the refusal response to send, or ``None`` when the request may
+    proceed. Shared by both public mounts - the main FastAPI app and
+    ``create_app()`` - so a hardening applied here can never drift apart on
+    one of the two paths. Configuration is read per request so operators can
+    retune without a restart; buckets expire with the window, so the map only
+    grows with distinct clients seen inside one window.
+    """
+    now = time.time()
+    window = float(os.environ.get("GREENCODE_ALEXA_RATE_WINDOW_SECONDS", "60"))
+    budget = int(os.environ.get("GREENCODE_ALEXA_RATE_LIMIT", "100"))
+    fwd = request.headers.get("x-forwarded-for", "")
+    client = fwd.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    hits = [ts for ts in _alexa_rate_buckets.get(client, []) if now - ts < window]
+    if len(hits) >= budget:
+        logger.warning("ASK webhook rate limit exceeded for %s", client)
+        return JSONResponse(
+            {"error": "rate_limited", "detail": "Too many requests; retry later."},
+            status_code=429,
+            headers={"Retry-After": str(int(window))},
+        )
+    hits.append(now)
+    _alexa_rate_buckets[client] = hits
+
+    expected_skill_id = os.environ.get("GREENCODE_ALEXA_SKILL_ID", "").strip()
+    if expected_skill_id:
+        app_id = (
+            ((payload.get("session") or {}).get("application") or {}).get("applicationId")
+            or (((payload.get("context") or {}).get("System") or {}).get("application") or {}).get("applicationId")
+            or ""
+        )
+        # Constant-time comparison: a forged applicationId must not be
+        # discoverable byte-by-byte through response timing.
+        if not hmac.compare_digest(
+            str(app_id).encode("utf-8", "replace"), expected_skill_id.encode("utf-8")
+        ):
+            return JSONResponse(
+                {"error": "forbidden_skill_id", "detail": "Application ID mismatch."},
+                status_code=403,
+            )
+    return None
+
+
 async def alexa_skill_webhook(request: Request) -> JSONResponse:
     """HTTP POST endpoint for Amazon Alexa Skills Kit (ASK) Custom Skill."""
     try:
@@ -1558,19 +1670,21 @@ async def alexa_skill_webhook(request: Request) -> JSONResponse:
             {"error": "invalid_json", "detail": str(exc)},
             status_code=400,
         )
-    expected_skill_id = os.environ.get("GREENCODE_ALEXA_SKILL_ID", "").strip()
-    if expected_skill_id:
-        app_id = (
-            ((payload.get("session") or {}).get("application") or {}).get("applicationId")
-            or (((payload.get("context") or {}).get("System") or {}).get("application") or {}).get("applicationId")
-            or ""
+    guard = alexa_request_guard(request, payload)
+    if guard is not None:
+        return guard
+    try:
+        response_payload = handle_alexa_skill_request(payload)
+    except Exception:  # noqa: BLE001 - a valid envelope beats a dead skill
+        # A 500 or any non-ASK body makes Alexa abort the turn silently
+        # ("there is a problem with the skill"). Answer with a spoken
+        # apology instead, and keep the traceback in the server log.
+        logger.exception("ASK skill request failed")
+        response_payload = _build_ask_response(
+            "Sorry, GreenCode Auditor hit an internal error while processing "
+            "that request. Please try again in a moment.",
+            should_end_session=False,
         )
-        if app_id != expected_skill_id:
-            return JSONResponse(
-                {"error": "forbidden_skill_id", "detail": "Application ID mismatch."},
-                status_code=403,
-            )
-    response_payload = handle_alexa_skill_request(payload)
     return JSONResponse(response_payload)
 
 
@@ -1589,6 +1703,11 @@ def create_app():
     GREENCODE_MCP_ALLOWED_HOSTS widens the SDK's DNS-rebinding allowlist with
     extra Host values (the public tunnel domain); loopback stays allowed.
     """
+    if not MCP_SDK_AVAILABLE:
+        raise RuntimeError(
+            "The optional 'mcp' package is not installed, so the MCP Streamable "
+            "HTTP transport cannot start. Install it with: pip install 'mcp>=2.3.0'"
+        )
     extra_hosts = [
         h.strip()
         for h in os.environ.get("GREENCODE_MCP_ALLOWED_HOSTS", "").split(",")
@@ -1658,6 +1777,8 @@ def main() -> None:
         if token
         else "Auth: open (set GREENCODE_MCP_TOKEN to enforce the Alexa+ 401 checklist)"
     )
+    # Pre-warm capability probes and regional grid caches in background
+    threading.Thread(target=warm_mcp_caches, daemon=True).start()
     uvicorn.run(create_app(), host=MCP_HOST, port=MCP_PORT)
 
 

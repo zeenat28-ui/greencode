@@ -14,6 +14,7 @@ import {
   AlertCircle, Key, Leaf,
 } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
+import { authHeaders } from '../services/api';
 
 function getThresholdGrade(val: number) {
   if (val >= 90) return 'A+';
@@ -51,8 +52,7 @@ export default function Settings() {
 
   const loadBillingUsage = async () => {
     try {
-      const token = localStorage.getItem('greencode_token') || '';
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const headers = authHeaders();
       const res = await fetch('/api/billing/usage?org_id=1', { headers });
       if (res.ok) {
         setUsageData(await res.json());
@@ -74,11 +74,7 @@ export default function Settings() {
     setLicenseError(null);
     setLicenseMsg(null);
     try {
-      const token = localStorage.getItem('greencode_token') || '';
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
+      const headers = authHeaders({ 'Content-Type': 'application/json' });
       const res = await fetch('/api/billing/license/activate', {
         method: 'POST',
         headers,

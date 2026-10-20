@@ -27,6 +27,22 @@ export const getAccessToken = (): string | null => _accessToken;
 export const setAccessToken = (token: string | null): void => {
   _accessToken = token;
 };
+
+/**
+ * Build the Authorization header for a *raw* `fetch()` call.
+ *
+ * The access token is intentionally kept in memory only (see the note above),
+ * so there is no `localStorage` entry to read. Pages that call `fetch()`
+ * directly instead of going through the axios instance must therefore ask for
+ * the header here - otherwise the request goes out unauthenticated and the
+ * backend answers 401.
+ */
+export const authHeaders = (extra: Record<string, string> = {}): Record<string, string> => {
+  const headers: Record<string, string> = { ...extra };
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+};
 export const getRefreshToken = (): string | null => {
   if (_refreshToken) return _refreshToken;
   try {
@@ -46,14 +62,41 @@ export const setRefreshToken = (token: string | null): void => {
   }
 };
 
-/** ZERO-KNOWLEDGE: GitHub token stored in memory only, never persisted */
-export const getGitHubToken = (): string | null => _githubToken;
+/** 
+ * ZERO-KNOWLEDGE: GitHub token stored in browser session memory only (sessionStorage).
+ * Never written to localStorage, never persisted to database.
+ * Survives page reloads within the tab, automatically cleared on logout or tab close.
+ */
+const GH_SESSION_KEY = 'greencode_gh_token';
+
+export const getGitHubToken = (): string | null => {
+  if (_githubToken) return _githubToken;
+  try {
+    _githubToken = sessionStorage.getItem(GH_SESSION_KEY);
+  } catch {
+    _githubToken = null;
+  }
+  return _githubToken;
+};
+
 export const setGitHubToken = (token: string | null): void => {
   _githubToken = token;
+  try {
+    if (token) sessionStorage.setItem(GH_SESSION_KEY, token);
+    else sessionStorage.removeItem(GH_SESSION_KEY);
+  } catch {
+    // sessionStorage unavailable
+  }
 };
+
 export const clearSession = (): void => {
   _accessToken = null;
   _githubToken = null;
+  try {
+    sessionStorage.removeItem(GH_SESSION_KEY);
+  } catch {
+    // ignore
+  }
   setRefreshToken(null);
 };
 
@@ -68,14 +111,15 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     config.headers.Authorization = `Bearer ${_accessToken}`;
   }
   // ZERO-KNOWLEDGE: Attach GitHub token to requests that need it
-  // Endpoints that require GitHub token: /api/scan/*, /github/*, /api/dynamic/analyze
-  if (_githubToken && config.url) {
+  const ghTok = getGitHubToken();
+  if (ghTok && config.url) {
+    const url = config.url;
     const needsGithubToken = 
-      config.url.startsWith('/api/scan/') ||
-      config.url.startsWith('/github/') ||
-      config.url.startsWith('/api/dynamic/analyze');
+      url.includes('/api/scan') ||
+      url.includes('/github/') ||
+      url.includes('/api/dynamic/analyze');
     if (needsGithubToken) {
-      config.headers['X-GitHub-Token'] = _githubToken;
+      config.headers['X-GitHub-Token'] = ghTok;
     }
   }
   return config;

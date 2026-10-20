@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { scanService } from '../services/greencodeApi';
+import { authHeaders } from '../services/api';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { RepositoryRecord, RepositoryPage, ScanResult } from '../types';
 import ScoreBadge from '../components/common/ScoreBadge';
@@ -63,7 +64,7 @@ export default function History() {
         const subpath = slug.replace(/^local-workspace\//, '') || 'samples';
         const res = await fetch('/api/scan/local-workspace', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ subpath, repo_name: slug, team_id: 'core-infra' }),
         });
         if (!res.ok) {

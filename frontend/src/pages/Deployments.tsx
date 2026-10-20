@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RotateCcw, AlertTriangle, RefreshCw, Sliders } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
+import { authHeaders } from '../services/api';
 
 interface LiveWorkload {
   name: string;
@@ -33,7 +34,7 @@ export default function Deployments() {
   const fetchWorkloads = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/energy/workloads?limit=12');
+      const res = await fetch('/api/energy/workloads?limit=12', { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         const items: LiveWorkload[] = Array.isArray(data.workloads) ? data.workloads : [];
@@ -61,7 +62,7 @@ export default function Deployments() {
     try {
       const res = await fetch('/api/energy/rollback', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           namespace: w.namespace,
           deployment_name: w.name,
@@ -88,7 +89,7 @@ export default function Deployments() {
     try {
       await fetch('/api/energy/workloads/baseline', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           namespace: selectedNamespace,
           deployment_name: selectedWorkload,

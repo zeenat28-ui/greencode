@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../primitives/Modal';
 import { useT } from '../../i18n/I18nContext';
+import { authHeaders } from '../../services/api';
 
 interface FinOpsCalculatorModalProps {
   isOpen: boolean;
@@ -103,7 +104,8 @@ export default function FinOpsCalculatorModal({
     fetch(
       `/api/enterprise/aws/graviton-migration?source_x86_instance=${encodeURIComponent(
         selectedInstance.sourceX86
-      )}&region=${encodeURIComponent(selectedRegion)}&instance_count=${nodeCount}`
+      )}&region=${encodeURIComponent(selectedRegion)}&instance_count=${nodeCount}`,
+      { headers: authHeaders() },
     )
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {

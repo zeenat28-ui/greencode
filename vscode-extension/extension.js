@@ -13,7 +13,7 @@ const https = require('https');
 
 let diagnosticCollection;
 
-function requestJson(urlString, method = 'GET', bodyObj = null) {
+function requestJson(urlString, method = 'GET', bodyObj = null, token = '') {
     return new Promise((resolve, reject) => {
         const parsedUrl = new URL(urlString);
         const client = parsedUrl.protocol === 'https:' ? https : http;
@@ -25,7 +25,8 @@ function requestJson(urlString, method = 'GET', bodyObj = null) {
             method,
             headers: {
                 'Content-Type': 'application/json',
-                ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {})
+                ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
             },
             timeout: 5000
         };
@@ -211,9 +212,17 @@ async function applyLiveRefactor(document, range, violationCode) {
 async function showEnergyDebtModal() {
     const config = vscode.workspace.getConfiguration('greencode');
     const apiUrl = config.get('apiUrl', 'http://localhost:8000');
+    const apiToken = config.get('apiToken', '');
+
+    if (!apiToken) {
+        vscode.window.showWarningMessage(
+            'GreenCode: set "greencode.apiToken" to your access token to read the live carbon budget.'
+        );
+        return;
+    }
 
     try {
-        const data = await requestJson(`${apiUrl}/api/energy/budgets?org_id=1&team_id=core-infra`, 'GET');
+        const data = await requestJson(`${apiUrl}/api/energy/budgets?org_id=1&team_id=core-infra`, 'GET', null, apiToken);
         const consumed = Number(data.consumed_kg_co2e || 0).toFixed(2);
         const limit = Number(data.monthly_budget_kg_co2e || 500).toFixed(2);
         const pct = Number(data.consumption_pct || 0).toFixed(1);

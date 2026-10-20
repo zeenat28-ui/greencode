@@ -48,6 +48,25 @@ class EnergyPolicyService:
             db.close()
 
     @classmethod
+    def get_project_org_id(cls, project_id: int) -> Optional[int]:
+        """Return the organisation that owns a project, or ``None`` if unknown.
+
+        Used by routers to enforce the tenant boundary against the *authoritative*
+        project organisation instead of trusting a client-supplied ``org_id``.
+        """
+        Base.metadata.create_all(bind=sync_engine)
+        db: Session = SessionLocal()
+        try:
+            proj = db.query(Project).filter(Project.id == project_id).first()
+            if not proj:
+                return None
+            return int(proj.org_id or 0) or None
+        except Exception:
+            return None
+        finally:
+            db.close()
+
+    @classmethod
     def set_policy(
         cls,
         project_id: int,

@@ -5,6 +5,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Modal } from '../primitives/Modal';
 import { translateStatic as t } from '../../i18n/I18nContext';
+import { authHeaders } from '../../services/api';
 
 interface AmazonTechStackModalProps {
   isOpen: boolean;
@@ -72,8 +73,7 @@ export default function AmazonTechStackModal({
   useEffect(() => {
     if (!isOpen) return;
     let active = true;
-    const token = localStorage.getItem('greencode_token');
-    fetch('/api/aws/health', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    fetch('/api/aws/health', { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (active && data) setHealth(data);

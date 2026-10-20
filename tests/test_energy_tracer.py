@@ -189,6 +189,39 @@ class TestEnergyTracer(unittest.TestCase):
         by_name = self._by_name(report)
         self.assertGreater(by_name["work"]["joules"], 0.0)
 
+    def test_sampler_interval_is_honoured(self):
+        """Ticks must land at the configured cadence, not a coarser one.
+
+        Event.wait(timeout) rounds its timeout up to the ~15.6ms system
+        timer tick on Windows, which stretched a 1ms interval to ~14ms and
+        let short workloads finish before the first sample existed - they
+        were then attributed 0.0 joules. A 60ms workload at a 1ms interval
+        must therefore yield far more than a handful of samples.
+        """
+        import time
+
+        _, report = self._run(lambda: time.sleep(0.06))
+        self.assertGreaterEqual(report["samples"], 10)
+
+    def test_unsampled_window_is_not_charged(self):
+        """A window with no samples inside it must never be billed.
+
+        The old short-circuit charged the whole accumulated history
+        (e1 - e0) to any function that returned between two ticks, so a
+        short function could outrank the workload that actually consumed
+        the energy.
+        """
+        tracer = EnergyTracer(interval=0.001)
+        tracer._energy_timeline = [(100.0, 0.0), (101.0, 5.0)]
+        # Entirely after the last sample: nothing was measured there.
+        self.assertEqual(tracer._energy_between(102.0, 102.5), 0.0)
+        # Entirely before the first sample.
+        self.assertEqual(tracer._energy_between(98.0, 99.0), 0.0)
+        # A partially covered window integrates only the covered part.
+        self.assertAlmostEqual(tracer._energy_between(100.5, 101.5), 2.5)
+        # The fully covered window integrates the full delta.
+        self.assertAlmostEqual(tracer._energy_between(100.0, 101.0), 5.0)
+
     def test_tracer_instance_is_reusable_across_runs(self):
         tracer = EnergyTracer(interval=0.001)
         with mock.patch("app.energy_sensors.select_meter", return_value=_FakeMeter(1.0)):

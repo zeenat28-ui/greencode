@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Sliders, Save, CheckCircle2, FileCode, Terminal, Play, AlertTriangle } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
+import { authHeaders, getAccessToken } from '../services/api';
 
 const SAMPLE_TF = `resource "aws_instance" "api_node" {
   ami           = "ami-0c55b159cbfafe1f0"
@@ -49,8 +50,7 @@ export default function Policies() {
   const [auditingIac, setAuditingIac] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('greencode_token');
-    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const headers = authHeaders();
     fetch('/api/policies/1', { headers })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -65,7 +65,7 @@ export default function Policies() {
       })
       .catch(() => {});
 
-    fetch('/api/policies/custom-rules')
+    fetch('/api/policies/custom-rules', { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && Array.isArray(data.rules)) {
@@ -79,11 +79,7 @@ export default function Policies() {
     setSaveError(null);
     setSavedSuccess(false);
     try {
-      const token = localStorage.getItem('greencode_token');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
+      const headers = authHeaders({ 'Content-Type': 'application/json' });
       const res = await fetch('/api/policies', {
         method: 'POST',
         headers,
@@ -114,7 +110,7 @@ export default function Policies() {
     try {
       const res = await fetch('/api/policies/custom-rules/evaluate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           source_code: customTestCode,
           language: 'python',
@@ -138,7 +134,7 @@ export default function Policies() {
     try {
       const res = await fetch('/api/kubernetes/iac-audit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           content: targetContent,
           file_path: targetPath,

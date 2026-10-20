@@ -61,7 +61,7 @@ function openGitHubPopup(authUrl: string): Window | null {
 // Component
 // ---------------------------------------------------------------------------
 export default function Login() {
-  const { loginWithEmail, registerWithEmail, loginWithGoogleToken, loginWithGoogleCode, loginWithGitHubCode, connectGitHub, logout } = useAuth();
+  const { loginWithEmail, loginDemo, registerWithEmail, loginWithGoogleToken, loginWithGoogleCode, loginWithGitHubCode, connectGitHub, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from || '/dashboard';
@@ -75,6 +75,7 @@ export default function Login() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
 
   // Legal Modal
   const [legalModalOpen, setLegalModalOpen] = useState(false);
@@ -328,6 +329,24 @@ export default function Login() {
   };
 
   // -------------------------------------------------------------------------
+  // 1-Click Instant Demo Developer Login
+  // -------------------------------------------------------------------------
+  const handleDemoQuick = async () => {
+    if (demoLoading || loading || githubLoading || googleLoading) return;
+    setError(null);
+    setDemoLoading(true);
+    try {
+      await loginDemo();
+      navigate(from, { replace: true });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } }; message?: string };
+      setError(e?.response?.data?.detail || e?.message || 'Demo login failed. Please try again.');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
   // Email / password submit
   // -------------------------------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
@@ -552,6 +571,21 @@ export default function Login() {
 
             {/* Provider Buttons */}
             <div className="space-y-2 mb-3">
+
+              {/* 1-Click Instant Demo Developer Access */}
+              <button
+                type="button"
+                onClick={handleDemoQuick}
+                disabled={loading || githubLoading || googleLoading || demoLoading}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-full border-2 border-[#003d20] text-xs font-bold !text-white bg-[#003d20] hover:bg-[#064e2e] active:scale-98 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {demoLoading ? (
+                  <Loader2 size={15} className="animate-spin text-white" />
+                ) : (
+                  <CheckCircle2 size={15} className="text-emerald-300" />
+                )}
+                <span>1-Click Instant Demo (Explore Dashboard)</span>
+              </button>
 
               {/* GitHub OAuth Button */}
               <button

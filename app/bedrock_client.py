@@ -44,6 +44,8 @@ DEFAULT_MODELS: Tuple[str, ...] = (
     "anthropic.claude-sonnet-4-5-20250929-v1:0",
     "anthropic.claude-3-5-sonnet-20241022-v2:0",
     "anthropic.claude-3-5-haiku-20241022-v1:0",
+    "amazon.nova-pro-v1:0",
+    "amazon.nova-lite-v1:0",
 )
 
 DEFAULT_REGION = "us-east-1"
@@ -81,6 +83,18 @@ BEDROCK_MODEL_PROFILES: Dict[str, Dict[str, float]] = {
         "output_usd_per_1k": 0.0040,
         "input_joules_per_token": 0.12,
         "output_joules_per_token": 0.48,
+    },
+    "amazon.nova-pro-v1:0": {
+        "input_usd_per_1k": 0.0008,
+        "output_usd_per_1k": 0.0032,
+        "input_joules_per_token": 0.15,
+        "output_joules_per_token": 0.60,
+    },
+    "amazon.nova-lite-v1:0": {
+        "input_usd_per_1k": 0.00006,
+        "output_usd_per_1k": 0.00024,
+        "input_joules_per_token": 0.05,
+        "output_joules_per_token": 0.20,
     },
 }
 _DEFAULT_BEDROCK_PROFILE: Dict[str, float] = {

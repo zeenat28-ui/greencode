@@ -60,6 +60,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable instant inline energy diagnostics while editing"
+        },
+        "greencode.apiToken": {
+          "type": "string",
+          "default": "",
+          "description": "GreenCode access token (JWT). Required for authenticated endpoints such as /api/energy/budgets. Issue one via POST /api/auth/login and paste the access_token."
         }
       }
     }

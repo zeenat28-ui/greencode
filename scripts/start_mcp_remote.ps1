@@ -82,10 +82,13 @@ if ($env:GREENCODE_MCP_ALLOWED_HOSTS) {
 
 # 2.5 Quick tunnels get a fresh domain each run - point addon.json at it so
 #     every URL (endpoint, privacy, terms, icons) stays live without editing.
+#     Handles both URL states: an earlier tunnel domain (rotation) and the
+#     production domain this repo shipped with (first local run).
 $addonPath = Join-Path $PSScriptRoot "..\alexa\addon.json"
 if (Test-Path $addonPath) {
     $before = Get-Content $addonPath -Raw
     $after = $before -replace "https://[a-z0-9-]+\.trycloudflare\.com", $url
+    $after = $after -replace "https://greencode-teal\.vercel\.app", $url
     if ($after -ne $before) {
         Set-Content -Path $addonPath -Value $after -NoNewline
         Write-Host "addon.json URLs updated -> $url" -ForegroundColor Green

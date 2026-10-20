@@ -85,3 +85,6 @@ alembic/versions/__pycache__/
 # TypeScript incremental build cache
 *.tsbuildinfo
 frontend/tsconfig.tsbuildinfo
+
+data/
+

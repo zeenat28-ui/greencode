@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, CheckCircle2 } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
+import { authHeaders } from '../services/api';
 
 interface TeamBudgetRow {
   team: string;
@@ -53,7 +54,7 @@ export default function Budgets() {
   }, []);
 
   const loadBudgets = useCallback(() => {
-    fetch('/api/energy/budgets')
+    fetch('/api/energy/budgets', { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && Array.isArray(data.budgets) && data.budgets.length > 0) {
@@ -80,9 +81,11 @@ export default function Budgets() {
     try {
       const res = await fetch('/api/energy/budgets/allocate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
-          org_id: 1,
+          // The organisation is derived from the verified access token, so the
+          // client must NOT hardcode an org_id (that would break for every
+          // tenant other than org 1).
           team_id: cleanTeam,
           monthly_budget_kg: newTeamQuotaKg,
         }),
@@ -108,9 +111,8 @@ export default function Budgets() {
     if (!selectedSimTeam) return;
     fetch('/api/energy/budgets/evaluate-pr', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
-        org_id: 1,
         team_id: selectedSimTeam,
         additional_projected_kg_co2e: Math.max(0, prEmissionsInput),
       }),

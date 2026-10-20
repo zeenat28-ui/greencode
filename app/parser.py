@@ -92,7 +92,7 @@ VIOLATION_METADATA = {
         "severity": "MEDIUM",
         "gsf_pattern": "Memory Allocation Minimization",
         "description": "Using '+' or '+=' string concatenation inside loops causes quadratic O(N^2) memory reallocation and garbage collection thrashing, increasing RAM bus power draw.",
-        "fix_guidance": "Append strings into a list and combine once at exit using ''.join(chunks), or use StringBuilder.",
+        "fix_guidance": "Append strings into a list and combine once at exit using ''.join(chunks) to eliminate O(n²) allocations.",
     },
     ViolationType.HIDDEN_ITERATIVE_COMPUTATION: {
         "title": "Hidden Iterative Vector / Async Callback Leak",

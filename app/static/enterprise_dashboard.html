@@ -92,7 +92,7 @@
     </nav>
     <div class="org-badge">
       <div style="color: var(--text-muted); font-size: 11px;">ORGANIZATION</div>
-      <div style="font-weight: 600; color: #fff; margin-top: 2px;">GreenCode Organization</div>
+      <div style="font-weight: 600; color: #fff; margin-top: 2px;" id="org-name">Loading...</div>
       <div style="color: var(--accent); font-size: 11px; margin-top: 4px;">Multi-Tenant Isolated</div>
     </div>
   </aside>
@@ -102,8 +102,8 @@
     <header class="topbar">
       <div class="page-title" id="tab-heading">Software Sustainability Gatekeeper</div>
       <div class="user-pill">
-        <span>operator@greencode.io</span>
-        <span class="role-badge">ORG_ADMIN</span>
+        <span id="user-email">operator@greencode.io</span>
+        <span class="role-badge" id="user-role">ORG_ADMIN</span>
       </div>
     </header>
 
@@ -229,7 +229,7 @@
           <table>
             <thead><tr><th>Timestamp</th><th>Action</th><th>Actor</th><th>Resource</th><th>Record Hash</th></tr></thead>
             <tbody id="audit-tbody">
-              <tr><td>Verified</td><td>k8s:rollback_evaluation</td><td>greencode-sentinel</td><td>host-runtime/python</td><td><code>e3b0c44298fc...</code></td></tr>
+              <tr><td colspan="5">Loading audit trail...</td></tr>
             </tbody>
           </table>
         </div>
@@ -261,12 +261,81 @@
       document.getElementById('tab-heading').innerText = tabId.toUpperCase() + ' - Control Plane';
     }
 
+    /**
+     * The access token is kept in memory only by the React app; this static
+     * dashboard is served unauthenticated, so protected routes are simply
+     * skipped when there is no session. Every energy / budget call carries
+     * the Authorization header so it can succeed for a signed-in session.
+     */
+    function authHeaders() {
+      const headers = {};
+      const token = window.__greencode_access_token;
+      if (token) headers.Authorization = 'Bearer ' + token;
+      return headers;
+    }
+
+    function setText(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.innerText = value;
+    }
+
+    async function loadIdentity() {
+      try {
+        const res = await fetch('/api/enterprise/organizations/me', { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.organization?.name) setText('org-name', data.organization.name);
+      } catch (e) { /* non-blocking */ }
+      try {
+        const res = await fetch('/api/auth/me', { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.user?.email) setText('user-email', data.user.email);
+        if (data?.user?.role) setText('user-role', String(data.user.role).toUpperCase());
+      } catch (e) { /* non-blocking */ }
+    }
+
+    async function loadAuditTrail() {
+      const tbody = document.getElementById('audit-tbody');
+      if (!tbody) return;
+      try {
+        const res = await fetch('/api/reports/audit-logs/1?limit=25', { headers: authHeaders() });
+        if (!res.ok) {
+          tbody.innerHTML = '<tr><td colspan="5">Audit trail unavailable (authentication required).</td></tr>';
+          return;
+        }
+        const entries = await res.json();
+        const list = Array.isArray(entries) ? entries : (entries?.entries || []);
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="5">No audit events recorded yet.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = list.map(e => {
+          const when = e.created_at || e.timestamp || '';
+          const actor = e.details?.actor || e.actor || '-';
+          const resource = e.resource_id || e.resource_type || '-';
+          const hash = e.record_hash || e.details?.record_hash || '';
+          return `<tr>
+            <td>${when ? new Date(when).toLocaleString() : '-'}</td>
+            <td>${e.action || '-'}</td>
+            <td>${actor}</td>
+            <td>${resource}</td>
+            <td><code>${hash ? String(hash).slice(0, 12) + '...' : '-'}</code></td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="5">Audit trail unavailable.</td></tr>';
+      }
+    }
+
     async function loadLiveTelemetry() {
+      loadIdentity();
+      loadAuditTrail();
       try {
         const [reposRes, budgetsRes, workloadsRes] = await Promise.all([
           fetch('/api/repositories?limit=10'),
-          fetch('/api/energy/budgets'),
-          fetch('/api/energy/workloads?limit=10')
+          fetch('/api/energy/budgets', { headers: authHeaders() }),
+          fetch('/api/energy/workloads?limit=10', { headers: authHeaders() })
         ]);
         if (reposRes.ok) {
           const reposData = await reposRes.json();
@@ -331,11 +400,17 @@
 
     async function verifyChain() {
       try {
-        const res = await fetch('/api/reports/audit-logs/1/verify');
+        const res = await fetch('/api/reports/audit-logs/1/verify', { headers: authHeaders() });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          alert('Audit check failed: HTTP ' + res.status + (body?.detail ? ' - ' + body.detail : ''));
+          return;
+        }
         const data = await res.json();
-        alert('Audit Integrity Status: ' + data.status + ' (' + data.records_verified + ' records verified)');
+        // The API reports `records_verified` (not `checked_records`).
+        alert('Audit Integrity Status: ' + data.status + ' (' + (data.records_verified ?? 0) + ' records verified)');
       } catch(e) {
-        alert('Audit check completed.');
+        alert('Audit check could not reach the server.');
       }
     }
 

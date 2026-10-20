@@ -733,6 +733,94 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
             self.assertEqual(r_allowed.status_code, 200)
 
 
+class TestAlexaWebhookNeverSilent(unittest.TestCase):
+    """Alexa aborts the turn on ANY non-ASK body; the webhook must always answer.
+
+    A handler exception (missing optional dependency, live-API outage, a bug in
+    an intent branch) used to surface as a FastAPI 500, which Alexa reports to
+    the user as silence / "there is a problem with the skill". Both webhook
+    mounts must degrade into a spoken apology envelope instead.
+    """
+
+    LAUNCH = {"version": "1.0", "request": {"type": "LaunchRequest"}}
+
+    def test_main_api_webhook_returns_valid_envelope_when_handler_explodes(self):
+        from fastapi.testclient import TestClient as FastAPITestClient
+
+        from app.main import app as main_app
+
+        client = FastAPITestClient(main_app)
+        with mock.patch(
+            "app.mcp_server.handle_alexa_skill_request",
+            side_effect=RuntimeError("boom"),
+        ):
+            r = client.post("/api/alexa/skill", json=self.LAUNCH)
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["version"], "1.0")
+        speech = body["response"]["outputSpeech"]["text"]
+        self.assertIn("internal error", speech.lower())
+        self.assertIn("shouldEndSession", body["response"])
+
+    def test_mcp_server_webhook_returns_valid_envelope_when_handler_explodes(self):
+        client = TestClient(mcp_server.create_app())
+        with mock.patch(
+            "app.mcp_server.handle_alexa_skill_request",
+            side_effect=RuntimeError("boom"),
+        ):
+            r = client.post("/alexa/skill", json=self.LAUNCH)
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["version"], "1.0")
+        speech = body["response"]["outputSpeech"]["text"]
+        self.assertIn("internal error", speech.lower())
+
+
+class TestMcpTransportIsOptional(unittest.TestCase):
+    """requirements-vercel.txt excludes the 'mcp' package.
+
+    On that install the ASK webhook and every tool function must still import
+    and answer - previously the module-level ``from mcp...`` imports raised
+    ModuleNotFoundError, so production Alexa turns died with a 500 even when
+    the function itself was deployed. Runs in a subprocess because the absence
+    has to be established before app.mcp_server is first imported.
+    """
+
+    SCRIPT = (
+        "import sys\n"
+        "sys.modules['mcp'] = None  # force ImportError for 'from mcp...'\n"
+        "from app.mcp_server import MCP_SDK_AVAILABLE, create_app, "
+        "handle_alexa_skill_request\n"
+        "assert MCP_SDK_AVAILABLE is False, 'SDK flag should be False'\n"
+        "resp = handle_alexa_skill_request(\n"
+        "    {'version': '1.0', 'request': {'type': 'LaunchRequest'}}\n"
+        ")\n"
+        "text = resp['response']['outputSpeech']['text']\n"
+        "assert 'Welcome to GreenCode Auditor' in text, text\n"
+        "try:\n"
+        "    create_app()\n"
+        "except RuntimeError as exc:\n"
+        "    assert 'mcp' in str(exc).lower(), str(exc)\n"
+        "else:\n"
+        "    raise AssertionError('create_app must fail without the SDK')\n"
+        "print('SDK-ABSENT-OK')\n"
+    )
+
+    def test_module_imports_and_answers_without_the_mcp_sdk(self):
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [sys.executable, "-c", self.SCRIPT],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr[-3000:])
+        self.assertIn("SDK-ABSENT-OK", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
 

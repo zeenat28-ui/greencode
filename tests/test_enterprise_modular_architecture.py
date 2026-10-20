@@ -93,7 +93,7 @@ def test_energy_modular_routes(client):
         "cpu_utilization_pct": 45.0,
         "memory_mb": 512.0,
         "cloud_instance": "c6g.xlarge",
-    })
+    }, headers=ADMIN)
     assert res_calc.status_code == 200
     data = res_calc.json()
     assert data["energy_joules"] > 0

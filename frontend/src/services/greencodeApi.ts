@@ -31,7 +31,10 @@ export const ssoService = {
       { org_id: orgId },
     ),
 
-  /** Initiate SSO login flow - returns redirect URL to IdP. */
+  /**
+   * Initiate SSO login flow - returns redirect URL to IdP.
+   * Requires an authenticated session (the backend resolves the org from the token).
+   */
   initiate: (orgId?: number) =>
     api.post<{ success: boolean; redirect_url: string; relay_state: string; sso_enabled: boolean }>(
       '/api/enterprise/sso/initiate',
@@ -56,6 +59,9 @@ export const authService = {
       username_or_email: emailOrUsername,
       password,
     }),
+
+  demoLogin: () => api.post<AuthResponse>('/api/auth/demo'),
+
 
   register: (data: { email: string; password: string; full_name?: string; username?: string }) =>
     api.post<AuthResponse>('/api/auth/register', data),
@@ -302,16 +308,31 @@ export const budgetService = {
     monthly_budget_kg: number;
   }) => api.post<{ budgets: any[] }>('/api/energy/budgets/allocate', params),
 
+  /**
+   * Pre-deploy carbon gate.
+   *
+   * The backend requires `team_id` and `additional_projected_kg_co2e`
+   * (see `app/routers/energy_deployment.py` -> `OpenEvaluatePRBudgetRequest`);
+   * `team_name` and `pr_delta_gco2e` are not accepted by the API.
+   */
   evaluatePR: (params: {
-    team_name?: string;
-    team_id?: string;
+    org_id?: number;
+    team_id: string;
     additional_projected_kg_co2e: number;
-    pr_delta_gco2e?: number;
-  }) => api.post<{
-    verdict: string;
-    reason: string;
-    projected_consumption_pct: number;
-  }>('/api/energy/budgets/evaluate-pr', params),
+    period?: string;
+  }) =>
+    api.post<{
+      verdict: string;
+      reason: string;
+      projected_consumption_pct: number;
+      will_breach: boolean;
+      blocks_merge: boolean;
+    }>('/api/energy/budgets/evaluate-pr', {
+      org_id: params.org_id ?? 1,
+      team_id: params.team_id,
+      additional_projected_kg_co2e: params.additional_projected_kg_co2e,
+      ...(params.period ? { period: params.period } : {}),
+    }),
 
   rollback: (params: {
     namespace: string;
@@ -376,10 +397,27 @@ export const reportService = {
   getEsgReport: () => api.get<any>('/api/reports/esg/1'),
   getEvidenceManifest: () => api.get<any>('/api/reports/esg/1/evidence-manifest'),
   getCompliance: () => api.get<any>('/api/reports/compliance/1'),
+  /**
+   * The audit trail endpoint returns a bare JSON *array* of ledger entries
+   * (see `app/routers/reports.py` -> `AuditLogManager.get_trail`), so the
+   * response is normalised into `{ entries, count }` here to give callers a
+   * stable shape.
+   */
   getAuditLogs: (limit: number = 8) =>
-    api.get<{ entries: any[] }>('/api/reports/audit-logs/1', { params: { limit } }),
+    api.get<{ entries: any[]; count: number }>('/api/reports/audit-logs/1', { params: { limit } })
+      .then((res) => {
+        const entries = Array.isArray(res.data) ? res.data : (res.data?.entries ?? []);
+        return { ...res, data: { entries, count: entries.length } };
+      }),
   getImpactFrameworkManifest: () => api.get<any>('/api/reports/impact-framework-manifest'),
-  verifyAuditLogs: () => api.post<{ status: string; valid: boolean; checked_records: number }>('/api/reports/audit-logs/1/verify'),
+  /**
+   * Chain verification is a GET (`GET /api/reports/audit-logs/{org_id}/verify`)
+   * and reports `records_verified`, not `checked_records`.
+   */
+  verifyAuditLogs: () =>
+    api.get<{ status: string; valid: boolean; records_verified: number; latest_hash?: string }>(
+      '/api/reports/audit-logs/1/verify',
+    ),
 };
 
 // ---------------------------------------------------------------------------
@@ -404,8 +442,22 @@ export const localScanService = {
 // Voice / Alexa Integration
 // ---------------------------------------------------------------------------
 export const voiceService = {
-  ask: (params: { query: string }) =>
-    api.post<{ response: string; intent?: string }>('/api/voice/ask', params),
+  ask: (params: { query: string; zone?: string }) =>
+    api.post<{ response?: string; spoken_response?: string; mcp_tool?: string; mcp_envelope?: any }>('/api/voice/ask', params),
+  recordAuditLog: (params: {
+    query: string;
+    wake_word?: string;
+    action_type?: string;
+    mcp_tool?: string;
+    spoken_response?: string;
+    status?: string;
+    audio_base64?: string;
+    audio_mime?: string;
+    speaker_label?: string;
+  }) => api.post<{ success: boolean; entry: any }>('/api/voice/audit-log', params),
+  getAuditLogs: (params?: { limit?: number }) =>
+    api.get<{ success: boolean; total: number; items: any[] }>('/api/voice/audit-log', { params }),
+  getAudioUrl: (recordId: number | string) => `/api/voice/recording/${recordId}`,
 };
 
 // ---------------------------------------------------------------------------

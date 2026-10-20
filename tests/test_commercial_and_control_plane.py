@@ -10,9 +10,17 @@ from app.main import app
 from app.parser import audit_source_code, ViolationType
 from app.optimizer import generate_unified_diff, generate_github_suggestion_block
 from app.pricing import LicenseKeyManager
+from app.auth.jwt import create_tokens
+from app.auth.roles import Role
 
 
 client = TestClient(app)
+
+
+def _admin_headers():
+    """Superadmin token (org 1): exercises secured energy endpoints."""
+    tokens = create_tokens(user_id=1, org_id=1, role=Role.SUPERADMIN.value)
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
 
 
 def test_license_key_issuance_and_tamper_rejection():
@@ -79,7 +87,7 @@ def test_unified_diff_and_github_suggestion_generation():
 
 def test_energy_control_plane_workloads_and_pr_budget_gate():
     """Verify live 3-tier energy workloads endpoint and PR carbon budget evaluation."""
-    res = client.get("/api/energy/workloads")
+    res = client.get("/api/energy/workloads", headers=_admin_headers())
     assert res.status_code == 200
     body = res.json()
     assert "telemetry_source" in body
@@ -93,12 +101,14 @@ def test_energy_control_plane_workloads_and_pr_budget_gate():
     alloc = client.post(
         "/api/energy/budgets/allocate",
         json={"org_id": 1, "team_id": "ci-regression-team", "monthly_budget_kg": 50.0},
+        headers=_admin_headers(),
     )
     assert alloc.status_code == 200
 
     eval_res = client.post(
         "/api/energy/budgets/evaluate-pr",
         json={"org_id": 1, "team_id": "ci-regression-team", "additional_projected_kg_co2e": 0.25},
+        headers=_admin_headers(),
     )
     assert eval_res.status_code == 200
     eval_data = eval_res.json()

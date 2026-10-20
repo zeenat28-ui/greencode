@@ -293,6 +293,71 @@ async def login(payload: LoginPayload):
 
 
 # ---------------------------------------------------------------------------
+# 2B. 1-CLICK INSTANT DEMO DEVELOPER LOGIN
+# ---------------------------------------------------------------------------
+@router.post("/demo")
+async def demo_login():
+    """1-Click instant guest / demo developer login for evaluation and testing without credentials."""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(
+            (User.email == "developer@greencode.io") | (User.username == "developer")
+        ).first()
+        if not user:
+            hashed = hash_password("DemoPassword123!")
+            now_utc = datetime.now(timezone.utc)
+            user = User(
+                email="developer@greencode.io",
+                username="developer",
+                full_name="GreenCode Developer",
+                password_hash=hashed,
+                role="developer",
+                is_verified=True,
+                created_at=now_utc,
+                last_login_at=now_utc,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        if not user.org_id:
+            default_org = db.query(Organization).first()
+            if not default_org:
+                default_org = Organization(name="GreenCode Community", slug="community-default", tier="free")
+                db.add(default_org)
+                db.commit()
+                db.refresh(default_org)
+            user.org_id = default_org.id
+            user.preferred_org_id = default_org.id
+
+        user.last_login_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(user)
+        user_dto = _user_to_dict(user)
+    finally:
+        db.close()
+
+    access_token = _generate_access_token(user_dto["id"], user_dto["org_id"], user_dto["role"])
+    refresh_res = create_refresh_token(user_dto["id"])
+    refresh_token = refresh_res["refresh_token"]
+
+    return {
+        "success": True,
+        "message": f"Welcome, {user_dto['full_name']}! (Demo Developer Access)",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": settings.jwt_access_expire_minutes * 60,
+        "user": user_dto,
+        "tokens": {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+        },
+    }
+
+
+
+# ---------------------------------------------------------------------------
 # 3. REAL GITHUB OAUTH 2.0 FLOW
 # ---------------------------------------------------------------------------
 @router.get("/github/authorize")

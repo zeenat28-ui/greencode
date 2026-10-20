@@ -204,8 +204,37 @@ class EnergyTracer:
         self._energy_timeline = [(time.perf_counter(), 0.0)]
 
         def _pump() -> None:
-            while not self._stop.wait(self.interval):
+            # Pace ticks against a perf_counter deadline with time.sleep()
+            # rather than Event.wait(timeout). On Windows, Event.wait's
+            # timeout is rounded up to the ~15.6ms system timer tick
+            # (measured: a 1ms wait takes ~14ms), which silently degrades
+            # the sampling interval and lets short workloads finish before
+            # the first sample exists - leaving them with zero attributed
+            # energy. time.sleep() uses the high-resolution waitable timer
+            # (Python 3.11+), and the deadline is polled in <=2ms slices so
+            # shutdown latency stays low even when the interval is large.
+            deadline = time.perf_counter() + self.interval
+            while True:
+                if self._stop.is_set():
+                    return
+                remaining = deadline - time.perf_counter()
+                if remaining > 0:
+                    # A sampler must wake on a fixed cadence: there is no
+                    # event that fires "every 1ms", and Event.wait()'s
+                    # timeout is rounded to the ~15.6ms Windows timer tick,
+                    # so a high-resolution sleep is the only primitive that
+                    # honours the interval. Timed wakeups are the design,
+                    # not incidental polling.
+                    time.sleep(min(remaining, 0.002))  # greencode: ignore[SLEEP_IN_LOOP]
+                    continue
                 self._sample_once()
+                now = time.perf_counter()
+                deadline += self.interval
+                if deadline <= now:
+                    # The loop stalled (slow counter read, scheduler
+                    # starvation): skip missed ticks instead of firing a
+                    # burst of catch-up samples against the meter.
+                    deadline = now + self.interval
 
         self._sampler = threading.Thread(target=_pump, name="greencode-energy", daemon=True)
         self._sampler.start()
@@ -237,7 +266,14 @@ class EnergyTracer:
         if t_end <= t0:
             return 0.0
         if t_start >= t1:
-            return max(0.0, e1 - e0)
+            # The window lies entirely after the last sample: no measurement
+            # covers it yet. Charging e1 - e0 here would bill the whole
+            # run's accumulated energy to whichever function happened to
+            # return between two ticks, wildly over-attributing to short
+            # functions that sit between samples. Nothing was measured in
+            # the window, so nothing is charged - the same rule the
+            # single-sample case applies above.
+            return 0.0
 
         acc = 0.0
         timeline = list(self._energy_timeline)

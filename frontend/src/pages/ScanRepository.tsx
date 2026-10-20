@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { scanService, githubService, gridService } from '../services/greencodeApi';
+import { authHeaders } from '../services/api';
 import { GitHubRepo, ScanResult, TaskStatus, ZoneData } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { Button } from '../components/primitives/Button';
@@ -181,7 +182,7 @@ export default function ScanRepository() {
     try {
       const res = await fetch('/api/scan/local-workspace', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           subpath,
           repo_name: repoLabel,

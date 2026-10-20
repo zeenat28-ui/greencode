@@ -20,6 +20,18 @@
       "destination": "/api/index.py"
     },
     {
+      "source": "/alexa/skill",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/api/alexa/skill",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/mcp",
+      "destination": "/api/index.py"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -27,6 +39,24 @@
   "headers": [
     {
       "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Authorization,Content-Type,Accept" }
+      ]
+    },
+    {
+      "source": "/alexa/skill",
+      "headers": [
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Authorization,Content-Type,Accept" }
+      ]
+    },
+    {
+      "source": "/mcp",
       "headers": [
         { "key": "Access-Control-Allow-Credentials", "value": "true" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },

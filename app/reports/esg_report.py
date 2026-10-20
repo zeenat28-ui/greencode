@@ -18,6 +18,7 @@ from app.database import (
     Repository,
     SessionLocal,
     Team,
+    init_db,
 )
 from app.calibrated_energy import CalibratedEnergyModel
 from app.scope import CLOUD_EMBODIED_GCO2_PER_VCPU_HOUR, CLOUD_AVERAGE_PUE
@@ -32,6 +33,11 @@ class ESGReportGenerator:
     def generate_data(cls, org_id: int, period: Optional[str] = None) -> Dict[str, Any]:
         """Compile ESG emissions and energy metrics from recorded audits, budgets, and CCF/Boavizta factors."""
         period = period or datetime.now(timezone.utc).strftime("%Y-%m")
+        # The generator is reachable directly (scripts, tests, the CSRD evidence
+        # bundle) without going through the FastAPI startup hook, so the schema
+        # may not exist yet.  Creating it here keeps the report path usable
+        # instead of raising "no such table: organizations".
+        init_db()
         db: Session = SessionLocal()
         try:
             org = db.query(Organization).filter(Organization.id == org_id).first()

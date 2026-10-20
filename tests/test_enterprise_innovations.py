@@ -923,6 +923,11 @@ def test_full_seven_part_end_to_end_integration(tmp_path):
     # Part 6 & Part 7 (Voice/Face + Spine/Memory/Lawyer) via FastAPI TestClient
     client = TestClient(app)
 
+    from app.auth.jwt import create_tokens
+    from app.auth.roles import Role
+    _tokens = create_tokens(user_id=1, org_id=1, role=Role.SUPERADMIN.value)
+    AUTH = {"Authorization": f"Bearer {_tokens['access_token']}"}
+
     # /api/repositories (used by Overview.tsx)
     repos_resp = client.get("/api/repositories?limit=5")
     assert repos_resp.status_code == 200
@@ -931,7 +936,7 @@ def test_full_seven_part_end_to_end_integration(tmp_path):
     assert isinstance(repos_json["repositories"], list)
 
     # /api/energy/budgets (used by Overview.tsx and Budgets.tsx)
-    budgets_resp = client.get("/api/energy/budgets?org_id=1&team_id=core-infra")
+    budgets_resp = client.get("/api/energy/budgets?org_id=1&team_id=core-infra", headers=AUTH)
     assert budgets_resp.status_code == 200
     budgets_json = budgets_resp.json()
     assert "budgets" in budgets_json
@@ -995,8 +1000,13 @@ def test_control_plane_live_workloads_and_budgets_integration():
 
     client = TestClient(app)
 
+    from app.auth.jwt import create_tokens
+    from app.auth.roles import Role
+    _tokens = create_tokens(user_id=1, org_id=1, role=Role.SUPERADMIN.value)
+    AUTH = {"Authorization": f"Bearer {_tokens['access_token']}"}
+
     # 1. Live workloads discovery (/api/energy/workloads)
-    w_resp = client.get("/api/energy/workloads?limit=8")
+    w_resp = client.get("/api/energy/workloads?limit=8", headers=AUTH)
     assert w_resp.status_code == 200
     w_data = w_resp.json()
     assert w_data["telemetry_source"] in ("cncf_kepler_prometheus", "docker_engine", "host_psutil")
@@ -1013,6 +1023,7 @@ def test_control_plane_live_workloads_and_budgets_integration():
             "deployment_name": first_w["name"],
             "baseline_power_w": 0.5,
         },
+        headers=AUTH,
     )
     assert b_resp.status_code == 200
     assert b_resp.json()["success"] is True
@@ -1025,6 +1036,7 @@ def test_control_plane_live_workloads_and_budgets_integration():
             "team_id": "platform-runtime",
             "monthly_budget_kg": 250.0,
         },
+        headers=AUTH,
     )
     assert alloc_resp.status_code == 200
     alloc_data = alloc_resp.json()
@@ -1039,6 +1051,7 @@ def test_control_plane_live_workloads_and_budgets_integration():
             "team_id": "platform-runtime",
             "additional_projected_kg_co2e": 15.0,
         },
+        headers=AUTH,
     )
     assert pr_pass.status_code == 200
     assert pr_pass.json()["verdict"] in ("PASSED", "WARNING")
@@ -1050,6 +1063,7 @@ def test_control_plane_live_workloads_and_budgets_integration():
             "team_id": "platform-runtime",
             "additional_projected_kg_co2e": 300.0,
         },
+        headers=AUTH,
     )
     assert pr_block.status_code == 200
     assert pr_block.json()["verdict"] == "BLOCKED"

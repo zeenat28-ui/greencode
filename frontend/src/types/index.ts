@@ -262,6 +262,7 @@ export interface AuthResponse {
   expires_in?: number;
   user: User;
   github_login?: string;
+  github_token?: string;
 }
 
 export interface RepositoryRecord {

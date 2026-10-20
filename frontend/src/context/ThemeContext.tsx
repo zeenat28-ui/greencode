@@ -5,13 +5,28 @@ export type Theme = 'light' | 'dark';
 const STORAGE_KEY = 'greencode_theme';
 
 function readStoredTheme(): Theme {
-  return 'dark';
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored === 'dark' || stored === 'light') return stored;
+  } catch {}
+  return 'light';
 }
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
-  root.classList.add('dark');
-  root.style.colorScheme = 'dark';
+  if (theme === 'dark') {
+    root.classList.add('dark');
+    root.style.colorScheme = 'dark';
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.style.backgroundColor = '#090b0a';
+    }
+  } else {
+    root.classList.remove('dark');
+    root.style.colorScheme = 'light';
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.style.backgroundColor = '#F2FBF7';
+    }
+  }
 }
 
 interface ThemeContextValue {

@@ -91,7 +91,7 @@ test = [
 ]
 
 [project.scripts]
-greencode = "app.main:run_cli"
+greencode = "app.cli:main"
 greencode-mcp = "app.mcp_server:main"
 greencode-aws = "app.aws_cli:main"
 

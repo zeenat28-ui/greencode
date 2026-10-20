@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import AmazonTechStackModal from './AmazonTechStackModal';
 import { translateStatic as t } from '../../i18n/I18nContext';
+import { authHeaders } from '../../services/api';
 
 interface McpPreset {
   id: string;
@@ -74,7 +75,7 @@ export default function AlexaVoiceCockpit() {
     try {
       const res = await fetch('/api/voice/ask', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ query: trimmed, zone }),
       });
       const payload = res.ok ? await res.json() : null;

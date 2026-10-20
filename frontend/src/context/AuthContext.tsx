@@ -2,18 +2,22 @@ import { createContext, useContext, useState, useEffect, useCallback, ReactNode 
 import { useNavigate } from 'react-router-dom';
 import { User } from '../types';
 import { authService } from '../services/greencodeApi';
-import { getRefreshToken, clearSession, setGitHubToken } from '../services/api';
+import { getRefreshToken, clearSession, setGitHubToken, getGitHubToken } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isGitHubConnected: boolean;
+  disconnectGitHub: () => void;
   /** Legacy: PAT-based GitHub sign-in (still works for direct PAT entry) */
   connectGitHub: (githubToken: string) => Promise<User>;
   /** Real GitHub OAuth2 code exchange (popup/redirect flow) */
   loginWithGitHubCode: (code: string, redirectUri?: string) => Promise<User>;
   /** Email + password login */
   loginWithEmail: (emailOrUsername: string, password: string) => Promise<User>;
+  /** 1-Click Instant Demo Developer Login */
+  loginDemo: () => Promise<User>;
   /** Email + password registration */
   registerWithEmail: (email: string, password: string, fullName?: string) => Promise<User>;
   /** Google Identity Services ID token verification */
@@ -37,6 +41,7 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasGhToken, setHasGhToken] = useState<boolean>(() => !!getGitHubToken());
   const navigate = useNavigate();
 
   /**
@@ -62,11 +67,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const res = await authService.refresh(refreshToken);
         if (!cancelled && res.data.user) {
           setUser(res.data.user);
+          // Check if GitHub token exists in session
+          if (getGitHubToken()) setHasGhToken(true);
         }
       } catch {
         // Expired or revoked refresh token — start from a clean slate.
         if (!cancelled) {
           clearSession();
+          setHasGhToken(false);
           setUser(null);
         }
       } finally {
@@ -79,6 +87,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // The axios interceptor fires this when a refresh cannot recover the session.
     const handleForcedLogout = () => {
       clearSession();
+      setHasGhToken(false);
       setUser(null);
       setIsLoading(false);
       navigate('/login', { replace: true });
@@ -98,6 +107,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const connectGitHub = useCallback(async (githubToken: string) => {
     const res = await authService.signInWithGitHub(githubToken);
     setGitHubToken(githubToken);
+    setHasGhToken(true);
     setUser(res.data.user);
     return res.data.user;
   }, []);
@@ -105,13 +115,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   /** Real GitHub OAuth2 code exchange (popup/redirect callback) */
   const loginWithGitHubCode = useCallback(async (code: string, redirectUri?: string) => {
     const res = await authService.exchangeGitHubOAuth(code, redirectUri);
+    if (res.data.github_token) {
+      setGitHubToken(res.data.github_token);
+      setHasGhToken(true);
+    }
     setUser(res.data.user);
     return res.data.user;
+  }, []);
+
+  const disconnectGitHub = useCallback(() => {
+    setGitHubToken(null);
+    setHasGhToken(false);
   }, []);
 
   /** Email + password login */
   const loginWithEmail = useCallback(async (emailOrUsername: string, password: string) => {
     const res = await authService.login(emailOrUsername, password);
+    setUser(res.data.user);
+    return res.data.user;
+  }, []);
+
+  /** 1-Click Instant Demo Developer Login */
+  const loginDemo = useCallback(async () => {
+    const res = await authService.demoLogin();
     setUser(res.data.user);
     return res.data.user;
   }, []);
@@ -157,6 +183,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Best effort
     }
     clearSession();
+    setHasGhToken(false);
     setUser(null);
     navigate('/login', { replace: true });
   }, [navigate]);
@@ -167,15 +194,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(res.data);
   }, [user?.id]);
 
+  const isGitHubConnected = hasGhToken || !!(user && (user.github_username || (user as any).github_login));
+
   return (
     <AuthContext.Provider
       value={{
         user,
         isAuthenticated: !!user,
         isLoading,
+        isGitHubConnected,
+        disconnectGitHub,
         connectGitHub,
         loginWithGitHubCode,
         loginWithEmail,
+        loginDemo,
         registerWithEmail,
         loginWithGoogleToken,
         loginWithGoogleCode,

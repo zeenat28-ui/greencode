@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, ShieldCheck, ExternalLink, FileSpreadsheet, Archive, RefreshCw } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
+import { authHeaders } from '../services/api';
 
 export default function Reports() {
   const t = useT();
@@ -17,18 +18,19 @@ export default function Reports() {
     setLoading(true);
     try {
       const [esgRes, manRes, compRes, logsRes, ifRes] = await Promise.all([
-        fetch('/api/reports/esg/1'),
-        fetch('/api/reports/esg/1/evidence-manifest'),
-        fetch('/api/reports/compliance/1'),
-        fetch('/api/reports/audit-logs/1?limit=8'),
-        fetch('/api/reports/impact-framework-manifest'),
+        fetch('/api/reports/esg/1', { headers: authHeaders() }),
+        fetch('/api/reports/esg/1/evidence-manifest', { headers: authHeaders() }),
+        fetch('/api/reports/compliance/1', { headers: authHeaders() }),
+        fetch('/api/reports/audit-logs/1?limit=8', { headers: authHeaders() }),
+        fetch('/api/reports/impact-framework-manifest', { headers: authHeaders() }),
       ]);
       if (esgRes.ok) setEsgData(await esgRes.json());
       if (manRes.ok) setManifestData(await manRes.json());
       if (compRes.ok) setComplianceData(await compRes.json());
       if (logsRes.ok) {
+        // The audit trail endpoint returns a bare JSON array of ledger entries.
         const lJson = await logsRes.json();
-        setAuditLogs(Array.isArray(lJson?.entries) ? lJson.entries : []);
+        setAuditLogs(Array.isArray(lJson) ? lJson : (lJson?.entries ?? []));
       }
       if (ifRes.ok) setIfManifest(await ifRes.json());
     } catch {
@@ -45,7 +47,7 @@ export default function Reports() {
   const verifyAuditLedger = async () => {
     setVerifying(true);
     try {
-      const res = await fetch('/api/reports/audit-logs/1/verify');
+      const res = await fetch('/api/reports/audit-logs/1/verify', { headers: authHeaders() });
       if (res.ok) {
         setIntegrityData(await res.json());
       }
@@ -135,7 +137,7 @@ export default function Reports() {
         <div className="flex items-center gap-3">
           {integrityData && (
             <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              {integrityData.status || (integrityData.valid ? t('reports.valid') : t('reports.invalid'))} ({integrityData.checked_records ?? 0} {t('reports.entries')})
+              {integrityData.status || (integrityData.valid ? t('reports.valid') : t('reports.invalid'))} ({integrityData.records_verified ?? 0} {t('reports.entries')})
             </span>
           )}
           <button
@@ -238,11 +240,13 @@ export default function Reports() {
                   <div>
                     <div className="font-semibold text-slate-800 dark:text-slate-200">{entry.action}</div>
                     <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate max-w-xs">
-                      {entry.resource} &middot; {String(entry.record_hash || '').slice(0, 16)}...
+                      {entry.resource_type || entry.resource || 'audit'} &middot; {String(entry.record_hash || entry.details?.record_hash || '').slice(0, 16)}...
                     </div>
                   </div>
                   <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 shrink-0">
-                    {entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : ''}
+                    {entry.created_at || entry.timestamp
+                      ? new Date(entry.created_at || entry.timestamp).toLocaleTimeString()
+                      : ''}
                   </span>
                 </div>
               ))}

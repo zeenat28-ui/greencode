@@ -1,0 +1,419 @@
+"""SSML response builder for Alexa voice responses.
+
+Produces SSML so Alexa speaks naturally: numbers, units, scores, and lists are
+spoken correctly, not read as raw JSON.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List, Optional
+
+_SSML_ESCAPE = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&apos;",
+}
+
+# Structural markers around SSML fragments the builders generate themselves
+# (see _render_ssml). They survive _escape so the final pass cannot mangle
+# the tags, and are stripped from any text they never legitimately touch.
+_TAG_OPEN = "\x01"
+_TAG_CLOSE = "\x02"
+_TAG_STRIP_RE = re.compile(r"<[^>]*>")
+
+
+def _escape(text: str) -> str:
+    text = text.replace(_TAG_OPEN, "").replace(_TAG_CLOSE, "")
+    return "".join(_SSML_ESCAPE.get(ch, ch) for ch in text)
+
+
+def _render_ssml(speech: str) -> str:
+    """Compose the inner SSML: escape prose, pass trusted fragments through.
+
+    ``_say_number``/``_say_score`` wrap their markup in the sentinels above;
+    without this, escaping would turn ``<say-as>`` into spoken literal text.
+    Everything outside a sentinel pair is escaped, so tool-provided strings
+    (repository names, error reasons, caveats) remain inert content.
+    """
+    out: List[str] = []
+    pos = 0
+    while True:
+        start = speech.find(_TAG_OPEN, pos)
+        if start < 0:
+            out.append(_escape(speech[pos:]))
+            return "".join(out)
+        end = speech.find(_TAG_CLOSE, start)
+        if end < 0:
+            # Unbalanced marker (caller-supplied text): treat the remainder
+            # as prose; _escape drops the stray marker.
+            out.append(_escape(speech[pos:]))
+            return "".join(out)
+        out.append(_escape(speech[pos:start]))
+        out.append(speech[start + 1 : end])  # trusted SSML fragment, verbatim
+        pos = end + 1
+
+
+def _plain_text(speech: str) -> str:
+    """Flatten speech for the phone card: keep tag contents, drop markup."""
+    out: List[str] = []
+    pos = 0
+    while True:
+        start = speech.find(_TAG_OPEN, pos)
+        if start < 0:
+            out.append(speech[pos:])
+            break
+        end = speech.find(_TAG_CLOSE, start)
+        if end < 0:
+            out.append(speech[pos:])
+            break
+        out.append(speech[pos:start])
+        out.append(_TAG_STRIP_RE.sub("", speech[start + 1 : end]))
+        pos = end + 1
+    return "".join(out).replace(_TAG_OPEN, "").replace(_TAG_CLOSE, "")
+
+
+def _say_number(value: Any) -> str:
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if f == int(f):
+        return f"{_TAG_OPEN}<say-as interpret-as='cardinal'>{int(f)}</say-as>{_TAG_CLOSE}"
+    return f"{_TAG_OPEN}<say-as interpret-as='number'>{f}</say-as>{_TAG_CLOSE}"
+
+
+def _say_score(score: Any) -> str:
+    try:
+        f = float(score)
+    except (TypeError, ValueError):
+        return str(score)
+    return (
+        f"{_TAG_OPEN}<say-as interpret-as='cardinal'>{int(round(f))}</say-as>"
+        f"{_TAG_CLOSE} percent"
+    )
+
+
+def _list_items(items: List[str], conjunction: str = "and") -> str:
+    # Escaping happens once in _render_ssml; pre-escaping here would emit
+    # entities like &amp;amp; into the spoken output.
+    if not items:
+        return "none"
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} {conjunction} {items[1]}"
+    head = ", ".join(items[:-1])
+    return f"{head}, {conjunction} {items[-1]}"
+
+
+def build_response(
+    speech: str,
+    *,
+    reprompt: Optional[str] = None,
+    should_end_session: bool = True,
+    card_title: Optional[str] = None,
+    card_content: Optional[str] = None,
+    directives: Optional[List[Dict[str, Any]]] = None,
+    session_attributes: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    ssml = f"<speak>{_render_ssml(speech)}</speak>"
+    response: Dict[str, Any] = {
+        "outputSpeech": {"type": "SSML", "ssml": ssml},
+        "shouldEndSession": should_end_session,
+    }
+    if reprompt:
+        response["reprompt"] = {
+            "outputSpeech": {
+                "type": "SSML",
+                "ssml": f"<speak>{_render_ssml(reprompt)}</speak>",
+            }
+        }
+    if card_title or card_content:
+        response["card"] = {
+            "type": "Simple",
+            "title": card_title or "GreenCode",
+            "content": _plain_text(card_content) if card_content else _plain_text(speech),
+        }
+    if directives:
+        response["directives"] = directives
+    return {
+        "version": "1.0",
+        "response": response,
+        "sessionAttributes": dict(session_attributes or {}),
+    }
+
+
+def build_error_response(message: str, reprompt: Optional[str] = None) -> Dict[str, Any]:
+    return build_response(
+        f"I'm sorry, {message}",
+        reprompt=reprompt or "You can say 'help' to hear what I can do.",
+        should_end_session=False,
+    )
+
+
+def build_help_response(
+    session_attributes: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    speech = (
+        "GreenCode voice control. You can say: "
+        "'audit my repository' to scan a GitHub repo, "
+        "'what is my green score' for your carbon score, "
+        "'compare Ireland and Virginia' to pick the cleanest region, "
+        "'measure energy' to check power draw, "
+        "'refactor my code' to reduce energy waste, "
+        "'explain this score' for the full provenance trace, "
+        "'list my repositories' to see what I can audit, "
+        "'show my cloud billing' for FOCUS cost and carbon reconciliation, "
+        "or 'help' to repeat this list."
+    )
+    return build_response(
+        speech, should_end_session=False, session_attributes=session_attributes
+    )
+
+def build_audit_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak an audit verdict.
+
+    Handles the three audit shapes: ``audit_repository`` (repo + branch),
+    ``audit_code`` (a snippet) and ``audit_and_score`` (snippet + energy).
+    The repository fields are only spoken when the payload actually carries
+    them.
+    """
+    data = result.get("data", {}) or {}
+    score = data.get("green_score", 0)
+    violations = data.get("violation_count", 0)
+    repo = data.get("repo")
+    branch = data.get("branch")
+    grade = data.get("grade", "N/A")
+
+    if repo:
+        target = f"for {_escape(repo)}"
+        if branch:
+            target += f" on branch {_escape(branch)}"
+        target += ". "
+    else:
+        target = ""
+
+    speech = (
+        f"Audit complete {target}Green score: {_say_score(score)}, "
+        f"grade {_escape(str(grade))}. "
+        f"Found {_say_number(violations)} energy anti-patterns."
+    )
+    if violations:
+        speech += " The top fixes are in your GreenCode dashboard."
+
+    card_title = f"GreenCode Audit - {repo}" if repo else "GreenCode Audit"
+    return build_response(
+        speech,
+        card_title=card_title,
+        card_content=(
+            f"Score: {score} ({grade})\nViolations: {violations}"
+            + (f"\nBranch: {branch}" if branch else "")
+        ),
+    )
+
+
+def build_grid_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    data = result.get("data", {}) or {}
+    zone = data.get("zone", "your region")
+    intensity = data.get("carbon_intensity")
+    source = data.get("intensity_source", "unknown")
+    is_live = data.get("is_live", False)
+
+    if intensity is None:
+        speech = (
+            f"I could not get a live carbon intensity reading for {_escape(zone)}. "
+            f"No grid provider was reachable."
+        )
+    else:
+        live_word = "live" if is_live else "reference"
+        speech = (
+            f"Grid carbon intensity for {_escape(zone)}: "
+            f"{_say_number(intensity)} grams CO2 per kilowatt hour, "
+            f"{live_word} data from {_escape(str(source))}."
+        )
+
+    return build_response(speech, card_title="Grid Carbon Intensity")
+
+
+def build_compare_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak a region comparison.
+
+    ``app.mcp_server.compare_regions`` returns ``readings`` plus the ranked
+    ``cleanest`` / ``dirtiest`` entries and ``improvement_pct`` - it does not
+    return a ``comparisons`` list, so this builder reads the real shape.
+    """
+    data = result.get("data", {}) or {}
+    readings = data.get("readings", []) or []
+    cleanest = data.get("cleanest")
+    dirtiest = data.get("dirtiest")
+    improvement = data.get("improvement_pct")
+
+    if not cleanest:
+        return build_response(
+            "I could not compare those regions. Please try again with two AWS region names."
+        )
+
+    best_zone = cleanest.get("zone", "unknown")
+    best_intensity = cleanest.get("carbon_intensity", 0)
+    speech = (
+        f"The cleanest region is {_escape(str(best_zone))} "
+        f"at {_say_number(best_intensity)} grams CO2 per kilowatt hour."
+    )
+
+    others = [r.get("zone", "?") for r in readings if r.get("zone") != best_zone]
+    if others:
+        speech += f" Among {_list_items(others)}."
+
+    if dirtiest and dirtiest.get("zone") != best_zone:
+        speech += (
+            f" The highest emission region is {_escape(str(dirtiest.get('zone')))} "
+            f"at {_say_number(dirtiest.get('carbon_intensity', 0))} grams CO2 per kilowatt hour."
+        )
+    if improvement:
+        speech += (
+            f" Moving your workload to {_escape(str(best_zone))} cuts grid carbon "
+            f"intensity by {_say_number(improvement)} percent."
+        )
+
+    return build_response(speech, card_title="Region Comparison")
+
+
+def build_sci_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    data = result.get("data", {}) or {}
+    sci = data.get("sci", {}) or {}
+    sci_value = sci.get("sci_gco2_per_functional_unit", 0)
+    grade = sci.get("grade", "N/A")
+    speech = (
+        f"Software Carbon Intensity: {_say_number(sci_value)} "
+        f"grams CO2e per functional unit, grade {_escape(str(grade))}."
+    )
+    return build_response(speech, card_title="SCI Score")
+
+
+def build_measure_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    data = result.get("data", {}) or {}
+    joules = data.get("energy_joules", 0)
+    watts = data.get("power_watts", 0)
+    method = data.get("measurement_method", "model")
+    is_hardware = data.get("measurement_is_hardware", False)
+    source_word = "hardware counter" if is_hardware else "modelled estimate"
+    speech = (
+        f"Energy: {_say_number(joules)} joules at {_say_number(watts)} watts. "
+        f"Source: {source_word} ({_escape(str(method))})."
+    )
+    return build_response(speech, card_title="Energy Measurement")
+
+
+def build_refactor_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    data = result.get("data", {}) or {}
+    accepted = data.get("accepted", False)
+    if accepted:
+        speech = "Refactor accepted. Your code has been optimized for energy efficiency."
+    else:
+        reason = data.get("reason", "unknown")
+        speech = f"Refactor could not be applied: {_escape(str(reason))}."
+    return build_response(speech, card_title="Code Refactor")
+
+
+def build_explain_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak the provenance of a green score.
+
+    ``app.mcp_server.explain_score`` returns the trace: hardware-vs-model, the
+    grid source tier, the SCI breakdown (only when the caller supplied the
+    energy measurement) and the caveats that must be stated with the number.
+    """
+    data = result.get("data", {}) or {}
+    score = data.get("green_score", 0)
+    grade = data.get("grade", "N/A")
+    method = data.get("measurement_method", "model")
+    is_hw = bool(data.get("measurement_is_hardware", False))
+    grid = data.get("grid_intensity") or {}
+    sci_ctx = data.get("scientific_context") or {}
+
+    source_word = "a hardware counter" if is_hw else "a TDP model estimate"
+    speech = (
+        f"Your green score is {_say_score(score)}, grade {_escape(str(grade))}. "
+        f"The energy behind it came from {source_word} ({_escape(str(method))}). "
+        f"Grid zone {_escape(str(grid.get('zone', 'unknown')))} is at "
+        f"{_say_number(grid.get('carbon_intensity', 0))} grams CO2 per kilowatt hour, "
+        f"source tier {_escape(str(grid.get('tier', 'unavailable')))}."
+    )
+
+    sci_value = sci_ctx.get("sci_gco2_per_functional_unit")
+    if sci_value is not None:
+        speech += (
+            f" Traceable SCI is {_say_number(sci_value)} grams CO2 per functional unit."
+        )
+    else:
+        speech += " No SCI was computed because no energy measurement was supplied."
+
+    caveats = data.get("caveats") or []
+    if caveats:
+        speech += " " + _escape(str(caveats[0]))
+
+    return build_response(speech, card_title="Green Score Provenance")
+
+
+def build_billing_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak the FOCUS billing / carbon reconciliation summary."""
+    data = result.get("data", {}) or {}
+    summary = data.get("summary") or {}
+    if not summary:
+        return build_response(
+            "I could not reconcile that billing data. Please try again."
+        )
+
+    speech = (
+        f"Billing reconciliation across {_say_number(data.get('line_items_evaluated', 0))} "
+        f"line items. Effective cost {_say_number(summary.get('total_effective_cost_usd', 0))} "
+        f"dollars, with {_say_number(summary.get('total_carbon_kg_co2e', 0))} kilograms "
+        f"CO2e. I found {_say_number(summary.get('identified_monthly_usd_savings', 0))} "
+        f"dollars of monthly savings and "
+        f"{_say_number(summary.get('identified_co2e_savings_kg', 0))} kilograms of "
+        f"avoidable CO2e."
+    )
+    return build_response(speech, card_title="FOCUS Billing Reconciliation")
+
+
+def build_list_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    data = result.get("data", {}) or {}
+    repos = data.get("repositories", []) or []
+    if not repos:
+        speech = "You have no repositories connected to GreenCode."
+    else:
+        names = [r.get("name", "unknown") for r in repos[:10]]
+        speech = f"You have {_say_number(len(repos))} repositories: {_list_items(names)}."
+
+    return build_response(speech, card_title="Your Repositories")
+
+
+def build_help_from_hint(hint: str) -> Dict[str, Any]:
+    return build_response(hint, should_end_session=False)
+
+
+def build_github_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    data = result.get("data", {}) or {}
+    message = data.get("message", "GitHub operation completed.")
+    pr_url = data.get("pr_url", "")
+    branch = data.get("branch", "")
+    speech = message
+    if pr_url:
+        speech += f" Pull Request: {pr_url}."
+    if branch:
+        speech += f" Branch: {branch}."
+    return build_response(speech, card_title="GitHub Action")
+
+
+def build_deploy_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    data = result.get("data", {}) or {}
+    status = data.get("status", "deployed")
+    url = data.get("url", "")
+    message = data.get("message", f"Deployment to {status} complete.")
+    speech = message
+    if url:
+        speech += f" Live at {url}."
+    return build_response(speech, card_title="Deployment")
+

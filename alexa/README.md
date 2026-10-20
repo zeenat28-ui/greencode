@@ -31,6 +31,10 @@ Production-ready Amazon Alexa+ (MCP & ASK Custom Skill) integration for GreenCod
 - **MCP Token:** `GREENCODE_MCP_TOKEN` for authenticated MCP transport
 - **GitHub Token:** Optional per-request GitHub token for repo auditing
 
+> **Where do I get the keys?** See [`docs/API_KEYS.md`](../docs/API_KEYS.md) for
+> the signup links, required scopes, and the exact environment variable name
+> for every credential this integration touches.
+
 ## Deploying
 
 ### 1. Deploy the API
@@ -96,6 +100,27 @@ are handled too. `app/alexa_nlp.py` (utterance → tool mapper) and
 `app/alexa_responses.py` (SSML builders) form the standalone router
 `app/alexa_skill.py`, which downstream services can mount alongside the
 intent handlers above.
+
+### Dashboard-backed voice actions
+
+`app/alexa_actions.py` adds five actions that reach the same backends as
+the dashboard, spoken through the free-form NLU mapper:
+
+| Action | Example | Response |
+|--------|---------|----------|
+| `audit_diff` | "Audit pull request 42 in owner/repo" | Diff-scoped green score + findings in the changed lines only |
+| `evaluate_sla` | "Check my energy SLA for 1200 joules and score 80" | COMPLIANT / WARNING / BREACHED + the failing gate |
+| `scope_inventory` | "Scope 1 2 3 inventory for Ireland" | Annual Scope 1/2/3 kg CO2e and the percentage split |
+| `audit_history` | "Show my audit history" | Recent audits and cumulative carbon savings |
+| `dynamic_analyze` | "Run owner/repo dynamically" | Measured run: duration, IT joules, SCI (needs Docker) |
+
+These route with a higher priority than the generic patterns, so "audit
+pull request 42" never falls through to "audit my repository". The live
+ASK webhook reaches them through `FreeformGreenCodeQueryIntent`.
+
+`dynamic_analyze` needs a Docker sandbox, so it reports
+`sandbox_unavailable` on the Vercel serverless deployment rather than
+returning numbers that were never measured.
 
 ## Testing
 

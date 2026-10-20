@@ -166,6 +166,11 @@ def build_help_response(
         "'refactor my code' to reduce energy waste, "
         "'explain this score' for the full provenance trace, "
         "'list my repositories' to see what I can audit, "
+        "'audit pull request 42' to check only the changed lines, "
+        "'check my energy SLA' for a budget verdict, "
+        "'scope one two three inventory' for a GHG report, "
+        "'show my audit history' for past audits and savings, "
+        "'run owner repo dynamically' to measure a real run, "
         "'show my cloud billing' for FOCUS cost and carbon reconciliation, "
         "or 'help' to repeat this list."
     )
@@ -416,4 +421,236 @@ def build_deploy_response(result: Dict[str, Any]) -> Dict[str, Any]:
     if url:
         speech += f" Live at {url}."
     return build_response(speech, card_title="Deployment")
+
+
+def build_diff_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak the result of a diff-scoped audit."""
+    data = result.get("data", {}) or {}
+    score = data.get("diff_green_score", 0.0)
+    violations = data.get("total_diff_violations", 0)
+    files = data.get("modified_files_count", 0)
+    hunks = data.get("hunks_analyzed", 0)
+
+    speech = (
+        f"Diff audit complete. I looked at {_say_number(hunks)} changed hunks "
+        f"across {_say_number(files)} files. "
+        f"Diff green score: {_say_score(score)}. "
+        f"{_say_number(violations)} energy anti-patterns in the changed lines."
+    )
+    if violations:
+        speech += " The details are in your GreenCode dashboard."
+
+    pr = data.get("pr_number")
+    title = f"GreenCode Diff Audit - PR {pr}" if pr else "GreenCode Diff Audit"
+    return build_response(
+        speech,
+        card_title=title,
+        card_content=(
+            f"Diff score: {score}\nViolations: {violations}\n"
+            f"Modified files: {files}\nHunks analyzed: {hunks}"
+        ),
+    )
+
+
+def build_sla_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak an energy SLA verdict."""
+    data = result.get("data", {}) or {}
+    status = str(data.get("status", "UNKNOWN")).upper()
+    violations = data.get("violations", []) or []
+    summary = str(data.get("summary", ""))
+    suggestion = str(data.get("suggested_action", ""))
+
+    if status == "COMPLIANT":
+        speech = f"Your deployment passes the energy SLA. {summary}".strip()
+    elif status == "BREACHED":
+        speech = f"Your deployment breaches the energy SLA. {summary}".strip()
+    else:
+        speech = f"Your deployment is on an SLA warning. {summary}".strip()
+
+    if violations:
+        first = violations[0]
+        speech += (
+            f" The first issue is {_escape(str(first.get('metric', 'the limit')))}: "
+            f"measured {_say_number(first.get('measured_value', 0))} "
+            f"{_escape(str(first.get('unit', ''))).strip()}, limit "
+            f"{_say_number(first.get('limit_value', 0))}."
+        )
+    if suggestion:
+        speech += f" {suggestion}"
+
+    return build_response(
+        speech,
+        card_title="Energy SLA Verdict",
+        card_content=f"Status: {status}\n{summary}",
+    )
+
+
+def build_scope_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak a Scope 1, 2 and 3 GHG inventory."""
+    data = result.get("data", {}) or {}
+    scope_1 = data.get("scope_1", {}) or {}
+    scope_2 = data.get("scope_2", {}) or {}
+    scope_3 = data.get("scope_3", {}) or {}
+    breakdown = data.get("scope_breakdown_pct", {}) or {}
+    total = data.get("total_carbon_kgco2e_annual", 0.0)
+    recs = data.get("recommendations", []) or []
+
+    speech = (
+        f"Scope 1, 2 and 3 inventory ready. Total annual footprint "
+        f"{_say_number(total)} kilograms of CO2 equivalent. "
+        f"Scope 1 is {_say_number(breakdown.get('scope_1_pct', 0))} percent, "
+        f"Scope 2 is {_say_number(breakdown.get('scope_2_pct', 0))} percent, "
+        f"and Scope 3 is {_say_number(breakdown.get('scope_3_pct', 0))} percent."
+    )
+    if recs:
+        speech += f" {_escape(str(recs[0]))}"
+
+    return build_response(
+        speech,
+        card_title="Scope 1-3 Emissions Inventory",
+        card_content=(
+            f"Total: {total} kg CO2e/yr\n"
+            f"Scope 1: {scope_1.get('direct_emissions_kgco2e', 0)} kg CO2e\n"
+            f"Scope 2: {scope_2.get('operational_emissions_kgco2e_annual', 0)} kg CO2e\n"
+            f"Scope 3: {scope_3.get('total_scope3_kgco2e_annual', 0)} kg CO2e"
+        ),
+    )
+
+
+def build_history_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak recent audits and cumulative carbon savings."""
+    data = result.get("data", {}) or {}
+    repos = data.get("repositories", []) or []
+    savings = data.get("cumulative_savings", {}) or {}
+    total = data.get("total", len(repos))
+
+    if not repos:
+        speech = (
+            "You have no audits in your history yet. Say 'audit my repository' "
+            "to start one."
+        )
+    else:
+        names = [
+            str(r.get("name") or r.get("full_name") or r.get("path_or_url") or "unknown")
+            for r in repos[:5]
+        ]
+        speech = (
+            f"You have {_say_number(total)} audits in your history. "
+            f"The most recent are {_list_items(names)}."
+        )
+
+    saved = savings.get("total_carbon_saved_gco2_10k_runs")
+    if saved:
+        speech += (
+            f" So far that has saved {_say_number(saved)} grams of CO2 "
+            "over ten thousand runs."
+        )
+    reduction = savings.get("average_energy_reduction_pct")
+    if reduction:
+        speech += f" Average energy reduction {_say_number(reduction)} percent."
+
+    return build_response(
+        speech,
+        card_title="Audit History",
+        card_content=(
+            f"Total audits: {total}\n"
+            + "\n".join(
+                f"- {r.get('name') or r.get('full_name') or 'unknown'}"
+                for r in repos[:10]
+            )
+        ),
+    )
+
+
+def build_dynamic_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak the outcome of a sandboxed, measured run."""
+    data = result.get("data", {}) or {}
+    ok = bool(data.get("ok"))
+    if not ok:
+        reason = str(data.get("reason", "unknown error"))
+        return build_response(
+            f"I could not run that repository: {_escape(reason)}.",
+            should_end_session=False,
+        )
+
+    sci = data.get("sci", {}) or {}
+    grade = data.get("grade", {}) or {}
+    it_joules = data.get("it_energy_joules", 0.0)
+    duration = data.get("duration_seconds", 0.0)
+    method = data.get("measurement_method", "model")
+
+    speech = (
+        f"The run finished in {_say_number(duration)} seconds and used "
+        f"{_say_number(it_joules)} joules of IT energy, measured by "
+        f"{_escape(str(method))}."
+    )
+    sci_value = sci.get("sci_gco2_per_functional_unit")
+    if sci_value is not None:
+        speech += (
+            f" That is {_say_number(sci_value)} grams of CO2 per functional unit, "
+            f"grade {_escape(str(grade.get('grade', 'unknown')))}."
+        )
+    warnings = data.get("warnings", []) or []
+    if warnings:
+        speech += f" {_escape(str(warnings[0]))}"
+
+    return build_response(
+        speech,
+        card_title="Dynamic Analysis",
+        card_content=(
+            f"Duration: {duration}s\nIT energy: {it_joules} J\n"
+            f"SCI: {sci.get('sci_gco2_per_functional_unit', 'n/a')} gCO2/unit"
+        ),
+    )
+
+
+
+# ---------------------------------------------------------------------------
+# Dashboard-backed actions.
+#
+# The standalone router (``app.alexa_skill``) and the live ASK webhook
+# (``app.mcp_server``) both speak the same five actions, so the builders
+# live here and the registry below is the single source of truth.
+# ---------------------------------------------------------------------------
+
+ACTION_BUILDERS: Dict[str, Any] = {
+    "audit_diff": build_diff_response,
+    "evaluate_sla": build_sla_response,
+    "scope_inventory": build_scope_response,
+    "audit_history": build_history_response,
+    "dynamic_analyze": build_dynamic_response,
+}
+
+
+def build_action_response(tool: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak one dashboard-backed action as a full ASK response."""
+    builder = ACTION_BUILDERS.get(tool)
+    if builder is None:
+        reason = (result.get("data", {}) or {}).get("reason", "Command completed.")
+        return build_response(str(reason), should_end_session=False)
+    return builder(result)
+
+
+def action_speech(tool: str, result: Dict[str, Any]) -> str:
+    """Return the spoken text for one dashboard-backed action.
+
+    The live ASK webhook answers in PlainText, so the SSML the builders
+    produce is flattened to the words Alexa should say: tags are removed
+    and the escaped entities are turned back into characters.
+    """
+    response = build_action_response(tool, result)
+    ssml = (
+        response.get("response", {})
+        .get("outputSpeech", {})
+        .get("ssml", "")
+    )
+    if not ssml:
+        return _plain_text(
+            (result.get("data", {}) or {}).get("reason", "Command completed.")
+        ).strip()
+    text = _TAG_STRIP_RE.sub(" ", ssml)
+    for entity, char in (("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
+                         ("&quot;", '"'), ("&apos;", "'")):
+        text = text.replace(entity, char)
+    return re.sub(r"\s+", " ", text).strip()
 

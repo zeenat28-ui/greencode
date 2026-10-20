@@ -34,17 +34,22 @@ from app.alexa_responses import (
     build_billing_response,
     build_compare_response,
     build_deploy_response,
+    build_diff_response,
+    build_dynamic_response,
     build_error_response,
     build_explain_response,
     build_github_response,
     build_grid_response,
     build_help_from_hint,
     build_help_response,
+    build_history_response,
     build_list_response,
     build_measure_response,
     build_refactor_response,
     build_response,
     build_sci_response,
+    build_sla_response,
+    build_scope_response,
 )
 
 logger = logging.getLogger("greencode.alexa.skill")
@@ -127,6 +132,11 @@ _TOOL_RESPONSE_BUILDERS = {
     "push_green_fix": build_github_response,
     "create_pull_request": build_github_response,
     "deploy_production": build_deploy_response,
+    "audit_diff": build_diff_response,
+    "evaluate_sla": build_sla_response,
+    "scope_inventory": build_scope_response,
+    "audit_history": build_history_response,
+    "dynamic_analyze": build_dynamic_response,
 }
 
 
@@ -134,6 +144,39 @@ def build_response_helper(tool: str, result: Dict[str, Any]) -> Dict[str, Any]:
     data = result.get("data", {}) or {}
     message = data.get("reason") or data.get("hint") or "Command completed."
     return build_response(message, should_end_session=False)
+
+
+# The five dashboard-backed actions that the live ASK webhook routes through
+# the free-form NLU mapper instead of a dedicated intent.
+NLU_ACTION_TOOLS = (
+    "audit_diff",
+    "evaluate_sla",
+    "scope_inventory",
+    "audit_history",
+    "dynamic_analyze",
+)
+
+
+def dispatch_nlu_action(
+    utterance: str,
+    github_token: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
+    """Run one of the NLU-mapped dashboard actions for ``utterance``.
+
+    Returns ``None`` when the utterance does not map to one of the five
+    dashboard-backed actions, so the caller can fall through to its own
+    handling. Otherwise the result is
+    ``{"tool": <name>, "result": <envelope>}``, where the envelope is the
+    same one the MCP tools return.
+    """
+    command = MAPPER.map(utterance)
+    if command.tool not in NLU_ACTION_TOOLS or command.fallback:
+        return None
+    result = _call_greencode_tool(
+        command, user_id=user_id, github_token=github_token
+    )
+    return {"tool": command.tool, "result": result}
 
 
 def _with_session_attributes(
@@ -154,6 +197,7 @@ def _with_session_attributes(
 def _call_greencode_tool(
     command: AlexaCommand,
     org_id: Optional[int] = None,
+    user_id: Optional[int] = None,
     github_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Invoke the canonical GreenCode MCP tool for ``command``.
@@ -184,6 +228,67 @@ def _call_greencode_tool(
             from app.finops_focus import reconcile_focus_billing
 
             return {"status": "ok", "data": reconcile_focus_billing()}
+
+        if tool == "audit_diff":
+            from app.alexa_actions import audit_diff
+
+            return audit_diff(
+                diff_text=str(payload.get("diff_text", "")),
+                repo=str(payload.get("repo", "")),
+                pr_number=payload.get("pr_number"),
+                github_token=github_token,
+            )
+
+        if tool == "evaluate_sla":
+            from app.alexa_actions import evaluate_sla
+
+            return evaluate_sla(
+                total_joules=float(payload.get("total_joules", 0.0) or 0.0),
+                green_score=float(payload.get("green_score", 0.0) or 0.0),
+                sci_gco2e=float(payload.get("sci_gco2e", 0.0) or 0.0),
+                config_path=payload.get("config_path"),
+            )
+
+        if tool == "scope_inventory":
+            from app.alexa_actions import scope_inventory
+
+            return scope_inventory(
+                energy_joules=float(payload.get("energy_joules", 3600.0) or 3600.0),
+                duration_seconds=float(payload.get("duration_seconds", 1.0) or 1.0),
+                grid_intensity_gco2_per_kwh=float(
+                    payload.get("grid_intensity_gco2_per_kwh", 200.0) or 200.0
+                ),
+                runs_per_year=int(payload.get("runs_per_year", 10000) or 10000),
+                team_size=int(payload.get("team_size", 5) or 5),
+                dev_hours=float(payload.get("dev_hours", 160.0) or 160.0),
+                cloud_provider=str(payload.get("cloud_provider", "aws")),
+                vcpu_count=int(payload.get("vcpu_count", 2) or 2),
+                memory_gb=float(payload.get("memory_gb", 4.0) or 4.0),
+                data_transfer_gb=float(payload.get("data_transfer_gb", 0.05) or 0.05),
+                grid_zone=str(payload.get("grid_zone", "US-CAL-CISO")),
+                renewable_rec_pct=float(payload.get("renewable_rec_pct", 0.0) or 0.0),
+            )
+
+        if tool == "audit_history":
+            from app.alexa_actions import audit_history
+
+            return audit_history(
+                limit=int(payload.get("limit", 5) or 5),
+                offset=int(payload.get("offset", 0) or 0),
+                user_id=user_id,
+            )
+
+        if tool == "dynamic_analyze":
+            from app.alexa_actions import dynamic_analyze
+
+            return dynamic_analyze(
+                repo=str(payload.get("repo", "")),
+                ref=str(payload.get("ref", "")),
+                grid_intensity=float(payload.get("grid_intensity", 380.0) or 380.0),
+                functional_unit=float(payload.get("functional_unit", 1.0) or 1.0),
+                timeout_sec=float(payload.get("timeout_sec", 60.0) or 60.0),
+                github_token=github_token,
+            )
 
         from app import mcp_server
 
@@ -330,6 +435,7 @@ async def alexa_skill(
     utterance = " ".join(utterance_parts)
 
     org_id = None
+    user_id = None
     if x_greencode_org:
         try:
             org_id = int(x_greencode_org)
@@ -341,8 +447,15 @@ async def alexa_skill(
         try:
             from app.core.security import decode_access_token
             decoded = decode_access_token(token)
-            if decoded and org_id is None:
-                org_id = decoded.get("org_id")
+            if decoded:
+                if org_id is None:
+                    org_id = decoded.get("org_id")
+                subject = decoded.get("sub")
+                if subject is not None:
+                    try:
+                        user_id = int(subject)
+                    except (TypeError, ValueError):
+                        user_id = None
         except Exception:
             pass
 
@@ -356,7 +469,9 @@ async def alexa_skill(
         intent_name, utterance, command.tool, command.confidence, command.fallback,
     )
 
-    result = _call_greencode_tool(command, org_id=org_id, github_token=github_token)
+    result = _call_greencode_tool(
+        command, org_id=org_id, user_id=user_id, github_token=github_token
+    )
 
     if command.tool == "help":
         if command.fallback:

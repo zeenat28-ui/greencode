@@ -1188,6 +1188,31 @@ def _build_ask_response(
     }
 
 
+def _dispatch_nlu_action(utterance: str) -> Optional[Dict[str, Any]]:
+    """Run a dashboard-backed action for ``utterance``, if it maps to one.
+
+    Returns ``None`` when the utterance is not one of the five actions, so
+    the caller keeps its own handling.
+    """
+    from app.alexa_skill import dispatch_nlu_action
+
+    return dispatch_nlu_action(utterance)
+
+
+def _build_ask_response_for_action(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Speak a dashboard-backed action result as a PlainText ASK response."""
+    from app.alexa_responses import action_speech
+
+    tool = result.get("tool", "")
+    speech = action_speech(tool, result.get("result", {}))
+    return _build_ask_response(
+        speech,
+        card_title="GreenCode Dashboard Action",
+        reprompt_text="Ask me for another audit, SLA check, or scope inventory.",
+        should_end_session=False,
+    )
+
+
 def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Process an Amazon Alexa Skills Kit (ASK) v1.0 JSON webhook payload.
 
@@ -1538,6 +1563,15 @@ def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
             or _extract_alexa_slot(slots, "region")
             or intent_name
         ).lower()
+
+        # Dashboard-backed actions (diff audit, energy SLA, Scope 1-3
+        # inventory, audit history, dynamic analysis) are reached through the
+        # free-form NLU mapper. They are tried before the region heuristics
+        # below, which would otherwise swallow "scope inventory" and
+        # "audit history" as generic region queries.
+        nlu_result = _dispatch_nlu_action(raw_query)
+        if nlu_result is not None:
+            return _build_ask_response_for_action(nlu_result)
 
         matched_zones: List[str] = []
         for alias, z_code in _ALEXA_REGION_ALIASES.items():

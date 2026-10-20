@@ -993,6 +993,59 @@ def create_or_update_file(
     }
 
 
+def get_pull_request_diff(
+    repo: str,
+    pr_number: int,
+    token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Fetch the unified diff of a pull request.
+
+    Used by the voice surface to audit only the lines a PR actually touches.
+    The diff media type is requested explicitly so GitHub returns the patch
+    instead of the PR metadata document.
+    """
+    try:
+        pr = int(pr_number)
+    except (TypeError, ValueError):
+        return {"success": False, "error": "Pull request number must be an integer."}
+    if pr <= 0:
+        return {"success": False, "error": "Pull request number must be positive."}
+
+    slug = normalize_repo_slug(repo)
+    resp = _request(
+        "GET",
+        f"/repos/{slug}/pulls/{pr}",
+        token=token,
+        timeout=15.0,
+        headers={"Accept": "application/vnd.github.v3.diff"},
+    )
+    if resp.status_code in (200, 301, 302):
+        diff_text = resp.text or ""
+        if not diff_text.strip():
+            return {
+                "success": False,
+                "error": f"Pull Request #{pr} in '{slug}' has an empty diff.",
+            }
+        return {
+            "success": True,
+            "pr_number": pr,
+            "repo": slug,
+            "diff_text": diff_text,
+        }
+    if resp.status_code == 404:
+        return {
+            "success": False,
+            "error": f"Could not find Pull Request #{pr} in '{slug}'.",
+        }
+    return {
+        "success": False,
+        "error": (
+            f"Failed to fetch the diff (HTTP {resp.status_code}): "
+            f"{_github_error_detail(resp, 'unknown error')}"
+        ),
+    }
+
+
 def create_pull_request(
     repo: str,
     title: str,

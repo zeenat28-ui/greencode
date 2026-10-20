@@ -18,12 +18,18 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 
-_PATTERNS: List[Tuple[re.Pattern[str], str, Any]] = []
+_PATTERNS: List[Tuple[re.Pattern[str], str, Any, int]] = []
 
 
-def _pat(regex: str, tool: str, payload_fn=None) -> None:
+def _pat(regex: str, tool: str, payload_fn=None, priority: int = 0) -> None:
+    """Register one utterance pattern.
+
+    ``priority`` breaks ties between patterns that both match: a specific
+    command ("audit pull request 42") must win over the generic
+    ("audit ... repository") even when the generic one matches more text.
+    """
     _PATTERNS.append(
-        (re.compile(regex, re.IGNORECASE), tool, payload_fn or (lambda m: {}))
+        (re.compile(regex, re.IGNORECASE), tool, payload_fn or (lambda m: {}), priority)
     )
 
 
@@ -170,6 +176,82 @@ _pat(
     lambda m: {"environment": "production"},
 )
 
+# 10.7. PULL REQUEST DIFF AUDIT --------------------------------------------
+# Priority 10 so "audit pull request 42" beats the generic repository audit.
+_pat(
+    r"\b(audit|check|scan|review)\b.*\b(pull request|merge request|pr)\b"
+    r"(?:\s*(?:number\s*|#)?\s*(\d+))?",
+    "audit_diff",
+    lambda m: {
+        "repo": _extract_repo(m.string) or "",
+        "pr_number": int(m.group(3)) if m.group(3) else _extract_pr_number(m.string),
+    },
+    priority=10,
+)
+_pat(
+    r"\b(audit|check|scan|review)\b.*\b(the\s+)?diff\b",
+    "audit_diff",
+    lambda m: {
+        "repo": _extract_repo(m.string) or "",
+        "pr_number": _extract_pr_number(m.string),
+    },
+    priority=10,
+)
+
+# 10.8. ENERGY SLA EVALUATION ------------------------------------------------
+_pat(
+    r"\b(sla|energy budget|budget policy|service level agreement)\b"
+    r".*\b(check|evaluate|assess|does|pass|meets?|meet|violat|comply|compliant)",
+    "evaluate_sla",
+    lambda m: {
+        "total_joules": _extract_number(m.string, ("joules", "joule")) or 0.0,
+        "green_score": _extract_number(m.string, ("score",)) or 0.0,
+        "sci_gco2e": _extract_number(m.string, ("sci",)) or 0.0,
+    },
+    priority=10,
+)
+_pat(
+    r"\b(check|evaluate|assess|does|do|pass|meets?|meet|violat|comply|compliant)\b"
+    r".*\b(sla|energy budget|budget policy|service level agreement)\b",
+    "evaluate_sla",
+    lambda m: {
+        "total_joules": _extract_number(m.string, ("joules", "joule")) or 0.0,
+        "green_score": _extract_number(m.string, ("score",)) or 0.0,
+        "sci_gco2e": _extract_number(m.string, ("sci",)) or 0.0,
+    },
+    priority=10,
+)
+
+# 10.9. SCOPE 1-3 INVENTORY ---------------------------------------------------
+_pat(
+    r"\b(scope\s*(one|two|three|1|2|3)|ghg inventory|emissions inventory|"
+    r"carbon inventory|scope inventory)\b",
+    "scope_inventory",
+    lambda m: {
+        "grid_zone": _extract_zone(m.string) or "US-CAL-CISO",
+        "grid_intensity_gco2_per_kwh": 200.0,
+    },
+    priority=10,
+)
+
+# 10.10. AUDIT HISTORY --------------------------------------------------------
+_pat(
+    r"\b(audit history|audit log|history of audits|my audits|recent audits|"
+    r"past audits|previous audits|what have i audited)\b",
+    "audit_history",
+    lambda m: {"limit": 5, "offset": 0},
+    priority=10,
+)
+
+# 10.11. DYNAMIC ANALYSIS -----------------------------------------------------
+_pat(
+    r"\b(dynamically|run it and see|run the repo|actually run|profile the repo|"
+    r"dynamic analysis|dynamic profile|real world measurement)\b",
+    "dynamic_analyze",
+    lambda m: {"repo": _extract_repo(m.string) or ""},
+    priority=10,
+)
+
 # 11. HELP / CAPABILITIES ---------------------------------------------------
 _pat(
     r"\b(help|what can you do|capabilities|commands|how to use)\b",
@@ -227,6 +309,62 @@ def _extract_zones(text: str) -> List[str]:
     return found[:5]
 
 
+# Compiled once at module level: a regex rebuilt inside a loop is one of the
+# anti-patterns GreenCode itself audits for.
+_NUMBER_RE = re.compile(r"(\d+(?:\.\d+)?)")
+_AFTER_NUMBER_RE = re.compile(r"\s*(?:is|of|=|:)?\s*(\d+(?:\.\d+)?)")
+_PR_NUMBER_RE = re.compile(
+    r"(?:#|pull request\s*|merge request\s*|pr\s*)(\d+)", re.IGNORECASE
+)
+_KEYWORD_RE_CACHE: Dict[str, re.Pattern[str]] = {}
+
+
+def _keyword_pattern(keyword: str) -> re.Pattern[str]:
+    """Return the compiled "keyword or keywords" pattern for ``keyword``."""
+    pattern = _KEYWORD_RE_CACHE.get(keyword)
+    if pattern is None:
+        pattern = re.compile(rf"\b{re.escape(keyword)}s?\b")
+        _KEYWORD_RE_CACHE[keyword] = pattern
+    return pattern
+
+
+def _extract_number(text: str, keywords: Tuple[str, ...]) -> Optional[float]:
+    """Find a number that sits next to one of ``keywords``.
+
+    Handles both orders the boss might use: "1200 joules" and "joules 1200".
+    Numbers written as words ("twelve hundred") are not supported; the
+    number form is what a phone transcription produces most reliably.
+    """
+    lowered = text.lower()
+    for keyword in keywords:
+        for m in _keyword_pattern(keyword).finditer(lowered):
+            before = lowered[max(0, m.start() - 24) : m.start()]
+            after = lowered[m.end() : m.end() + 24]
+
+            after_match = _AFTER_NUMBER_RE.match(after)
+            if after_match:
+                try:
+                    return float(after_match.group(1))
+                except ValueError:
+                    pass
+
+            before_matches = _NUMBER_RE.findall(before)
+            if before_matches:
+                try:
+                    return float(before_matches[-1])
+                except ValueError:
+                    pass
+    return None
+
+
+def _extract_pr_number(text: str) -> Optional[int]:
+    """Find a pull request number, either as "pr 42" / "pull request 42" / "#42"."""
+    m = _PR_NUMBER_RE.search(text)
+    if m:
+        return int(m.group(1))
+    return None
+
+
 def _extract_repo(text: str) -> Optional[str]:
     m = re.search(r"\b([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\b", text)
     if m:
@@ -265,13 +403,19 @@ class AlexaNLUMapper:
 
         best: Optional[AlexaCommand] = None
         best_conf = 0.0
+        best_priority = -1
 
-        for pattern, tool, payload_fn in self._patterns:
+        for pattern, tool, payload_fn, priority in self._patterns:
             m = pattern.search(utterance)
             if not m:
                 continue
             conf = min(0.95, 0.6 + (len(m.group(0)) / max(len(utterance), 1)) * 0.35)
-            if conf > best_conf:
+            # A higher-priority pattern always wins; within one priority the
+            # better match (longer share of the utterance) wins.
+            if priority > best_priority or (
+                priority == best_priority and conf > best_conf
+            ):
+                best_priority = priority
                 best_conf = conf
                 best = AlexaCommand(
                     tool=tool,
@@ -281,7 +425,14 @@ class AlexaNLUMapper:
                     raw_utterance=utterance,
                 )
 
-        if best is None or best_conf < 0.65:
+        if best is None:
+            return self._fallback(utterance)
+
+        # A specific (higher-priority) command is accepted on a slightly
+        # weaker match than a generic one, because the generic patterns
+        # would otherwise swallow it.
+        threshold = 0.65 if best_priority <= 0 else 0.55
+        if best_conf < threshold:
             return self._fallback(utterance)
 
         return best
@@ -316,6 +467,22 @@ class AlexaNLUMapper:
             return "Listing your repositories."
         if tool == "reconcile_focus_billing":
             return "Reconciling your cloud billing with carbon data."
+        if tool == "audit_diff":
+            pr = payload.get("pr_number")
+            if pr:
+                return f"Auditing only the changed lines in pull request {pr}."
+            return "Auditing only the changed lines in that diff."
+        if tool == "evaluate_sla":
+            return "Checking that deployment against your energy SLA."
+        if tool == "scope_inventory":
+            return "Building your Scope 1, 2 and 3 emissions inventory."
+        if tool == "audit_history":
+            return "Pulling up your recent audit history and carbon savings."
+        if tool == "dynamic_analyze":
+            return (
+                "Running that repository in a sandbox to measure what it "
+                "actually costs."
+            )
         if tool == "help":
             return "Here is what I can do for you."
         return "Running your GreenCode command."

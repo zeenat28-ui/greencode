@@ -55,7 +55,7 @@ third party from driving your backend. When unset, the endpoint is open.
 3. Set the invocation name, e.g. `green code auditor`
 4. Import `alexa/interaction_model_en_US.json` into the Interaction Model tab
 5. Copy the **Skill ID** from the top of the skill page. It looks like
-   `amzn1.ask.skill.fd2a8106-e7fb-4f05-83b9-74590f7df6b8`
+   `amzn1.ask.skill.ccf7d912-329a-4831-bf94-fb7a23d7471e`
 
 **Set it as:** `GREENCODE_ALEXA_SKILL_ID`
 

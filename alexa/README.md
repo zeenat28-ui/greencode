@@ -56,12 +56,12 @@ vercel deploy --prod
 4. Set Invocation Name: `green code auditor`
 5. Import interaction model from `alexa/interaction_model_en_US.json`
 6. Set HTTPS Endpoint: `https://<your-domain>/api/alexa/skill`
-7. Set Skill ID: `amzn1.ask.skill.fd2a8106-e7fb-4f05-83b9-74590f7df6b8`
+7. Set Skill ID: `amzn1.ask.skill.ccf7d912-329a-4831-bf94-fb7a23d7471e`
 
 ### 3. Set Environment Variables
 
 ```bash
-GREENCODE_ALEXA_SKILL_ID=amzn1.ask.skill.fd2a8106-e7fb-4f05-83b9-74590f7df6b8
+GREENCODE_ALEXA_SKILL_ID=amzn1.ask.skill.ccf7d912-329a-4831-bf94-fb7a23d7471e
 GREENCODE_MCP_TOKEN=your-mcp-secret-token
 # Webhook abuse protection: max requests per client address per window
 GREENCODE_ALEXA_RATE_LIMIT=100

@@ -19,7 +19,8 @@ if not os.environ.get("DATABASE_URL"):
     os.environ.setdefault("SYNC_DATABASE_URL", _tmp_sync)
 
 # Import the FastAPI app
-from app.main import app
+from app.main import app as fastapi_app
+from mangum import Mangum
 
-# Vercel serverless handler
-handler = app
+# Vercel serverless handler using Mangum adapter
+handler = Mangum(fastapi_app, lifespan="off")

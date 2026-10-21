@@ -1,38 +1,38 @@
-{
+﻿{
   "version": 2,
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/dist",
   "installCommand": "cd frontend && npm install --legacy-peer-deps",
   "framework": null,
   "functions": {
-    "api/index.py": {
-      "maxDuration": 60
+    "api/**/*.py": {
+      "runtime": "python3.9"
     }
   },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/github/(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/alexa/skill",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/api/alexa/skill",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/mcp",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/_vercel/health",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/(.*)",

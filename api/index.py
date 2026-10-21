@@ -6,6 +6,7 @@ It imports the main FastAPI app and makes it available as a handler.
 
 import os
 import sys
+import traceback
 from pathlib import Path
 
 # Add the project root to Python path so 'app' module can be imported
@@ -25,16 +26,57 @@ if not os.environ.get("DATABASE_URL"):
     _tmp_sync = "sqlite:////tmp/greencode.db"
     os.environ.setdefault("SYNC_DATABASE_URL", _tmp_sync)
 
-# Import the FastAPI app from main.py
-from app.main import app
 
-# Vercel expects the app to be available as `app` or `handler`
-# The FastAPI app instance is already named `app` in main.py
+def _make_error_asgi_app(err_type: str, err_msg: str, err_tb: str):
+    """Pure Python ASGI fallback that never crashes even if external dependencies are missing."""
+    import json
 
-# Optional: Add a simple health check at root for Vercel's benefit
-@app.get("/_vercel/health", include_in_schema=False)
-def vercel_health():
-    return {"status": "ok", "platform": "vercel"}
+    async def asgi_app(scope, receive, send):
+        if scope.get("type") == "http":
+            body = json.dumps(
+                {
+                    "error": "serverless_startup_error",
+                    "exception_type": err_type,
+                    "message": err_msg,
+                    "traceback": err_tb,
+                    "python": sys.version,
+                    "path": scope.get("path", ""),
+                },
+                indent=2,
+            ).encode("utf-8")
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 500,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode("ascii")),
+                        (b"access-control-allow-origin", b"*"),
+                    ],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": body,
+                }
+            )
+
+    return asgi_app
+
+
+try:
+    from app.main import app
+
+    @app.get("/_vercel/health", include_in_schema=False)
+    def vercel_health():
+        return {"status": "ok", "platform": "vercel"}
+
+except BaseException as _startup_exc:
+    _err_msg = str(_startup_exc)
+    _err_tb = traceback.format_exc()
+    _err_type = type(_startup_exc).__name__
+    app = _make_error_asgi_app(_err_type, _err_msg, _err_tb)
 
 # Export for Vercel
 handler = app

@@ -249,10 +249,8 @@ class PipelineEvidenceRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database tables on startup and dispose async connections on shutdown."""
-    init_db()
-
-    # Vercel serverless environment detection
     is_vercel = os.environ.get("VERCEL", "").strip().lower() in {"1", "true", "yes"}
+    init_db(use_alembic=not is_vercel)
 
     # Rate limiting used to be an optional import that vanished without a word
     # when slowapi was absent, leaving a production service with no request

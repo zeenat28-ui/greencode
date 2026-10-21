@@ -374,11 +374,11 @@ export default function Dashboard() {
             {/* Alexa Voice Cockpit Quick Action */}
             <button
               type="button"
-              onClick={() => setShowVoiceCockpit((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold transition cursor-pointer shadow-xs"
+              onClick={() => setShowVoiceCockpit(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/50 text-emerald-300 text-xs font-semibold transition cursor-pointer shadow-xs"
             >
               <Bot size={13} className="text-emerald-400" />
-              <span>Alexa Voice</span>
+              <span>Alexa Voice Cockpit</span>
             </button>
 
             {/* Tools Dropdown */}

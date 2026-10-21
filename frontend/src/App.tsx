@@ -91,12 +91,15 @@ function App() {
 
 function FullScreenLoader() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--gc-bg-canvas)]">
-      <div
-        className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"
-        role="status"
-        aria-label="Loading GreenCode..."
-      />
+    <div className="min-h-screen flex items-center justify-center bg-[linear-gradient(135deg,#c3eed0_0%,#d8f5e2_20%,#f0fcf5_38%,#b6e8c5_50%,#e4f9ec_70%,#c8f0d5_100%)]">
+      <div className="flex flex-col items-center gap-3">
+        <div
+          className="w-10 h-10 border-3 border-[#003d20] border-t-transparent rounded-full animate-spin"
+          role="status"
+          aria-label="Loading"
+        />
+        <span className="text-xs font-mono font-semibold text-[#003d20]">Loading GreenCode...</span>
+      </div>
     </div>
   );
 }

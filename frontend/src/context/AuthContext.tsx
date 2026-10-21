@@ -154,6 +154,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setGitHubToken(res.data.github_token);
         setHasGhToken(true);
       }
+      if (res.data.access_token) setAccessToken(res.data.access_token);
+      if (res.data.refresh_token) setRefreshToken(res.data.refresh_token);
+      try { localStorage.setItem('greencode_demo_user', JSON.stringify(res.data.user)); } catch {}
       setUser(res.data.user);
       return res.data.user;
     } catch {
@@ -183,6 +186,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loginWithEmail = useCallback(async (emailOrUsername: string, password: string) => {
     try {
       const res = await authService.login(emailOrUsername, password);
+      if (res.data.access_token) setAccessToken(res.data.access_token);
+      if (res.data.refresh_token) setRefreshToken(res.data.refresh_token);
+      try { localStorage.setItem('greencode_demo_user', JSON.stringify(res.data.user)); } catch {}
       setUser(res.data.user);
       return res.data.user;
     } catch (err: unknown) {
@@ -194,6 +200,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loginDemo = useCallback(async () => {
     try {
       const res = await authService.demoLogin();
+      if (res.data.access_token) setAccessToken(res.data.access_token);
+      if (res.data.refresh_token) setRefreshToken(res.data.refresh_token);
+      try { localStorage.setItem('greencode_demo_user', JSON.stringify(res.data.user)); } catch {}
       setUser(res.data.user);
       return res.data.user;
     } catch {

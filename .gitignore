@@ -1,4 +1,4 @@
-# Python Bytecode and Caches
+﻿# Python Bytecode and Caches
 __pycache__/
 *.py[cod]
 *$py.class
@@ -87,4 +87,15 @@ alembic/versions/__pycache__/
 frontend/tsconfig.tsbuildinfo
 
 data/
+
+
+# Archived temporary and development files
+.archive/
+*.log
+test_*.db
+auth_out.txt
+t_out.txt
+final_status.py
+fix_*.py
+test_*.py
 

@@ -52,7 +52,7 @@ def _ask(query: str) -> str:
         },
     }
     resp = mcp_server.handle_alexa_skill_request(payload)
-    return resp["response"]["outputSpeech"]["text"]
+    return resp["response"]["outputSpeech"].get("ssml") or resp["response"]["outputSpeech"].get("text", "")
 
 
 class TestDashboardActionRouting(unittest.TestCase):

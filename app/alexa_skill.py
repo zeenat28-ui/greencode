@@ -100,7 +100,7 @@ def _verify_alexa_request(headers: Dict[str, str], body: bytes) -> None:
     except json.JSONDecodeError:
         body_json = {}
 
-    req_ts = (body_json.get("request") or {}).get("timestamp", "")
+    req_ts = (body_json.get("request") or {}).get("timestamp", "") or headers.get("date", "")
     if req_ts:
         try:
             req_time = calendar.timegm(time.strptime(req_ts, "%Y-%m-%dT%H:%M:%SZ"))

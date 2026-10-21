@@ -16,6 +16,15 @@ sys.path.insert(0, str(PROJECT_ROOT))
 os.environ.setdefault("VERCEL", "1")
 os.environ.setdefault("ENV", "production")
 
+# B5 FIX: On Vercel only /tmp is writable. Point SQLite to /tmp so init_db()
+# does not crash trying to create greencode.db in the read-only project root.
+# When DATABASE_URL is set (Postgres on Vercel) this env var is ignored.
+if not os.environ.get("DATABASE_URL"):
+    _tmp_db = "sqlite+aiosqlite:////tmp/greencode.db"
+    os.environ.setdefault("DATABASE_URL", _tmp_db)
+    _tmp_sync = "sqlite:////tmp/greencode.db"
+    os.environ.setdefault("SYNC_DATABASE_URL", _tmp_sync)
+
 # Import the FastAPI app from main.py
 from app.main import app
 

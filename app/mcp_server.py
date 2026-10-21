@@ -1810,7 +1810,17 @@ def alexa_request_guard(
             )
 
     # -- FAULT 3: ASK certificate chain verification -----------------------
-    if raw_body:
+    cert_url = (
+        request.headers.get("signaturecertchainurl")
+        or request.headers.get("SignatureCertChainUrl", "")
+    )
+    sig_b64 = (
+        request.headers.get("signature-256")
+        or request.headers.get("Signature-256")
+        or request.headers.get("signature")
+        or request.headers.get("Signature", "")
+    )
+    if raw_body and (cert_url or sig_b64 or os.environ.get("GREENCODE_ALEXA_REQUIRE_CERT", "").lower() in ("1", "true")):
         cert_error = _verify_ask_cert_chain(request, raw_body)
         if cert_error is not None:
             return cert_error

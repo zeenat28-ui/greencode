@@ -42,7 +42,11 @@ from app.scanner import AuditRejected, run_github_audit
 
 logger = logging.getLogger("greencode.tasks")
 
-STRICT_PROD_MODE = os.environ.get("ENV", "").lower() in ("production", "prod", "staging")
+IS_VERCEL = os.environ.get("VERCEL", "").strip().lower() in ("1", "true", "yes") or bool(os.environ.get("VERCEL_ENV"))
+STRICT_PROD_MODE = (
+    os.environ.get("ENV", "").lower() in ("production", "prod", "staging")
+    and not IS_VERCEL
+)
 
 REDIS_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
 REDIS_BACKEND_URL = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")

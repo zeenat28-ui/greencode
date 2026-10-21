@@ -371,6 +371,16 @@ export default function Dashboard() {
 
             <div className="h-4 w-px bg-[#1c2721] mx-1 hidden sm:block" />
 
+            {/* Alexa Voice Cockpit Quick Action */}
+            <button
+              type="button"
+              onClick={() => setShowVoiceCockpit((v) => !v)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold transition cursor-pointer shadow-xs"
+            >
+              <Bot size={13} className="text-emerald-400" />
+              <span>Alexa Voice</span>
+            </button>
+
             {/* Tools Dropdown */}
             <div className="relative">
               <button

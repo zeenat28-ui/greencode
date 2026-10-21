@@ -22,7 +22,7 @@
 
 ## 🎯 What is GreenCode Auditor?
 
-**GreenCode Auditor** is a production-ready, enterprise-grade software carbon intelligence platform that helps developers and cloud architects:
+**GreenCode Auditor** is a software carbon intelligence platform that helps developers and cloud architects:
 
 - 🗣️ **Talk to your code** using Amazon Alexa+ voice commands
 - ⚡ **Measure real hardware energy** consumption (CPU, GPU, memory)

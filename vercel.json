@@ -64,15 +64,5 @@
         { "key": "Access-Control-Allow-Headers", "value": "Authorization,Content-Type,Accept" }
       ]
     }
-  ],
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "JWT_SECRET": "@jwt_secret",
-    "SECRETS_ENCRYPTION_KEY": "@secrets_encryption_key",
-    "GITHUB_TOKEN": "@github_token",
-    "HUGGINGFACE_TOKEN": "@huggingface_token",
-    "ELECTRICITY_MAPS_API_KEY": "@electricity_maps_api_key",
-    "REDIS_URL": "@redis_url",
-    "ENV": "production"
-  }
+  ]
 }

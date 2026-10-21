@@ -35,7 +35,7 @@ httpx==0.28.1
 # Rate limiting. Previously an optional import that silently disabled itself when
 # absent (app/main.py), which meant the deployed service had no request
 # throttling at all. It is a hard dependency now.
-slowapi==0.1.9
+slowapi==0.1.10
 
 # --- Amazon Alexa+ & MCP Server (app/mcp_server.py) ----------------------------
 # Speaks Model Context Protocol over Streamable HTTP (RFC 9728 / RFC 8414).

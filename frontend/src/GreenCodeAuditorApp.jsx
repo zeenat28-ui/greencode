@@ -44,7 +44,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
-import { scanService, githubService, refactorService } from './services/greencodeApi';
+import { scanService, githubService, refactorService, gridService } from './services/greencodeApi';
 import api, { getAccessToken, setAccessToken, getGitHubToken, setGitHubToken } from './services/api';
 import { useAlexaVoice } from './hooks/useAlexaVoice';
 
@@ -525,7 +525,7 @@ export default function GreenCodeAuditorApp() {
   const { user, logout } = useAuth();
 
   // State
-  const [violations, setViolations] = useState(BOTTLE_VIOLATIONS_24);
+  const [violations, setViolations] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [fixedIds, setFixedIds] = useState(new Set());
   const [activeFilter, setActiveFilter] = useState('ALL');
@@ -534,13 +534,19 @@ export default function GreenCodeAuditorApp() {
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
   const [isAiOptimizing, setIsAiOptimizing] = useState(false);
-  const [targetRepo, setTargetRepo] = useState('bottlepy/bottle');
-  const [totalFiles, setTotalFiles] = useState(211);
-  const [totalSloc, setTotalSloc] = useState('82.2k');
-  const [customRepoInput, setCustomRepoInput] = useState('bottlepy/bottle');
+  const [targetRepo, setTargetRepo] = useState('');
+  const [totalFiles, setTotalFiles] = useState(0);
+  const [totalSloc, setTotalSloc] = useState('0');
+  const [customRepoInput, setCustomRepoInput] = useState('');
   const [githubPatInput, setGithubPatInput] = useState(() => getGitHubToken() || '');
-  const [statusText, setStatusText] = useState('Scan complete · 24 issues in bottlepy/bottle');
+  const [statusText, setStatusText] = useState('Click Run Scan to audit a repository');
   const [scanError, setScanError] = useState(null);
+  const [backendGreenScore, setBackendGreenScore] = useState(null);
+  const [backendEnergyWh, setBackendEnergyWh] = useState(null);
+  const [backendCarbonG, setBackendCarbonG] = useState(null);
+  const [prDispatched, setPrDispatched] = useState(false);
+  const [prError, setPrError] = useState(null);
+  const [refactorError, setRefactorError] = useState(null);
 
   // Modals
   const [voiceAuditModalOpen, setVoiceAuditModalOpen] = useState(false);
@@ -560,7 +566,6 @@ export default function GreenCodeAuditorApp() {
   const voiceLogs = alexaVoiceLogs;
   const [voiceTextInput, setVoiceTextInput] = useState('');
 
-  const recognitionRef = useRef(null);
 
   // Filtered list
   const filteredViolations = useMemo(() => {
@@ -581,7 +586,7 @@ export default function GreenCodeAuditorApp() {
     });
   }, [violations, activeFilter, searchQuery]);
 
-  const activeViolation = violations[selectedIndex] || violations[0] || BOTTLE_VIOLATIONS_24[0];
+  const activeViolation = violations[selectedIndex] || violations[0] || null;
 
   // Dynamic calculations reflecting applied patches
   const remainingCount = violations.filter((v) => !fixedIds.has(v.id)).length;
@@ -589,10 +594,12 @@ export default function GreenCodeAuditorApp() {
 
   // Compute metrics
   const softwareRating = useMemo(() => {
+    if (backendGreenScore !== null) return Math.round(backendGreenScore);
+    if (violations.length === 0) return 0;
     const fixedCount = fixedIds.size;
-    if (fixedCount === 0) return 12;
-    return Math.min(99, Math.round(12 + (fixedCount / 24) * 87));
-  }, [fixedIds]);
+    if (fixedCount === 0) return Math.max(1, 100 - violations.length * 3);
+    return Math.min(99, Math.round(100 - (remainingCount / violations.length) * 80));
+  }, [fixedIds, backendGreenScore, violations.length, remainingCount]);
 
   const efficiencyGrade = useMemo(() => {
     if (softwareRating >= 85) return 'A';
@@ -613,16 +620,17 @@ export default function GreenCodeAuditorApp() {
   const workloadWh = useMemo(() => {
     const fixedWh = violations
       .filter((v) => fixedIds.has(v.id))
-      .reduce((acc, v) => acc + (v.energyWh || 0.02), 0);
-    return Math.max(0.025, Math.round((0.56 - fixedWh) * 100) / 100);
-  }, [fixedIds, violations]);
+      .reduce((acc, v) => acc + (v.energyWh || 0), 0);
+    if (backendEnergyWh !== null) return backendEnergyWh;
+    const totalWh = violations.reduce((acc, v) => acc + (v.energyWh || 0), 0);
+    return Math.max(0, Math.round((totalWh - fixedWh) * 1000) / 1000);
+  }, [fixedIds, violations, backendEnergyWh]);
 
   const monthlyCost = useMemo(() => {
-    const fixedCost = violations
-      .filter((v) => fixedIds.has(v.id))
-      .reduce((acc, v) => acc + (v.costMonthly || 0.69), 0);
-    return Math.max(0.85, Math.round((17.42 - fixedCost) * 100) / 100);
-  }, [fixedIds, violations]);
+    if (violations.length === 0) return 0;
+    const kwhPerMonth = (workloadWh * 10000) / 1000;
+    return Math.round(kwhPerMonth * 0.12 * 100) / 100;
+  }, [workloadWh, violations.length]);
 
   const projectedSavings = useMemo(() => {
     return Math.round(monthlyCost * 12);
@@ -679,7 +687,7 @@ export default function GreenCodeAuditorApp() {
 
         setViolations(mapped);
         setTotalFiles(res.data.total_files || (mapped.length > 0 ? 1 : 0));
-        setTotalSloc(`${((res.data.total_lines || 1000) / 1000).toFixed(1)}k`);
+        setTotalSloc(`${((res.data.total_lines || 0) / 1000).toFixed(1)}k`);
         setSelectedIndex(0);
         setFixedIds(new Set());
         setStatusText(`Scan complete · ${mapped.length} real issues detected in ${cleanRepo} (${res.data.total_files} files, ${res.data.total_lines} sloc)`);
@@ -689,6 +697,7 @@ export default function GreenCodeAuditorApp() {
     } catch (err) {
       console.error('Scan error:', err);
       const errMsg = err?.response?.data?.detail || err?.message || 'Failed to scan repository';
+      setViolations([]);
       setScanError(`Audit failed for ${cleanRepo}: ${errMsg}`);
       setStatusText(`Audit failed: ${errMsg}`);
     } finally {
@@ -722,7 +731,7 @@ export default function GreenCodeAuditorApp() {
 
       if (res.data && res.data.refactored_code) {
         const newCode = res.data.refactored_code;
-        const reductionPct = res.data.energy_reduction_pct || 46;
+        const reductionPct = res.data.energy_reduction_pct || null;
         const explanation = res.data.explanation || activeViolation.tip;
 
         setViolations((prev) =>
@@ -744,9 +753,9 @@ export default function GreenCodeAuditorApp() {
         setStatusText(`Applied patch for ${activeViolation.filePath}`);
       }
     } catch (err) {
-      console.warn('AI Refactor fallback:', err);
-      handleApplyPatch();
-      setStatusText(`Applied patch for ${activeViolation.filePath}`);
+      const rfErr = err?.response?.data?.detail || err?.message || 'Refactor failed';
+      setRefactorError(rfErr);
+      setStatusText('Refactor failed: ' + rfErr);
     } finally {
       setIsAiOptimizing(false);
     }
@@ -931,33 +940,38 @@ export default function GreenCodeAuditorApp() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
           
           {/* Card 1: SCI Rating */}
-          <div className="group relative overflow-hidden rounded-md border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-emerald-600 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
+          <div className="group relative overflow-hidden rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block font-sans">
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block font-sans">
                   SCI RATING
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                <span className="text-[11px] text-slate-400 font-medium block mt-0.5 font-sans">
                   GSF SCI v1.0 Spec
                 </span>
               </div>
-              <div className="w-8 h-8 rounded-md bg-amber-50 border border-amber-300 flex items-center justify-center shrink-0 shadow-xs">
-                <Gauge className="w-4 h-4 text-amber-600" />
+              <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center shrink-0 text-amber-600 shadow-2xs">
+                <Gauge className="w-4 h-4" />
               </div>
             </div>
             <div className="flex items-end justify-between mt-3">
               <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tight text-amber-600 leading-none">
+                <span className="text-3xl font-extrabold font-sans tracking-tight text-amber-600 leading-none">
                   {softwareRating}
                 </span>
-                <span className="text-xs font-mono font-semibold text-slate-400">/ 100</span>
+                <span className="text-xs font-semibold text-slate-400 font-sans">/ 100</span>
               </div>
-              <span className="text-[11px] font-mono font-bold text-amber-800 bg-amber-100/80 border border-amber-300 px-2.5 py-0.5 rounded-full shadow-2xs">
-                Grade: {efficiencyGrade} · {efficiencyStatus}
-              </span>
+              <div className="text-right leading-tight">
+                <span className="text-xs font-bold text-amber-700 block font-sans">
+                  Grade {efficiencyGrade}
+                </span>
+                <span className="text-[11px] text-slate-400 font-medium block font-sans">
+                  {efficiencyStatus}
+                </span>
+              </div>
             </div>
             {/* Gamified progress meter indicator */}
-            <div className="w-full bg-slate-100 h-1 rounded-full mt-2.5 overflow-hidden">
+            <div className="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden">
               <div
                 className="bg-gradient-to-r from-amber-500 to-emerald-500 h-full rounded-full transition-all duration-500"
                 style={{ width: `${softwareRating}%` }}
@@ -966,106 +980,116 @@ export default function GreenCodeAuditorApp() {
           </div>
 
           {/* Card 2: Static Analysis Issues */}
-          <div className="group relative overflow-hidden rounded-md border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-rose-600 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
+          <div className="group relative overflow-hidden rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block font-sans">
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block font-sans">
                   STATIC ANALYSIS ISSUES
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                <span className="text-[11px] text-slate-400 font-medium block mt-0.5 font-sans">
                   AST Rule Violations
                 </span>
               </div>
-              <div className="w-8 h-8 rounded-md bg-rose-50 border border-rose-300 flex items-center justify-center shrink-0 shadow-xs">
-                <Layers className="w-4 h-4 text-rose-600" />
+              <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center shrink-0 text-rose-600 shadow-2xs">
+                <Layers className="w-4 h-4" />
               </div>
             </div>
             <div className="flex items-end justify-between mt-3">
               <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-black font-mono tracking-tight text-slate-900 leading-none">
+                <span className="text-3xl font-extrabold font-sans tracking-tight text-slate-900 leading-none">
                   {remainingCount}
                 </span>
-                <span className="text-xs text-slate-500 font-sans font-semibold">Issues</span>
+                <span className="text-xs font-semibold text-slate-400 font-sans">issues</span>
               </div>
-              <div className="flex items-center gap-1.5 font-sans">
-                <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md shadow-2xs">
-                  0 Errors
-                </span>
-                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md shadow-2xs">
+              <div className="text-right leading-tight">
+                <span className="text-xs font-bold text-slate-700 block font-sans">
                   {remainingCount} Warnings
+                </span>
+                <span className="text-[11px] text-slate-400 font-medium block font-sans">
+                  0 Critical Errors
                 </span>
               </div>
             </div>
-            {/* Action status pill */}
-            <div className="text-[10px] font-mono text-emerald-800 font-bold mt-2.5 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-emerald-600" />
+            {/* Action status note */}
+            <div className="text-[11px] font-sans text-emerald-600 font-semibold mt-3 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
               <span>1-Click Remediation Available</span>
             </div>
           </div>
 
           {/* Card 3: Estimated Energy Impact */}
-          <div className="group relative overflow-hidden rounded-md border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-sky-600 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
+          <div className="group relative overflow-hidden rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block font-sans">
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block font-sans">
                   EST. ENERGY IMPACT
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                <span className="text-[11px] text-slate-400 font-medium block mt-0.5 font-sans">
                   RAPL Power Profile
                 </span>
               </div>
-              <div className="w-8 h-8 rounded-md bg-sky-50 border border-sky-300 flex items-center justify-center shrink-0 shadow-xs">
-                <Cpu className="w-4 h-4 text-sky-600" />
+              <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200/60 flex items-center justify-center shrink-0 text-sky-600 shadow-2xs">
+                <Cpu className="w-4 h-4" />
               </div>
             </div>
             <div className="flex items-end justify-between mt-3">
               <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tight text-slate-900 leading-none">
+                <span className="text-3xl font-extrabold font-sans tracking-tight text-slate-900 leading-none">
                   {workloadWh.toFixed(2)}
                 </span>
-                <span className="text-xs text-slate-500 font-mono font-semibold whitespace-nowrap">Wh / run</span>
+                <span className="text-xs font-semibold text-slate-400 font-sans whitespace-nowrap">Wh / run</span>
               </div>
-              <span className="text-[10px] font-mono font-bold text-sky-800 bg-sky-50 border border-sky-300 px-2.5 py-0.5 rounded-full shadow-2xs whitespace-nowrap">
-                1.2 gCO₂e / 10k runs
-              </span>
+              <div className="text-right leading-tight">
+                <span className="text-xs font-bold text-slate-700 block font-sans">
+                  1.2 gCO₂e
+                </span>
+                <span className="text-[11px] text-slate-400 font-medium block font-sans whitespace-nowrap">
+                  per 10k runs
+                </span>
+              </div>
             </div>
-            {/* Telemetry pill */}
-            <div className="text-[10px] font-mono text-slate-500 font-medium mt-2.5 flex items-center gap-1">
-              <Zap className="w-3 h-3 text-sky-600" />
-              <span>Hardware PUE 1.2 Matrix Aligned</span>
+            {/* Telemetry note */}
+            <div className="text-[11px] font-sans text-slate-500 font-medium mt-3 flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-sky-500" />
+              <span>Hardware PUE 1.2 Aligned</span>
             </div>
           </div>
 
-          {/* Card 4: Est. Compute Cost (Gamified High ROI Business Pill) */}
-          <div className="group relative overflow-hidden rounded-md border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-[#003d20] hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
+          {/* Card 4: Est. Compute Cost */}
+          <div className="group relative overflow-hidden rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block font-sans">
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block font-sans">
                   EST. COMPUTE COST
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                <span className="text-[11px] text-slate-400 font-medium block mt-0.5 font-sans">
                   Normalized @ 100k runs
                 </span>
               </div>
-              <div className="w-8 h-8 rounded-md bg-emerald-50 border border-emerald-300 flex items-center justify-center shrink-0 shadow-xs">
-                <DollarSign className="w-4 h-4 text-[#003d20]" />
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center shrink-0 text-emerald-700 shadow-2xs">
+                <DollarSign className="w-4 h-4" />
               </div>
             </div>
             <div className="flex items-end justify-between mt-3">
               <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tight text-[#003d20] leading-none">
+                <span className="text-3xl font-extrabold font-sans tracking-tight text-slate-900 leading-none">
                   ${monthlyCost.toFixed(2)}
                 </span>
-                <span className="text-xs text-slate-500 font-mono font-semibold whitespace-nowrap">/ mo</span>
+                <span className="text-xs font-semibold text-slate-400 font-sans whitespace-nowrap">/ mo</span>
               </div>
-              <span className="text-[11px] font-mono font-black text-emerald-900 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full shadow-2xs whitespace-nowrap">
-                Est. Savings: ${projectedSavings}/yr
-              </span>
+              <div className="text-right leading-tight">
+                <span className="text-xs font-bold text-emerald-600 block font-sans whitespace-nowrap">
+                  Save ~${projectedSavings}/yr
+                </span>
+                <span className="text-[11px] text-slate-400 font-medium block font-sans">
+                  projected
+                </span>
+              </div>
             </div>
-            {/* Gamified Business ROI Pill */}
-            <div className="text-[10px] font-mono font-bold text-[#003d20] mt-2.5 flex items-center gap-1">
+            {/* Business ROI note */}
+            <div className="text-[11px] font-sans font-semibold text-emerald-700 mt-3 flex items-center gap-1.5">
               <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600" />
-              <span>94% Projected FinOps Margin Return</span>
+              <span>94% FinOps Margin Return</span>
             </div>
           </div>
 

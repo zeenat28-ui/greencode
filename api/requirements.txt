@@ -21,4 +21,3 @@ httpx==0.28.1
 slowapi==0.1.9
 prometheus-client==0.22.1
 huggingface-hub>=0.20.0
-mangum==0.19.0

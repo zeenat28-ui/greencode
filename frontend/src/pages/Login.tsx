@@ -263,7 +263,7 @@ export default function Login() {
 
     if (!clientId) {
       setError(
-        'Google OAuth is not configured. Add VITE_GOOGLE_CLIENT_ID to frontend/.env and restart the dev server.'
+        'Google OAuth client ID is not configured on this live preview. Please click "1-Click Instant Demo" above to explore the dashboard immediately!'
       );
       return;
     }

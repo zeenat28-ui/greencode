@@ -541,6 +541,7 @@ export default function GreenCodeAuditorApp() {
   const [githubPatInput, setGithubPatInput] = useState(() => getGitHubToken() || '');
   const [statusText, setStatusText] = useState('Click Run Scan to audit a repository');
   const [scanError, setScanError] = useState(null);
+  const [userRepos, setUserRepos] = useState([]);
   const [backendGreenScore, setBackendGreenScore] = useState(null);
   const [backendEnergyWh, setBackendEnergyWh] = useState(null);
   const [backendCarbonG, setBackendCarbonG] = useState(null);
@@ -564,6 +565,15 @@ export default function GreenCodeAuditorApp() {
   } = useAlexaVoice(true);
   // voiceLogs are now provided by useAlexaVoice hook
   const voiceLogs = alexaVoiceLogs;
+
+  useEffect(() => {
+    if (!user) return;
+    if (githubService.listUserRepos) {
+      githubService.listUserRepos().then(res => {
+        if (res?.data) setUserRepos(Array.isArray(res.data) ? res.data : []);
+      }).catch(() => {});
+    }
+  }, [user]);
   const [voiceTextInput, setVoiceTextInput] = useState('');
 
 
@@ -647,12 +657,28 @@ export default function GreenCodeAuditorApp() {
     setStatusText(`Applied Green AST patch to ${activeViolation.filePath}. Carbon debt reduced.`);
   };
 
-  const handleAutoPatchAll = () => {
-    const allIds = new Set(violations.map((v) => v.id));
-    setFixedIds(allIds);
-    setStatusText('Scan complete · 0 issues remaining. Repository health raised to 99/100.');
+  const handleAutoPatchAll = async () => {
+    if (violations.length === 0) { setStatusText('No violations. Run a scan first.'); return; }
+    setIsAiOptimizing(true); let ok = 0, fail = 0;
+    setStatusText('Batch refactoring ' + violations.length + ' violations...');
+    for (const v of violations) {
+      if (fixedIds.has(v.id)) continue;
+      try {
+        const res = await refactorService.refactor(v.originalCode, v.ruleId, 'python', v.fileOnly);
+        if (res.data?.refactored_code) {
+          const rp = res.data.energy_reduction_pct || null;
+          setViolations(prev => prev.map(item => item.id === v.id
+            ? {...item, refactoredCode: res.data.refactored_code, tip: res.data.explanation || item.tip,
+               impactStr: rp ? ('Impact: -' + rp + '% Wh / run') : item.impactStr}
+            : item));
+          setFixedIds(prev => new Set([...prev, v.id])); ok++;
+        } else { fail++; }
+      } catch { fail++; }
+    }
+    setIsAiOptimizing(false);
+    const msg = fail === 0 ? ('Batch complete: ' + ok + ' fixed') : (ok + ' fixed, ' + fail + ' failed');
+    setStatusText(msg);
   };
-
   const handleAuditRepo = async (customRepo) => {
     const raw = customRepo || targetRepo;
     const cleanRepo = raw.trim()
@@ -688,6 +714,9 @@ export default function GreenCodeAuditorApp() {
         setViolations(mapped);
         setTotalFiles(res.data.total_files || (mapped.length > 0 ? 1 : 0));
         setTotalSloc(`${((res.data.total_lines || 0) / 1000).toFixed(1)}k`);
+        if (res.data.green_score != null) setBackendGreenScore(res.data.green_score);
+        if (res.data.energy_wh != null) setBackendEnergyWh(res.data.energy_wh);
+        if (res.data.carbon_g != null) setBackendCarbonG(res.data.carbon_g);
         setSelectedIndex(0);
         setFixedIds(new Set());
         setStatusText(`Scan complete · ${mapped.length} real issues detected in ${cleanRepo} (${res.data.total_files} files, ${res.data.total_lines} sloc)`);
@@ -1041,7 +1070,7 @@ export default function GreenCodeAuditorApp() {
               </div>
               <div className="text-right leading-tight">
                 <span className="text-xs font-bold text-slate-700 block font-sans">
-                  1.2 gCO₂e
+                  {backendCarbonG ? (backendCarbonG/10000).toFixed(2) : "--"} gCO₂e
                 </span>
                 <span className="text-[11px] text-slate-400 font-medium block font-sans whitespace-nowrap">
                   per 10k runs
@@ -1125,7 +1154,7 @@ export default function GreenCodeAuditorApp() {
                     : 'text-slate-500 hover:text-slate-800 border-b-2 border-transparent'
                 }`}
               >
-                Errors (0)
+                Errors ({violations.filter(v=>v.severity==="Critical").length})
               </button>
               <button
                 onClick={() => setActiveFilter('WARNING')}
@@ -1168,7 +1197,27 @@ export default function GreenCodeAuditorApp() {
 
           {/* Violations Stream with Resource Tags */}
           <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 thin-scrollbar">
-            {filteredViolations.map((v) => {
+            {isAuditing && (
+              <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
+                <Loader2 className="w-6 h-6 animate-spin text-[#003d20]" />
+                <p className="text-xs font-mono font-bold text-slate-700">Scanning with AST parser...</p>
+                <p className="text-[11px] text-slate-400">May take 30-60s for large repos</p>
+              </div>
+            )}
+            {!isAuditing && violations.length === 0 && !scanError && (
+              <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
+                <Search className="w-8 h-8 text-slate-300" />
+                <p className="text-sm font-bold text-slate-700">No issues yet</p>
+                <p className="text-xs text-slate-500">Paste a repo (owner/repo) and click Run Scan.</p>
+              </div>
+            )}
+            {!isAuditing && violations.length > 0 && filteredViolations.length === 0 && (
+              <div className="flex items-center justify-center h-full gap-2">
+                <Check className="w-5 h-5 text-emerald-500" />
+                <span className="text-xs font-mono text-slate-600">No violations match this filter</span>
+              </div>
+            )}
+            {!isAuditing && filteredViolations.map((v) => {
               const isSelected = violations[selectedIndex]?.id === v.id;
               const isItemFixed = fixedIds.has(v.id);
 
@@ -1287,7 +1336,7 @@ export default function GreenCodeAuditorApp() {
                     : 'text-slate-500 hover:text-slate-800 border-b-2 border-transparent'
                 }`}
               >
-                Diff (-46% Wh)
+                Diff (optimized)
               </button>
               <button
                 onClick={() => setCodeViewTab('fixed')}
@@ -1488,11 +1537,27 @@ export default function GreenCodeAuditorApp() {
         <div className="hidden md:flex items-center gap-2">
           <Globe className="w-3.5 h-3.5 text-[#003d20]" />
           <span className="text-slate-600 font-bold">Grid Region:</span>
-          <select className="bg-slate-50 border border-slate-300 rounded px-1.5 py-0.2 text-[10px] font-bold text-slate-800 focus:outline-none cursor-pointer font-mono">
-            <option>us-west-1 (CAISO · 215 gCO₂/kWh)</option>
-            <option>us-east-1 (PJM · 379 gCO₂/kWh)</option>
-            <option>eu-north-1 (Nord Pool · 18 gCO₂/kWh)</option>
-            <option>eu-west-1 (EirGrid · 245 gCO₂/kWh)</option>
+          <select
+            onChange={(e) => {
+              const zone = e.target.value;
+              if (!zone) return;
+              setStatusText('Loading grid: ' + zone);
+              gridService.getZoneIntensity(zone)
+                .then(r => { if (r?.data) { 
+                  const ci=r.data.carbon_intensity; const lv=r.data.is_live?'live':'ref';
+                  setStatusText('Grid '+zone+': '+(ci||'?')+' gCO2e/kWh ('+lv+')'); } })
+                .catch(() => setStatusText('Grid lookup failed'));
+            }}
+            className="bg-slate-50 border border-slate-300 rounded px-1.5 py-0.2 text-[10px] font-bold text-slate-800 focus:outline-none cursor-pointer font-mono"
+          >
+            <option value="">Grid Zone</option>
+            <option value="US-CAL-CISO">us-west-1 (CAISO 215)</option>
+            <option value="US-MIDA-PJM">us-east-1 (PJM 383)</option>
+            <option value="SE">eu-north-1 (Nord Pool 35)</option>
+            <option value="IE">eu-west-1 (EirGrid 271)</option>
+            <option value="DE">eu-central-1 (Germany 336)</option>
+            <option value="FR">eu-west-3 (France 40)</option>
+            <option value="SG">ap-southeast-1 (SG 499)</option>
           </select>
         </div>
 
@@ -1693,6 +1758,9 @@ export default function GreenCodeAuditorApp() {
               <div className="text-slate-700">File: {activeViolation.filePath}</div>
               <div className="text-slate-700">Verified Energy Delta: -{activeViolation.energyWh} Wh (-46%)</div>
             </div>
+            {prError && <div className="p-2 bg-rose-50 border border-rose-300 rounded text-xs text-rose-700 flex gap-2 items-center"><AlertCircle className="w-4 h-4 shrink-0"/><span>{prError}</span></div>}
+            {prDispatched && <div className="p-2 bg-emerald-50 border border-emerald-300 rounded text-xs text-emerald-700 flex gap-2 items-center"><CheckCircle2 className="w-4 h-4 shrink-0"/><span>PR created on {targetRepo}</span></div>}
+            {refactorError && !prError && !prDispatched && <div className="p-2 bg-amber-50 border border-amber-300 rounded text-xs text-amber-700 flex gap-2 items-center"><AlertCircle className="w-4 h-4 shrink-0"/><span>{refactorError}</span></div>}
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setPrModalOpen(false)}
@@ -1708,19 +1776,20 @@ export default function GreenCodeAuditorApp() {
 
                   try {
                     const ghTok = getGitHubToken() || githubPatInput;
-                    if (ghTok) {
+                    if (!ghTok) { setPrError('No GitHub token. Add PAT via Link Repo.'); }
+                    else if (!activeViolation?.refactoredCode) { setPrError('Run Generate Fix first.'); }
+                    else {
                       await githubService.createPullRequest(
-                        targetRepo,
-                        activeViolation.filePath,
-                        activeViolation.refactoredCode,
-                        activeViolation.title,
-                        46,
-                        activeViolation.energyWh,
-                        activeViolation.originalCode
+                        targetRepo, activeViolation.filePath, activeViolation.refactoredCode,
+                        activeViolation.title, activeViolation.energyWh||0,
+                        activeViolation.energyWh||0, activeViolation.originalCode
                       );
+                      setPrDispatched(true);
+                      setStatusText('Pull Request created on ' + targetRepo + '!');
                     }
                   } catch (err) {
-                    // fall through gracefully
+                    const e = err?.response?.data?.detail||err?.message||'PR failed';
+                    setPrError(e); setStatusText('PR failed: ' + e);
                   }
 
                   setStatusText(`Pull Request dispatched to ${targetRepo}! Branch: green-fix/${activeViolation.slug}`);

@@ -775,8 +775,9 @@ export default function GreenCodeAuditorApp() {
           </div>
         </div>
 
-        {/* Right Action Buttons (ALL SOLID GREEN WITH WHITE TEXT, Circular Profile & Logout) */}
+        {/* Right Action Buttons: Link Repo, Audit Logs, Run Scan, Alexa Mic (Circle), Profile & Logout (At Far Right End) */}
         <div className="flex items-center gap-2.5 shrink-0">
+          {/* Link Repo Button */}
           <button
             onClick={() => setGithubConnectModalOpen(true)}
             className="px-3.5 py-1.5 bg-[#003d20] hover:bg-[#064e2e] active:scale-98 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer whitespace-nowrap"
@@ -785,37 +786,7 @@ export default function GreenCodeAuditorApp() {
             <span>Link Repo</span>
           </button>
 
-          {/* User Account / Profile Circle */}
-          <div className="flex items-center gap-1.5 shrink-0 pl-1">
-            <div
-              className="w-8 h-8 rounded-full bg-[#003d20] text-emerald-300 font-mono font-bold text-xs flex items-center justify-center border-2 border-[#003d20] shadow-xs cursor-default shrink-0"
-              title={user?.email || 'developer@greencode.dev'}
-            >
-              {(user?.username || user?.full_name || 'D')[0].toUpperCase()}
-            </div>
-            <button
-              onClick={() => logout()}
-              className="w-8 h-8 rounded-full bg-white hover:bg-rose-50 border-2 border-slate-300 hover:border-rose-400 text-slate-600 hover:text-rose-600 flex items-center justify-center transition shadow-2xs cursor-pointer shrink-0"
-              title="Log Out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Voice CLI Solid Button */}
-          <button
-            onClick={toggleMic}
-            className={`px-3 py-1.5 ${
-              isListeningMic
-                ? 'bg-cyan-700 ring-2 ring-cyan-400 text-white'
-                : 'bg-[#003d20] hover:bg-[#064e2e] text-white'
-            } active:scale-98 text-xs font-mono font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer whitespace-nowrap`}
-          >
-            <Mic className={`w-3.5 h-3.5 ${isListeningMic ? 'text-cyan-300 animate-pulse' : 'text-white'}`} />
-            <span>Voice CLI</span>
-          </button>
-
-          {/* Audit Logs Solid Button */}
+          {/* Audit Logs Button */}
           <button
             onClick={() => setVoiceAuditModalOpen(true)}
             className="px-3.5 py-1.5 bg-[#003d20] hover:bg-[#064e2e] active:scale-98 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer whitespace-nowrap"
@@ -824,7 +795,7 @@ export default function GreenCodeAuditorApp() {
             <span>Audit Logs</span>
           </button>
 
-          {/* Run Scan Solid Button */}
+          {/* Run Scan Button */}
           <button
             onClick={handleAuditRepo}
             disabled={isAuditing}
@@ -842,6 +813,43 @@ export default function GreenCodeAuditorApp() {
               </>
             )}
           </button>
+
+          {/* Alexa Mic Circle (Pure Circle, No Box, No Text) */}
+          <button
+            type="button"
+            onClick={toggleMic}
+            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95 ${
+              isListeningMic
+                ? 'bg-[#002816] text-cyan-300 ring-2 ring-cyan-400 border border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.6)] animate-pulse'
+                : 'bg-[#003d20] hover:bg-[#064e2e] text-white border border-[#003d20]'
+            }`}
+            title="Alexa Voice CLI (Click to speak)"
+          >
+            <Mic className={`w-4 h-4 ${isListeningMic ? 'text-cyan-300 animate-bounce' : 'text-white'}`} />
+          </button>
+
+          {/* Subtle Vertical Divider */}
+          <div className="h-6 w-px bg-slate-300 mx-0.5 shrink-0" />
+
+          {/* User Profile & Logout - DOCKED AT THE FAR RIGHT END LIKE STANDARD APPS */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* User Account / Profile Circle */}
+            <div
+              className="w-8 h-8 rounded-full bg-[#003d20] text-emerald-300 font-mono font-bold text-xs flex items-center justify-center border-2 border-[#003d20] shadow-xs cursor-default shrink-0 select-none"
+              title={user?.email || 'developer@greencode.dev'}
+            >
+              {(user?.username || user?.full_name || 'D')[0].toUpperCase()}
+            </div>
+
+            {/* Logout Circle */}
+            <button
+              onClick={() => logout()}
+              className="w-8 h-8 rounded-full bg-white hover:bg-rose-50 border-2 border-slate-300 hover:border-rose-400 text-slate-600 hover:text-rose-600 flex items-center justify-center transition shadow-2xs cursor-pointer shrink-0"
+              title="Log Out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1300,43 +1308,25 @@ export default function GreenCodeAuditorApp() {
           </div>
         </div>
 
-        {/* ──────────────────────────────────────────────────────────────────────
-            4. NON-OBSTRUCTIVE CIRCULAR ALEXA VOICE ORB (Positioned Safely)
-            ────────────────────────────────────────────────────────────────────── */}
-        <div className="absolute right-9 bottom-12 z-40 flex flex-col items-end gap-2 pointer-events-auto">
-          {alexaText && (
-            <div className="w-72 bg-[#090b0a]/95 backdrop-blur-md text-white p-3 rounded-xl border border-cyan-500/50 shadow-2xl font-mono text-xs animate-in fade-in slide-in-from-bottom-2 duration-150">
-              <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-800 text-[10px] text-cyan-400">
-                <span className="flex items-center gap-1 font-bold">
-                  <Volume2 className="w-3 h-3 text-cyan-400" /> Voice Ops · Active
-                </span>
-                <button
-                  onClick={() => setAlexaText('')}
-                  className="text-slate-400 hover:text-white"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-              <p className="text-slate-200 text-xs leading-relaxed font-sans font-medium">
-                {alexaText}
-              </p>
+        {/* Alexa Speech Toast - Positioned safely so Code Diff has 100% zero obstruction */}
+        {alexaText && (
+          <div className="fixed top-18 right-6 z-50 w-80 bg-[#090b0a]/95 backdrop-blur-md text-white p-3.5 rounded-xl border border-cyan-500/50 shadow-2xl font-mono text-xs animate-in fade-in slide-in-from-top-2 duration-150">
+            <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-800 text-[10px] text-cyan-400">
+              <span className="flex items-center gap-1.5 font-bold">
+                <Volume2 className="w-3.5 h-3.5 text-cyan-400" /> Alexa Voice Ops · Active
+              </span>
+              <button
+                onClick={() => setAlexaText('')}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
-          )}
-
-          {/* Pure Circular Audio Orb */}
-          <button
-            type="button"
-            onClick={toggleMic}
-            className={`w-14 h-14 rounded-full flex flex-col items-center justify-center transition-all duration-300 cursor-pointer select-none active:scale-95 shadow-xl ${
-              isListeningMic
-                ? 'bg-[#002816] text-cyan-300 border-2 border-cyan-400 shadow-[0_0_24px_rgba(6,182,212,0.8)] scale-105 animate-pulse'
-                : 'bg-[#090b0a] text-cyan-400 border-2 border-cyan-500 shadow-[0_0_16px_rgba(6,182,212,0.4)] hover:border-cyan-300 hover:shadow-[0_0_22px_rgba(6,182,212,0.6)]'
-            }`}
-            title="Voice Ops (Click to speak)"
-          >
-            <Mic className={`w-5 h-5 ${isListeningMic ? 'text-cyan-300 animate-bounce' : 'text-cyan-400'}`} />
-          </button>
-        </div>
+            <p className="text-slate-200 text-xs leading-relaxed font-sans font-medium">
+              {alexaText}
+            </p>
+          </div>
+        )}
       </main>
 
       {/* ──────────────────────────────────────────────────────────────────────────

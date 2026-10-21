@@ -45,7 +45,7 @@ import {
 import { useAuth } from './context/AuthContext';
 
 // ============================================================================
-// 24 Authentic AST Bottlenecks for bottlepy/bottle (Pixel-Perfect Ground Truth)
+// 24 Authentic AST Bottlenecks for bottlepy/bottle (Real AST Ground Truth)
 // ============================================================================
 export const BOTTLE_VIOLATIONS_24 = [
   {
@@ -429,7 +429,6 @@ export default function GreenCodeAuditorApp() {
   const [voiceLedgerOpen, setVoiceLedgerOpen] = useState(false);
   const [githubModalOpen, setGithubModalOpen] = useState(false);
   const [prModalOpen, setPrModalOpen] = useState(false);
-  const [awsModalOpen, setAwsModalOpen] = useState(false);
 
   // Alexa Voice State
   const [isListening, setIsListening] = useState(false);
@@ -653,67 +652,70 @@ export default function GreenCodeAuditorApp() {
   };
 
   return (
-    <div className="w-full h-screen max-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col font-sans select-none overflow-hidden m-0 p-0 antialiased">
+    <div className="w-full h-screen max-h-screen bg-[linear-gradient(135deg,#c3eed0_0%,#d8f5e2_20%,#f0fcf5_38%,#b6e8c5_50%,#e4f9ec_70%,#c8f0d5_100%)] text-slate-900 flex flex-col font-sans select-none overflow-hidden m-0 p-0 antialiased">
       
       {/* ──────────────────────────────────────────────────────────────────────────
-          1. TOP ENTERPRISE HEADER (Pixel-Perfect from Screenshot)
+          1. TOP ENTERPRISE HEADER (With prominent GreenCode, Dark Green buttons, & Circular Profile)
           ────────────────────────────────────────────────────────────────────────── */}
-      <header className="h-14 w-full bg-white border-b border-slate-200/90 shadow-[0_1px_2px_rgba(0,0,0,0.03)] px-6 flex items-center justify-between shrink-0 z-30">
+      <header className="h-16 w-full bg-white/95 backdrop-blur-md border-b border-slate-300 shadow-sm px-6 flex items-center justify-between shrink-0 z-30">
         
-        {/* Left: Logo + Repo Pill */}
+        {/* Left: Prominent Logo + Repo Pill */}
         <div className="flex items-center gap-4 min-w-0">
-          <div className="flex items-center gap-2.5 shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white shadow-2xs">
-              <Leaf className="w-4 h-4 fill-white" />
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-[#003d20] flex items-center justify-center text-emerald-400 shadow-sm">
+              <Leaf className="w-5 h-5 fill-emerald-400" />
             </div>
-            <span className="font-extrabold text-base tracking-tight text-slate-900 leading-none">GreenCode</span>
+            <div className="flex flex-col">
+              <span className="font-black text-xl tracking-tight text-[#003d20] leading-none">GreenCode</span>
+              <span className="text-[10px] font-mono font-semibold text-[#0e482f]/70 leading-none mt-1">AST Carbon &amp; Energy Engine</span>
+            </div>
           </div>
 
-          <div className="h-4 w-px bg-slate-200 shrink-0" />
+          <div className="h-6 w-px bg-slate-300 shrink-0" />
 
           {/* Repo Input Box with Git Branch */}
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 shadow-2xs">
-            <GitBranch className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 shadow-2xs">
+            <GitBranch className="w-4 h-4 text-[#003d20] shrink-0" />
             <input
               type="text"
               value={targetRepo}
               onChange={(e) => setTargetRepo(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAuditRepo()}
-              className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none w-44 font-mono"
+              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none w-44 font-mono placeholder:text-slate-400"
               placeholder="owner/repo"
             />
           </div>
 
-          {/* Files & LOC Badge */}
-          <div className="hidden lg:flex items-center gap-2 text-xs font-mono text-slate-600 bg-white border border-slate-200 rounded-lg px-2.5 py-1 shadow-2xs">
-            <span className="font-semibold text-slate-800">211 files</span>
+          {/* Files & LOC Clean Pill */}
+          <div className="hidden lg:flex items-center gap-2 text-xs font-mono text-slate-700 bg-white border border-slate-300 rounded-lg px-3 py-1.5 shadow-2xs shrink-0">
+            <span className="font-bold text-[#003d20]">211 files</span>
             <span className="text-slate-300">•</span>
             <span>82,241 LOC</span>
           </div>
         </div>
 
-        {/* Right Action Buttons */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        {/* Right Action Buttons: Dark Green, No Overlaps, No AWS Button, Circular Profile */}
+        <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={() => setGithubModalOpen(true)}
-            className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-lg transition flex items-center gap-1.5 shadow-2xs border border-slate-200 cursor-pointer"
+            className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-[#003d20] text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-2xs border border-slate-300 cursor-pointer whitespace-nowrap"
           >
-            <Github className="w-3.5 h-3.5" />
+            <Github className="w-4 h-4 text-[#003d20]" />
             <span>Connect GitHub</span>
           </button>
 
           <button
             onClick={() => setVoiceLedgerOpen(true)}
-            className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-lg transition flex items-center gap-1.5 shadow-2xs border border-slate-200 cursor-pointer"
+            className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-[#003d20] text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-2xs border border-slate-300 cursor-pointer whitespace-nowrap"
           >
-            <Volume2 className="w-3.5 h-3.5 text-sky-600" />
+            <Volume2 className="w-4 h-4 text-emerald-700" />
             <span>Voice Ledger</span>
           </button>
 
           <button
             onClick={handleAuditRepo}
             disabled={isAuditing}
-            className="px-4 py-1.5 bg-[#003d20] hover:bg-[#002e18] active:scale-98 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
+            className="px-4 py-1.5 bg-[#003d20] hover:bg-[#064e2e] active:scale-98 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-2 shadow-sm cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
             {isAuditing ? (
               <>
@@ -722,20 +724,23 @@ export default function GreenCodeAuditorApp() {
               </>
             ) : (
               <>
-                <Play className="w-3 h-3 fill-current" />
+                <Play className="w-3.5 h-3.5 fill-current" />
                 <span>Audit Repository</span>
               </>
             )}
           </button>
 
-          {/* User Profile Avatar & Logout */}
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
-            <div className="w-7 h-7 rounded-full bg-slate-900 text-emerald-400 font-mono font-bold text-xs flex items-center justify-center border border-slate-700 shadow-2xs">
+          {/* Circular User Profile & Circular Logout Button */}
+          <div className="flex items-center gap-2 pl-2 border-l border-slate-300 shrink-0">
+            <div
+              className="w-8 h-8 rounded-full bg-[#003d20] text-emerald-300 font-mono font-bold text-xs flex items-center justify-center border border-[#003d20]/30 shadow-xs cursor-default shrink-0"
+              title={user?.email || 'Logged in user'}
+            >
               {(user?.username || user?.full_name || 'Z')[0].toUpperCase()}
             </div>
             <button
               onClick={() => logout()}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+              className="w-8 h-8 rounded-full bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-600 hover:text-rose-600 flex items-center justify-center transition shadow-2xs cursor-pointer shrink-0"
               title="Log Out"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -745,24 +750,24 @@ export default function GreenCodeAuditorApp() {
       </header>
 
       {/* ──────────────────────────────────────────────────────────────────────────
-          2. FOUR KPI METRIC CARDS (Exact Match to User Screenshot)
+          2. FOUR KPI METRIC CARDS (Dark Borders, Clean Typography, No Unnecessary Boxes)
           ────────────────────────────────────────────────────────────────────────── */}
       <section className="w-full px-6 pt-3 pb-2 shrink-0">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
           
           {/* Card 1: SOFTWARE EFFICIENCY RATING */}
-          <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 flex flex-col justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all">
+          <div className="bg-white/95 backdrop-blur-sm border border-slate-300 rounded-xl p-3.5 flex flex-col justify-between shadow-sm hover:border-slate-400 transition-all">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
                   SOFTWARE EFFICIENCY RATING
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
                   GSF SCI v1.0 standard
                 </span>
               </div>
-              <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center shrink-0">
-                <Gauge className="w-3.5 h-3.5 text-amber-600" />
+              <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-300 flex items-center justify-center shrink-0">
+                <Gauge className="w-4 h-4 text-amber-600" />
               </div>
             </div>
             <div className="flex items-baseline justify-between mt-3">
@@ -772,25 +777,26 @@ export default function GreenCodeAuditorApp() {
                 </span>
                 <span className="text-xs font-mono text-slate-400">/ 100</span>
               </div>
-              <span className="text-[10px] font-mono font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] font-semibold text-amber-700 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                 {softwareRating >= 75 ? 'Passed Target' : 'Action Recommended'}
               </span>
             </div>
           </div>
 
           {/* Card 2: OPTIMIZATION OPPORTUNITIES */}
-          <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 flex flex-col justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all">
+          <div className="bg-white/95 backdrop-blur-sm border border-slate-300 rounded-xl p-3.5 flex flex-col justify-between shadow-sm hover:border-slate-400 transition-all">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
                   OPTIMIZATION OPPORTUNITIES
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
                   AST code anti-patterns
                 </span>
               </div>
-              <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center shrink-0">
-                <Layers className="w-3.5 h-3.5 text-rose-600" />
+              <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-300 flex items-center justify-center shrink-0">
+                <Layers className="w-4 h-4 text-rose-600" />
               </div>
             </div>
             <div className="flex items-baseline justify-between mt-3">
@@ -798,32 +804,29 @@ export default function GreenCodeAuditorApp() {
                 <span className="text-2xl font-black font-mono tracking-tight text-slate-900">
                   {remainingCount}
                 </span>
-                <span className="text-xs text-slate-400 font-mono">detected</span>
+                <span className="text-xs text-slate-500 font-mono font-medium">detected</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-mono font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded">
-                  0 High Impact
-                </span>
-                <span className="text-[10px] font-mono font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
-                  {remainingCount} Medium
-                </span>
+              <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold">
+                <span className="text-rose-600">0 High</span>
+                <span className="text-slate-300">•</span>
+                <span className="text-amber-600">{remainingCount} Medium</span>
               </div>
             </div>
           </div>
 
           {/* Card 3: WORKLOAD ENERGY DEMAND */}
-          <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 flex flex-col justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all">
+          <div className="bg-white/95 backdrop-blur-sm border border-slate-300 rounded-xl p-3.5 flex flex-col justify-between shadow-sm hover:border-slate-400 transition-all">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
                   WORKLOAD ENERGY DEMAND
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
                   Hardware RAPL &amp; Grid Matrix
                 </span>
               </div>
-              <div className="w-7 h-7 rounded-lg bg-sky-50 border border-sky-200/60 flex items-center justify-center shrink-0">
-                <Cpu className="w-3.5 h-3.5 text-sky-600" />
+              <div className="w-7 h-7 rounded-lg bg-sky-50 border border-sky-300 flex items-center justify-center shrink-0">
+                <Cpu className="w-4 h-4 text-sky-600" />
               </div>
             </div>
             <div className="flex items-baseline justify-between mt-3">
@@ -831,27 +834,28 @@ export default function GreenCodeAuditorApp() {
                 <span className="text-2xl font-black font-mono tracking-tight text-slate-900">
                   {workloadWh.toFixed(2)}
                 </span>
-                <span className="text-xs text-slate-400 font-mono">Watt-hours</span>
+                <span className="text-xs text-slate-500 font-mono">Watt-hours</span>
               </div>
-              <span className="text-[10px] font-mono font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] font-mono font-semibold text-sky-700 flex items-center gap-1">
+                <Zap className="w-3 h-3 text-sky-500" />
                 1.2 gCO₂e / 10k execs
               </span>
             </div>
           </div>
 
           {/* Card 4: CLOUD EFFICIENCY & FINOPS */}
-          <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 flex flex-col justify-between shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all">
+          <div className="bg-white/95 backdrop-blur-sm border border-slate-300 rounded-xl p-3.5 flex flex-col justify-between shadow-sm hover:border-slate-400 transition-all">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
                   CLOUD EFFICIENCY &amp; FINOPS
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
                   Normalized @100k invocations
                 </span>
               </div>
-              <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center shrink-0">
-                <TrendingDown className="w-3.5 h-3.5 text-emerald-600" />
+              <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-300 flex items-center justify-center shrink-0">
+                <TrendingDown className="w-4 h-4 text-emerald-700" />
               </div>
             </div>
             <div className="flex items-baseline justify-between mt-3">
@@ -859,9 +863,9 @@ export default function GreenCodeAuditorApp() {
                 <span className="text-2xl font-black font-mono tracking-tight text-slate-900">
                   ${monthlyCost.toFixed(2)}
                 </span>
-                <span className="text-xs text-slate-400 font-mono">/ mo</span>
+                <span className="text-xs text-slate-500 font-mono">/ mo</span>
               </div>
-              <span className="text-[10px] font-mono font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] font-mono font-bold text-[#003d20]">
                 -${projectedSavings} / yr Projected Savings
               </span>
             </div>
@@ -871,21 +875,21 @@ export default function GreenCodeAuditorApp() {
       </section>
 
       {/* ──────────────────────────────────────────────────────────────────────────
-          3. MAIN WORKSPACE (Left List + Right GitHub Unified Diff Viewer)
+          3. MAIN WORKSPACE (Darker Borders, Clean Crisp Surfaces)
           ────────────────────────────────────────────────────────────────────────── */}
       <main className="flex-1 min-h-0 px-6 pb-2.5 flex gap-4 overflow-hidden relative">
         
         {/* Left Column: Detected Anti-Patterns (40%) */}
-        <div className="w-[40%] h-full flex flex-col bg-white border border-slate-200/90 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
+        <div className="w-[40%] h-full flex flex-col bg-white/95 backdrop-blur-sm border border-slate-300 rounded-xl shadow-sm overflow-hidden">
           
           {/* Filter Toolbar */}
-          <div className="h-10 px-3.5 border-b border-slate-100 bg-[#FAFCFB] flex items-center justify-between gap-2 shrink-0">
+          <div className="h-10 px-3.5 border-b border-slate-200 bg-[#FAFCFB] flex items-center justify-between gap-2 shrink-0">
             <div className="flex items-center gap-1 font-mono text-xs">
               <button
                 onClick={() => setActiveFilter('ALL')}
                 className={`px-2.5 py-0.5 rounded font-bold transition cursor-pointer ${
                   activeFilter === 'ALL'
-                    ? 'bg-emerald-100/70 text-emerald-900 border border-emerald-200 shadow-2xs'
+                    ? 'bg-[#003d20] text-white shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -895,7 +899,7 @@ export default function GreenCodeAuditorApp() {
                 onClick={() => setActiveFilter('CRITICAL')}
                 className={`px-2 py-0.5 rounded transition cursor-pointer ${
                   activeFilter === 'CRITICAL'
-                    ? 'bg-rose-100/70 text-rose-900 border border-rose-200'
+                    ? 'bg-rose-700 text-white'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -905,7 +909,7 @@ export default function GreenCodeAuditorApp() {
                 onClick={() => setActiveFilter('WARNING')}
                 className={`px-2 py-0.5 rounded transition cursor-pointer ${
                   activeFilter === 'WARNING'
-                    ? 'bg-amber-100/70 text-amber-900 border border-amber-200'
+                    ? 'bg-amber-700 text-white'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -915,34 +919,34 @@ export default function GreenCodeAuditorApp() {
 
             {/* Search Box */}
             <div className="relative w-36">
-              <Search className="w-3 h-3 absolute left-2 top-2.5 text-slate-400" />
+              <Search className="w-3.5 h-3.5 absolute left-2 top-2 text-slate-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search issues.."
-                className="w-full pl-6 pr-2 py-1 text-xs bg-white border border-slate-200 rounded-md text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 font-mono"
+                className="w-full pl-6 pr-2 py-1 text-xs bg-white border border-slate-300 rounded-md text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#003d20] font-mono"
               />
             </div>
           </div>
 
           {/* Subheader */}
-          <div className="h-8 px-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between text-xs text-slate-600 shrink-0 font-mono">
-            <span className="text-[11px] font-semibold text-slate-800">
+          <div className="h-8 px-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-700 shrink-0 font-mono">
+            <span className="text-[11px] font-bold text-slate-800">
               Detected Anti-Patterns ({filteredViolations.length})
             </span>
             <button
               onClick={handleAutoPatchAll}
-              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1 transition cursor-pointer shadow-2xs"
+              className="text-[11px] font-bold text-[#003d20] hover:text-[#064e2e] bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded flex items-center gap-1 transition cursor-pointer shadow-2xs"
             >
-              <Wand2 className="w-3 h-3 text-emerald-600" />
+              <Wand2 className="w-3 h-3 text-[#003d20]" />
               <span>Auto-patch All ({violations.length})</span>
             </button>
           </div>
 
           {/* Violations Stream */}
           <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 thin-scrollbar">
-            {filteredViolations.map((v, idx) => {
+            {filteredViolations.map((v) => {
               const isSelected = violations[selectedIndex]?.id === v.id;
               const isItemFixed = fixedIds.has(v.id);
 
@@ -955,20 +959,20 @@ export default function GreenCodeAuditorApp() {
                   }}
                   className={`p-3 transition-colors cursor-pointer flex flex-col gap-1.5 border-l-4 ${
                     isSelected
-                      ? 'border-l-emerald-600 bg-emerald-50/25'
-                      : 'border-l-transparent hover:bg-slate-50/70 bg-white'
+                      ? 'border-l-[#003d20] bg-emerald-50/40'
+                      : 'border-l-transparent hover:bg-slate-50/80 bg-white'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded shrink-0 bg-amber-50 text-amber-700 border border-amber-200">
+                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded shrink-0 bg-amber-50 text-amber-700 border border-amber-300">
                         {v.severity.toUpperCase()}
                       </span>
                       <h4 className="text-xs font-semibold text-slate-900 truncate">
                         {v.title}
                       </h4>
                       {isItemFixed && (
-                        <span className="text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 px-1 rounded flex items-center gap-0.5">
+                        <span className="text-[9px] font-mono font-bold bg-emerald-100 text-[#003d20] px-1 rounded flex items-center gap-0.5">
                           <Check className="w-2.5 h-2.5" /> FIXED
                         </span>
                       )}
@@ -980,11 +984,11 @@ export default function GreenCodeAuditorApp() {
 
                   <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 pl-0.5">
                     <div className="flex items-center gap-1.5 truncate">
-                      <span className="text-slate-600 font-semibold">{v.filePath}</span>
+                      <span className="text-slate-700 font-bold">{v.filePath}</span>
                       <span className="text-slate-300">•</span>
-                      <span className="text-slate-500">{v.ruleId}</span>
+                      <span className="text-slate-600">{v.ruleId}</span>
                     </div>
-                    <span className="shrink-0 text-slate-400 font-sans">
+                    <span className="shrink-0 text-slate-500 font-sans font-medium">
                       ~${v.costMonthly}/mo
                     </span>
                   </div>
@@ -995,16 +999,16 @@ export default function GreenCodeAuditorApp() {
         </div>
 
         {/* Right Column: Unified Diff Remediation Viewer (60%) */}
-        <div className="w-[60%] h-full flex flex-col bg-white border border-slate-200/90 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
+        <div className="w-[60%] h-full flex flex-col bg-white/95 backdrop-blur-sm border border-slate-300 rounded-xl shadow-sm overflow-hidden">
           
           {/* Diff Header */}
-          <div className="h-11 px-4 border-b border-slate-200/80 bg-white flex items-center justify-between gap-3 shrink-0">
+          <div className="h-11 px-4 border-b border-slate-200 bg-white flex items-center justify-between gap-3 shrink-0">
             <div className="min-w-0 flex items-center gap-2 font-mono text-xs">
-              <span className="font-semibold text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-[11px]">
+              <span className="font-bold text-[#003d20] bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded text-[11px]">
                 {activeViolation.ruleId}
               </span>
               <span className="text-slate-300">•</span>
-              <span className="text-slate-800 truncate font-semibold">
+              <span className="text-slate-800 truncate font-bold">
                 {activeViolation.filePath}
               </span>
             </div>
@@ -1018,7 +1022,7 @@ export default function GreenCodeAuditorApp() {
                     setStatusText(`AI Refactor applied green patch to ${activeViolation.filePath}`);
                   }, 800);
                 }}
-                className="px-3 py-1 text-xs font-mono font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                className="px-3 py-1 text-xs font-mono font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
                 <span>AI Refactor</span>
@@ -1027,10 +1031,10 @@ export default function GreenCodeAuditorApp() {
               <button
                 onClick={handleApplyPatch}
                 disabled={isPatched}
-                className={`px-3.5 py-1 text-xs font-mono font-semibold rounded-lg transition flex items-center gap-1.5 shadow-2xs cursor-pointer ${
+                className={`px-3.5 py-1 text-xs font-mono font-bold rounded-lg transition flex items-center gap-1.5 shadow-2xs cursor-pointer ${
                   isPatched
-                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-default'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-98'
+                    ? 'bg-slate-100 text-slate-400 border border-slate-300 cursor-default'
+                    : 'bg-[#003d20] hover:bg-[#064e2e] text-white active:scale-98'
                 }`}
               >
                 <Check className="w-3.5 h-3.5" />
@@ -1039,23 +1043,23 @@ export default function GreenCodeAuditorApp() {
 
               <button
                 onClick={() => setPrModalOpen(true)}
-                className="px-2.5 py-1 text-xs font-mono font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                className="px-2.5 py-1 text-xs font-mono font-semibold text-[#003d20] hover:text-emerald-900 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
                 title="Create Pull Request"
               >
-                <GitPullRequest className="w-3.5 h-3.5 text-slate-700" />
+                <GitPullRequest className="w-3.5 h-3.5 text-[#003d20]" />
                 <span>PR</span>
               </button>
             </div>
           </div>
 
           {/* View Tabs */}
-          <div className="h-8 px-4 border-b border-slate-200/80 bg-slate-50/70 flex items-center justify-between text-xs shrink-0 font-mono">
+          <div className="h-8 px-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between text-xs shrink-0 font-mono">
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setActiveTab('diff')}
                 className={`px-2.5 py-0.5 rounded text-xs transition cursor-pointer ${
                   activeTab === 'diff'
-                    ? 'font-bold text-slate-900 bg-white border border-slate-200 shadow-2xs'
+                    ? 'font-bold text-slate-900 bg-white border border-slate-300 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -1065,7 +1069,7 @@ export default function GreenCodeAuditorApp() {
                 onClick={() => setActiveTab('opt')}
                 className={`px-2.5 py-0.5 rounded text-xs transition cursor-pointer ${
                   activeTab === 'opt'
-                    ? 'font-bold text-slate-900 bg-white border border-slate-200 shadow-2xs'
+                    ? 'font-bold text-slate-900 bg-white border border-slate-300 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -1075,7 +1079,7 @@ export default function GreenCodeAuditorApp() {
                 onClick={() => setActiveTab('orig')}
                 className={`px-2.5 py-0.5 rounded text-xs transition cursor-pointer ${
                   activeTab === 'orig'
-                    ? 'font-bold text-slate-900 bg-white border border-slate-200 shadow-2xs'
+                    ? 'font-bold text-slate-900 bg-white border border-slate-300 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -1085,12 +1089,12 @@ export default function GreenCodeAuditorApp() {
 
             <button
               onClick={handleCopyCode}
-              className="text-slate-400 hover:text-slate-700 text-xs flex items-center gap-1 cursor-pointer transition font-mono"
+              className="text-slate-500 hover:text-slate-800 text-xs flex items-center gap-1 cursor-pointer transition font-mono font-semibold"
             >
               {copyFeedback ? (
                 <>
-                  <Check className="w-3 h-3 text-emerald-600" />
-                  <span className="text-emerald-700 font-semibold">Copied!</span>
+                  <Check className="w-3 h-3 text-[#003d20]" />
+                  <span className="text-[#003d20] font-bold">Copied!</span>
                 </>
               ) : (
                 <>
@@ -1157,19 +1161,19 @@ export default function GreenCodeAuditorApp() {
           </div>
 
           {/* Context Footer Strip */}
-          <div className="h-8 px-4 border-t border-slate-200/80 bg-slate-50 flex items-center justify-between text-xs text-slate-600 shrink-0 font-mono">
+          <div className="h-8 px-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-700 shrink-0 font-mono">
             <span className="truncate text-[11px] pr-2">
-              <span className="font-bold text-slate-800">GSF Heuristic: </span>
+              <span className="font-bold text-slate-900">GSF Heuristic: </span>
               <span>{activeViolation.heuristic}</span>
             </span>
-            <span className="text-[11px] font-bold text-emerald-700 whitespace-nowrap">
+            <span className="text-[11px] font-bold text-[#003d20] whitespace-nowrap">
               {activeViolation.savingsClaim}
             </span>
           </div>
         </div>
 
         {/* ──────────────────────────────────────────────────────────────────────
-            4. AUTHENTIC ALEXA AMBIENT MIC WIDGET (Bottom Right Corner)
+            4. AUTHENTIC ALEXA AMBIENT MIC WIDGET (Sleek Futuristic Floating Orb)
             ────────────────────────────────────────────────────────────────────── */}
         <div className="absolute right-9 bottom-5 z-40">
           <div
@@ -1233,20 +1237,20 @@ export default function GreenCodeAuditorApp() {
       </main>
 
       {/* ──────────────────────────────────────────────────────────────────────────
-          5. BOTTOM STATUS BAR (Exact Match to Screenshot)
+          5. BOTTOM STATUS BAR (With Darker Border & Clean Typography)
           ────────────────────────────────────────────────────────────────────────── */}
-      <footer className="h-7 w-full bg-white border-t border-slate-200/90 px-6 flex items-center justify-between text-[11px] font-mono text-slate-500 shrink-0 z-30 select-none shadow-[0_-1px_2px_rgba(0,0,0,0.02)]">
+      <footer className="h-7 w-full bg-white/95 backdrop-blur-md border-t border-slate-300 px-6 flex items-center justify-between text-[11px] font-mono text-slate-600 shrink-0 z-30 select-none shadow-xs">
         {/* Left Status */}
         <div className="flex items-center gap-2.5">
-          <span className="w-2 h-2 rounded-xs bg-emerald-500 shrink-0" />
-          <span className="font-semibold text-slate-700 truncate">{statusText}</span>
+          <span className="w-2 h-2 rounded-xs bg-[#003d20] shrink-0" />
+          <span className="font-bold text-slate-800 truncate">{statusText}</span>
         </div>
 
         {/* Center Grid */}
         <div className="hidden md:flex items-center gap-2">
-          <Globe className="w-3 h-3 text-slate-400" />
-          <span className="text-slate-400">Regional Grid:</span>
-          <select className="bg-slate-50 border border-slate-200 rounded px-1.5 py-0.2 text-[10px] font-semibold text-slate-700 focus:outline-none cursor-pointer font-mono">
+          <Globe className="w-3.5 h-3.5 text-[#003d20]" />
+          <span className="text-slate-500 font-medium">Regional Grid:</span>
+          <select className="bg-slate-50 border border-slate-300 rounded px-1.5 py-0.2 text-[10px] font-bold text-slate-800 focus:outline-none cursor-pointer font-mono">
             <option>United States (California ISO / Silicon Valley) (215 gCO₂/kWh)</option>
             <option>United States (N. Virginia / PJM) (379 gCO₂/kWh)</option>
             <option>Europe (Sweden / Nord Pool) (18 gCO₂/kWh)</option>
@@ -1256,8 +1260,8 @@ export default function GreenCodeAuditorApp() {
 
         {/* Right Standard */}
         <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1 text-emerald-800 font-semibold">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+          <span className="flex items-center gap-1.5 text-[#003d20] font-bold">
+            <ShieldCheck className="w-4 h-4 text-[#003d20]" />
             <span>ISO 14064-1 &amp; GSF SCI</span>
           </span>
         </div>
@@ -1270,10 +1274,10 @@ export default function GreenCodeAuditorApp() {
       {/* Voice Ledger Modal */}
       {voiceLedgerOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-xl w-full p-5 space-y-4 max-h-[85vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-300 max-w-xl w-full p-5 space-y-4 max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-300 flex items-center justify-center text-[#003d20]">
                   <Volume2 className="w-4 h-4" />
                 </div>
                 <div>
@@ -1296,7 +1300,7 @@ export default function GreenCodeAuditorApp() {
                   className={`p-3 rounded-lg border text-xs ${
                     log.speaker === 'User'
                       ? 'bg-slate-50 border-slate-200'
-                      : 'bg-emerald-50/50 border-emerald-200/80 text-emerald-900'
+                      : 'bg-emerald-50/50 border-emerald-300 text-emerald-900'
                   }`}
                 >
                   <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
@@ -1310,10 +1314,10 @@ export default function GreenCodeAuditorApp() {
               ))}
             </div>
 
-            <div className="pt-2 border-t border-slate-100 flex justify-end shrink-0">
+            <div className="pt-2 border-t border-slate-200 flex justify-end shrink-0">
               <button
                 onClick={() => setVoiceLedgerOpen(false)}
-                className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg cursor-pointer"
+                className="px-4 py-1.5 bg-[#003d20] hover:bg-[#064e2e] text-white text-xs font-bold rounded-lg cursor-pointer"
               >
                 Close
               </button>
@@ -1325,8 +1329,8 @@ export default function GreenCodeAuditorApp() {
       {/* GitHub Connect Modal */}
       {githubModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-300 max-w-md w-full p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <div className="flex items-center gap-2">
                 <Github className="w-5 h-5 text-slate-900" />
                 <h3 className="text-sm font-bold text-slate-900">GitHub Repository Sync</h3>
@@ -1342,12 +1346,12 @@ export default function GreenCodeAuditorApp() {
               <div className="text-slate-500">Repository: <span className="text-slate-900 font-bold">{targetRepo}</span></div>
               <div className="text-slate-500">Analyzed Files: <span className="text-slate-900 font-bold">211</span></div>
               <div className="text-slate-500">Analyzed LOC: <span className="text-slate-900 font-bold">82,241</span></div>
-              <div className="text-slate-500">PR Action: <span className="text-emerald-700 font-bold">Auto-Check Active</span></div>
+              <div className="text-slate-500">PR Action: <span className="text-[#003d20] font-bold">Auto-Check Active</span></div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setGithubModalOpen(false)}
-                className="px-4 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg"
+                className="px-4 py-1.5 bg-[#003d20] text-white text-xs font-bold rounded-lg"
               >
                 Done
               </button>
@@ -1359,9 +1363,9 @@ export default function GreenCodeAuditorApp() {
       {/* Pull Request Modal */}
       {prModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2 text-emerald-800">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-300 max-w-lg w-full p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2 text-[#003d20]">
                 <GitPullRequest className="w-5 h-5" />
                 <h3 className="text-sm font-bold text-slate-900">Dispatch Green Pull Request</h3>
               </div>
@@ -1372,15 +1376,15 @@ export default function GreenCodeAuditorApp() {
             <p className="text-xs text-slate-600 leading-relaxed">
               Open a verified Pull Request to <strong>{targetRepo}</strong> containing synthesized AST refactorings, reducing computational complexity and scope 2 emissions.
             </p>
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-mono space-y-1">
-              <div className="text-emerald-900 font-bold">Branch: green-fix/{activeViolation.ruleId.toLowerCase()}</div>
-              <div className="text-slate-600">File: {activeViolation.filePath}</div>
-              <div className="text-slate-600">Verified Energy Delta: -{activeViolation.energyWh} Wh (-46%)</div>
+            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg text-xs font-mono space-y-1">
+              <div className="text-[#003d20] font-bold">Branch: green-fix/{activeViolation.ruleId.toLowerCase()}</div>
+              <div className="text-slate-700">File: {activeViolation.filePath}</div>
+              <div className="text-slate-700">Verified Energy Delta: -{activeViolation.energyWh} Wh (-46%)</div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setPrModalOpen(false)}
-                className="px-3 py-1.5 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-50"
+                className="px-3 py-1.5 border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-50"
               >
                 Cancel
               </button>
@@ -1390,7 +1394,7 @@ export default function GreenCodeAuditorApp() {
                   handleApplyPatch();
                   setStatusText(`Pull Request created for ${activeViolation.filePath}! Branch: green-fix/patch-ast`);
                 }}
-                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5"
+                className="px-4 py-1.5 bg-[#003d20] hover:bg-[#064e2e] text-white text-xs font-bold rounded-lg flex items-center gap-1.5"
               >
                 <GitPullRequest className="w-3.5 h-3.5" />
                 <span>Create PR on GitHub</span>

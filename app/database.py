@@ -771,13 +771,17 @@ def run_migrations() -> Optional[str]:
     return None
 
 
-def init_db(*, use_alembic: bool = True) -> None:
+_IS_VERCEL = os.environ.get("VERCEL", "").strip().lower() in {"1", "true", "yes"}
+
+def init_db(*, use_alembic: Optional[bool] = None) -> None:
     """Initialize relational database tables across sync and async engines.
 
-    ``use_alembic`` defaults to True so a deployed service cannot come up
-    against an unversioned schema. Tests and one-off scripts pass False to get
-    the lightweight ``create_all`` path.
+    On Vercel, use_alembic defaults to False to prevent slow cold starts
+    and migration errors on ephemeral SQLite instances.
     """
+    if use_alembic is None:
+        use_alembic = not _IS_VERCEL
+
     if use_alembic:
         failure = run_migrations()
         if failure:

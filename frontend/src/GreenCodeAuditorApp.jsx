@@ -863,7 +863,7 @@ export default function GreenCodeAuditorApp() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
           
           {/* Card 1: SCI Rating */}
-          <div className="group relative overflow-hidden rounded-2xl border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-emerald-600 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
+          <div className="group relative overflow-hidden rounded-md border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-emerald-600 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
                 <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block font-sans">
@@ -873,7 +873,7 @@ export default function GreenCodeAuditorApp() {
                   GSF SCI v1.0 Spec
                 </span>
               </div>
-              <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-300 flex items-center justify-center shrink-0 shadow-xs">
+              <div className="w-8 h-8 rounded-md bg-amber-50 border border-amber-300 flex items-center justify-center shrink-0 shadow-xs">
                 <Gauge className="w-4 h-4 text-amber-600" />
               </div>
             </div>
@@ -898,7 +898,7 @@ export default function GreenCodeAuditorApp() {
           </div>
 
           {/* Card 2: Static Analysis Issues */}
-          <div className="group relative overflow-hidden rounded-2xl border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-rose-600 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
+          <div className="group relative overflow-hidden rounded-md border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-rose-600 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
                 <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block font-sans">
@@ -908,7 +908,7 @@ export default function GreenCodeAuditorApp() {
                   AST Rule Violations
                 </span>
               </div>
-              <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-300 flex items-center justify-center shrink-0 shadow-xs">
+              <div className="w-8 h-8 rounded-md bg-rose-50 border border-rose-300 flex items-center justify-center shrink-0 shadow-xs">
                 <Layers className="w-4 h-4 text-rose-600" />
               </div>
             </div>
@@ -936,7 +936,7 @@ export default function GreenCodeAuditorApp() {
           </div>
 
           {/* Card 3: Estimated Energy Impact */}
-          <div className="group relative overflow-hidden rounded-2xl border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-sky-600 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
+          <div className="group relative overflow-hidden rounded-md border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-sky-600 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
                 <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block font-sans">
@@ -946,7 +946,7 @@ export default function GreenCodeAuditorApp() {
                   RAPL Power Profile
                 </span>
               </div>
-              <div className="w-8 h-8 rounded-xl bg-sky-50 border border-sky-300 flex items-center justify-center shrink-0 shadow-xs">
+              <div className="w-8 h-8 rounded-md bg-sky-50 border border-sky-300 flex items-center justify-center shrink-0 shadow-xs">
                 <Cpu className="w-4 h-4 text-sky-600" />
               </div>
             </div>
@@ -969,7 +969,7 @@ export default function GreenCodeAuditorApp() {
           </div>
 
           {/* Card 4: Est. Compute Cost (Gamified High ROI Business Pill) */}
-          <div className="group relative overflow-hidden rounded-2xl border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-[#003d20] hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
+          <div className="group relative overflow-hidden rounded-md border-2 border-[#003d20] bg-gradient-to-b from-white via-[#FCFDFD] to-slate-50/70 p-4 shadow-[0_4px_16px_rgba(14,72,47,0.14)] hover:shadow-xl hover:border-[#003d20] hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
                 <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block font-sans">
@@ -979,7 +979,7 @@ export default function GreenCodeAuditorApp() {
                   Normalized @ 100k runs
                 </span>
               </div>
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-300 flex items-center justify-center shrink-0 shadow-xs">
+              <div className="w-8 h-8 rounded-md bg-emerald-50 border border-emerald-300 flex items-center justify-center shrink-0 shadow-xs">
                 <DollarSign className="w-4 h-4 text-[#003d20]" />
               </div>
             </div>
@@ -1010,7 +1010,7 @@ export default function GreenCodeAuditorApp() {
       <main className="flex-1 min-h-0 px-6 pb-2.5 flex gap-4 overflow-hidden relative">
         
         {/* Left Column: Detected Issues (40%) */}
-        <div className="w-[40%] h-full flex flex-col bg-white/95 backdrop-blur-sm border-2 border-[#003d20] rounded-xl shadow-sm overflow-hidden">
+        <div className="w-[40%] h-full flex flex-col bg-white/95 backdrop-blur-sm border-2 border-[#003d20] rounded-md shadow-sm overflow-hidden">
           
           {/* Filter Toolbar */}
           <div className="h-10 px-3.5 border-b-2 border-[#003d20]/20 bg-[#FAFCFB] flex items-center justify-between gap-2 shrink-0">
@@ -1131,7 +1131,7 @@ export default function GreenCodeAuditorApp() {
         </div>
 
         {/* Right Column: Unified Diff Remediation Viewer (60%) */}
-        <div className="w-[60%] h-full flex flex-col bg-white/95 backdrop-blur-sm border-2 border-[#003d20] rounded-xl shadow-sm overflow-hidden">
+        <div className="w-[60%] h-full flex flex-col bg-white/95 backdrop-blur-sm border-2 border-[#003d20] rounded-md shadow-sm overflow-hidden">
           
           {/* Diff Header */}
           <div className="h-11 px-4 border-b-2 border-[#003d20]/20 bg-white flex items-center justify-between gap-3 shrink-0">

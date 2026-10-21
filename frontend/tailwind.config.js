@@ -133,9 +133,9 @@ module.exports = {
         sm: 'var(--gc-radius-sm)',
         md: 'var(--gc-radius-md)',
         lg: 'var(--gc-radius-lg)',
-        xl: 'var(--gc-radius-xl)',
-        '2xl': 'var(--gc-radius-2xl)',
-        full: 'var(--gc-radius-full)',
+        xl: 'var(--gc-radius-xl, 1rem)',
+        '2xl': 'var(--gc-radius-2xl, 1.5rem)',
+        full: '9999px',
       },
       spacing: {
         '3xs': '0.25rem',

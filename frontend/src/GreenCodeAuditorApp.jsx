@@ -814,27 +814,29 @@ export default function GreenCodeAuditorApp() {
             )}
           </button>
 
-          {/* Alexa Mic Circle (Pure Circle, No Box, No Text) */}
+          {/* Alexa Mic Circle (Pure Circle, Unmistakable Alexa Cyan Ring, No Box) */}
           <button
             type="button"
             onClick={toggleMic}
-            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95 ${
+            style={{ borderRadius: '9999px' }}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 shrink-0 ${
               isListeningMic
-                ? 'bg-[#002816] text-cyan-300 ring-2 ring-cyan-400 border border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.6)] animate-pulse'
-                : 'bg-[#003d20] hover:bg-[#064e2e] text-white border border-[#003d20]'
+                ? 'bg-slate-950 text-cyan-300 border-2 border-cyan-400 shadow-[0_0_16px_rgba(6,182,212,0.8)] animate-pulse'
+                : 'bg-slate-950 hover:bg-slate-900 text-cyan-400 border-2 border-cyan-400/80 shadow-[0_0_10px_rgba(6,182,212,0.4)]'
             }`}
             title="Alexa Voice CLI (Click to speak)"
           >
-            <Mic className={`w-4 h-4 ${isListeningMic ? 'text-cyan-300 animate-bounce' : 'text-white'}`} />
+            <Mic className={`w-4 h-4 ${isListeningMic ? 'text-cyan-300 animate-bounce' : 'text-cyan-400'}`} />
           </button>
 
           {/* Subtle Vertical Divider */}
-          <div className="h-6 w-px bg-slate-300 mx-0.5 shrink-0" />
+          <div className="h-6 w-px bg-slate-300 mx-1 shrink-0" />
 
-          {/* User Profile & Logout - DOCKED AT THE FAR RIGHT END LIKE STANDARD APPS */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* User Profile & Logout - DOCKED AT THE FAR RIGHT END (PERFECT CIRCLES) */}
+          <div className="flex items-center gap-2 shrink-0">
             {/* User Account / Profile Circle */}
             <div
+              style={{ borderRadius: '9999px' }}
               className="w-8 h-8 rounded-full bg-[#003d20] text-emerald-300 font-mono font-bold text-xs flex items-center justify-center border-2 border-[#003d20] shadow-xs cursor-default shrink-0 select-none"
               title={user?.email || 'developer@greencode.dev'}
             >
@@ -844,6 +846,7 @@ export default function GreenCodeAuditorApp() {
             {/* Logout Circle */}
             <button
               onClick={() => logout()}
+              style={{ borderRadius: '9999px' }}
               className="w-8 h-8 rounded-full bg-white hover:bg-rose-50 border-2 border-slate-300 hover:border-rose-400 text-slate-600 hover:text-rose-600 flex items-center justify-center transition shadow-2xs cursor-pointer shrink-0"
               title="Log Out"
             >
@@ -1308,25 +1311,62 @@ export default function GreenCodeAuditorApp() {
           </div>
         </div>
 
-        {/* Alexa Speech Toast - Positioned safely so Code Diff has 100% zero obstruction */}
-        {alexaText && (
-          <div className="fixed top-18 right-6 z-50 w-80 bg-[#090b0a]/95 backdrop-blur-md text-white p-3.5 rounded-xl border border-cyan-500/50 shadow-2xl font-mono text-xs animate-in fade-in slide-in-from-top-2 duration-150">
-            <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-800 text-[10px] text-cyan-400">
-              <span className="flex items-center gap-1.5 font-bold">
-                <Volume2 className="w-3.5 h-3.5 text-cyan-400" /> Alexa Voice Ops · Active
-              </span>
-              <button
-                onClick={() => setAlexaText('')}
-                className="text-slate-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+        {/* ───────────────────────────────────────────────────────────────────
+            ALEXA FLOATING VOICE ORB (PERFECT CIRCLE, GLOWING ECHO HALO, RESTORED)
+            ─────────────────────────────────────────────────────────────────── */}
+        <div className="fixed bottom-10 right-6 z-50 flex flex-col items-end gap-2.5 pointer-events-auto select-none">
+          {/* Active Speech Toast Bubble */}
+          {alexaText && (
+            <div className="w-80 bg-slate-950/95 backdrop-blur-md text-white p-3.5 rounded-2xl border-2 border-cyan-400/70 shadow-[0_8px_32px_rgba(0,0,0,0.5)] font-mono text-xs animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-800 text-[10px] text-cyan-400 font-bold">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                  Alexa Voice Assistant · Active
+                </span>
+                <button
+                  onClick={() => setAlexaText('')}
+                  className="text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-slate-200 text-xs leading-relaxed font-sans font-medium">
+                {alexaText}
+              </p>
             </div>
-            <p className="text-slate-200 text-xs leading-relaxed font-sans font-medium">
-              {alexaText}
-            </p>
-          </div>
-        )}
+          )}
+
+          {/* Pure Circular Alexa Voice Orb Button */}
+          <button
+            type="button"
+            onClick={toggleMic}
+            style={{ borderRadius: '9999px' }}
+            className={`group relative w-14 h-14 rounded-full flex items-center justify-center cursor-pointer transition-all duration-300 active:scale-95 shadow-2xl ${
+              isListeningMic
+                ? 'bg-slate-950 text-cyan-300 border-2 border-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.9)] scale-105 animate-pulse'
+                : 'bg-slate-950 text-cyan-400 border-2 border-cyan-400/90 shadow-[0_0_20px_rgba(6,182,212,0.5)] hover:border-cyan-300 hover:shadow-[0_0_28px_rgba(6,182,212,0.7)] hover:scale-105'
+            }`}
+            title="Alexa Voice Agent (Click to speak)"
+          >
+            {/* Glowing Alexa Echo Halo Ring */}
+            <span
+              style={{ borderRadius: '9999px' }}
+              className="absolute -inset-1 rounded-full bg-gradient-to-r from-cyan-500/40 via-sky-400/30 to-emerald-400/40 blur-xs group-hover:opacity-100 opacity-70 animate-pulse pointer-events-none"
+            />
+
+            <div className="relative flex items-center justify-center">
+              {isListeningMic ? (
+                <div className="flex items-center gap-1">
+                  <span className="w-1 h-3.5 bg-cyan-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                  <span className="w-1 h-5 bg-cyan-300 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                  <span className="w-1 h-3.5 bg-cyan-400 rounded-full animate-bounce" />
+                </div>
+              ) : (
+                <Mic className="w-6 h-6 text-cyan-400 group-hover:text-cyan-300 transition-colors" />
+              )}
+            </div>
+          </button>
+        </div>
       </main>
 
       {/* ──────────────────────────────────────────────────────────────────────────

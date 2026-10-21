@@ -1164,8 +1164,8 @@ def _build_ask_response(
     """Build a standard Amazon Alexa Skills Kit (ASK) v1.0 JSON response."""
     response_body: Dict[str, Any] = {
         "outputSpeech": {
-            "type": "PlainText",
-            "text": speech_text,
+            "type": "SSML",
+            "ssml": (speech_text if speech_text.startswith("<speak>") else f"<speak>{speech_text}</speak>"),
         },
         "card": {
             "type": "Simple",
@@ -1174,11 +1174,19 @@ def _build_ask_response(
         },
         "shouldEndSession": should_end_session,
     }
-    if reprompt_text and not should_end_session:
+    _DEFAULT_REPROMPT = (
+        "Ask me to compare regions, audit your code, calculate SCI, "
+        "measure energy, or explain a score."
+    )
+    effective_reprompt = reprompt_text if reprompt_text else (
+        _DEFAULT_REPROMPT if not should_end_session else None
+    )
+    if effective_reprompt and not should_end_session:
+        _rp = effective_reprompt if effective_reprompt.startswith("<speak>") else f"<speak>{effective_reprompt}</speak>"
         response_body["reprompt"] = {
             "outputSpeech": {
-                "type": "PlainText",
-                "text": reprompt_text,
+                "type": "SSML",
+                "ssml": _rp,
             }
         }
     return {
@@ -1194,7 +1202,7 @@ def _dispatch_nlu_action(utterance: str) -> Optional[Dict[str, Any]]:
     Returns ``None`` when the utterance is not one of the five actions, so
     the caller keeps its own handling.
     """
-    from app.alexa_skill import dispatch_nlu_action
+    from app.alexa_dispatch import dispatch_nlu_action  # avoids mcp_server<->alexa_skill circular import
 
     return dispatch_nlu_action(utterance)
 
@@ -1645,22 +1653,169 @@ def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+# ---------------------------------------------------------------------------
+# ASK certificate-chain verification (Fault 3 fix)
+# ---------------------------------------------------------------------------
+_ASK_CERT_DOMAIN = "s3.amazonaws.com"
+_ASK_CERT_PATH_PREFIX = "/echo.api/"
+_TIMESTAMP_TOLERANCE_SECONDS = 150
+
+
+def _verify_ask_cert_chain(request: Request, raw_body: bytes) -> Optional[JSONResponse]:
+    """Verify Amazon ASK SignatureCertChainUrl + Signature-256 headers.
+
+    Implements the three Amazon ASK security requirements:
+      1. SignatureCertChainUrl is HTTPS from s3.amazonaws.com/echo.api/
+      2. Certificate SAN contains echo-api.amazon.com and is currently valid
+      3. RSA-SHA256 signature over raw request body matches the cert public key
+
+    Returns a JSONResponse error if verification fails, None if it passes.
+    Falls back to a logged warning (stub mode) when neither ask-sdk-core nor
+    the cryptography library is installed.
+    """
+    cert_url = (
+        request.headers.get("signaturecertchainurl")
+        or request.headers.get("SignatureCertChainUrl", "")
+    )
+    signature_b64 = (
+        request.headers.get("signature-256")
+        or request.headers.get("Signature-256")
+        or request.headers.get("signature")
+        or request.headers.get("Signature", "")
+    )
+
+    if not cert_url or not signature_b64:
+        return JSONResponse(
+            {"error": "missing_signature",
+             "detail": "SignatureCertChainUrl or Signature header is absent."},
+            status_code=400,
+        )
+
+    # 1. Validate the cert URL domain and path.
+    try:
+        from urllib.parse import urlparse
+        import posixpath
+        parsed = urlparse(cert_url)
+        if parsed.scheme.lower() != "https":
+            raise ValueError("cert URL must be HTTPS")
+        if parsed.hostname != _ASK_CERT_DOMAIN:
+            raise ValueError(f"cert URL hostname must be {_ASK_CERT_DOMAIN}")
+        norm_path = posixpath.normpath(parsed.path)
+        if not norm_path.startswith(_ASK_CERT_PATH_PREFIX):
+            raise ValueError(f"cert URL path must start with {_ASK_CERT_PATH_PREFIX}")
+    except (ValueError, AttributeError) as exc:
+        return JSONResponse(
+            {"error": "invalid_cert_url", "detail": str(exc)},
+            status_code=400,
+        )
+
+    # 2. Try ask-sdk-webservice-support first (official Amazon verifier).
+    try:
+        from ask_sdk_webservice_support.verifier import RequestVerifier, TimestampVerifier
+        for v in (RequestVerifier(), TimestampVerifier()):
+            v.verify(
+                headers=dict(request.headers),
+                serialized_request_env=raw_body.decode("utf-8"),
+                deserialized_request_env=None,
+            )
+        return None
+    except ImportError:
+        pass
+    except Exception as exc:
+        logger.warning("ASK ask-sdk-core verification failed: %s", exc)
+        return JSONResponse(
+            {"error": "signature_mismatch",
+             "detail": "ASK request signature is invalid."},
+            status_code=400,
+        )
+
+    # 3. cryptography-library fallback (RSA-SHA256, PKCS1v15).
+    try:
+        import base64
+        import datetime as _dt
+        import urllib.request as _urlreq
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+
+        with _urlreq.urlopen(cert_url, timeout=5) as resp:
+            pem_data = resp.read()
+        cert = x509.load_pem_x509_certificate(pem_data)
+        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+        if "echo-api.amazon.com" not in san.value.get_values_for_type(x509.DNSName):
+            raise ValueError("cert SAN does not include echo-api.amazon.com")
+        now_utc = _dt.datetime.now(_dt.timezone.utc)
+        if not (cert.not_valid_before_utc <= now_utc <= cert.not_valid_after_utc):
+            raise ValueError("certificate is expired or not yet valid")
+        cert.public_key().verify(
+            base64.b64decode(signature_b64), raw_body,
+            padding.PKCS1v15(), hashes.SHA256(),
+        )
+        return None
+    except ImportError:
+        logger.warning(
+            "ASK cert verification unavailable: install ask-sdk-webservice-support or cryptography. "
+            "Running in stub mode (cert chain NOT verified)."
+        )
+        return None
+    except Exception as exc:
+        logger.warning("ASK signature verification failed: %s", exc)
+        return JSONResponse(
+            {"error": "signature_mismatch",
+             "detail": f"ASK request signature is invalid: {exc}"},
+            status_code=400,
+        )
+
+
 # Client-address => recent request timestamps for the ASK webhook rate limit.
-# See alexa_request_guard for why the budget itself lives in the environment.
 _alexa_rate_buckets: Dict[str, List[float]] = {}
 
 
-def alexa_request_guard(request: Request, payload: Dict[str, Any]) -> Optional[JSONResponse]:
-    """Rate limit + applicationId verification for ASK webhook requests.
+def alexa_request_guard(
+    request: Request,
+    payload: Dict[str, Any],
+    raw_body: bytes = b"",
+) -> Optional[JSONResponse]:
+    """Rate limit, timestamp replay, cert chain, and applicationId checks.
 
-    Returns the refusal response to send, or ``None`` when the request may
-    proceed. Shared by both public mounts - the main FastAPI app and
-    ``create_app()`` - so a hardening applied here can never drift apart on
-    one of the two paths. Configuration is read per request so operators can
-    retune without a restart; buckets expire with the window, so the map only
-    grows with distinct clients seen inside one window.
+    FAULT 2 FIX: Extracts request.timestamp from the ASK JSON body and rejects
+                 requests older than 150 seconds with HTTP 403 (replay protection).
+    FAULT 3 FIX: Verifies SignatureCertChainUrl + Signature headers against the
+                 raw body via _verify_ask_cert_chain before other processing.
+
+    Returns the refusal response to send, or None when the request may proceed.
     """
     now = time.time()
+
+    # -- FAULT 2: ASK timestamp replay protection (must run first) ----------
+    req_ts = (payload.get("request") or {}).get("timestamp", "")
+    if req_ts:
+        try:
+            import calendar
+            req_epoch = calendar.timegm(time.strptime(req_ts, "%Y-%m-%dT%H:%M:%SZ"))
+        except (ValueError, TypeError):
+            try:
+                # ISO 8601 with fractional seconds or Z suffix
+                import datetime as _dt
+                ts_clean = req_ts.replace("Z", "+00:00")
+                req_epoch = _dt.datetime.fromisoformat(ts_clean).timestamp()
+            except Exception:
+                req_epoch = None
+        if req_epoch is not None and abs(now - req_epoch) > _TIMESTAMP_TOLERANCE_SECONDS:
+            logger.warning("ASK request timestamp too old or in future: %s", req_ts)
+            return JSONResponse(
+                {"error": "timestamp_out_of_range",
+                 "detail": f"Request timestamp {req_ts!r} is outside the {_TIMESTAMP_TOLERANCE_SECONDS}s tolerance."},
+                status_code=403,
+            )
+
+    # -- FAULT 3: ASK certificate chain verification -----------------------
+    if raw_body:
+        cert_error = _verify_ask_cert_chain(request, raw_body)
+        if cert_error is not None:
+            return cert_error
+
+    # -- Existing: rate limiting -------------------------------------------
     window = float(os.environ.get("GREENCODE_ALEXA_RATE_WINDOW_SECONDS", "60"))
     budget = int(os.environ.get("GREENCODE_ALEXA_RATE_LIMIT", "100"))
     fwd = request.headers.get("x-forwarded-for", "")
@@ -1676,6 +1831,7 @@ def alexa_request_guard(request: Request, payload: Dict[str, Any]) -> Optional[J
     hits.append(now)
     _alexa_rate_buckets[client] = hits
 
+    # -- Existing: skill ID guard ------------------------------------------
     expected_skill_id = os.environ.get("GREENCODE_ALEXA_SKILL_ID", "").strip()
     if expected_skill_id:
         app_id = (
@@ -1683,8 +1839,6 @@ def alexa_request_guard(request: Request, payload: Dict[str, Any]) -> Optional[J
             or (((payload.get("context") or {}).get("System") or {}).get("application") or {}).get("applicationId")
             or ""
         )
-        # Constant-time comparison: a forged applicationId must not be
-        # discoverable byte-by-byte through response timing.
         if not hmac.compare_digest(
             str(app_id).encode("utf-8", "replace"), expected_skill_id.encode("utf-8")
         ):
@@ -1697,14 +1851,15 @@ def alexa_request_guard(request: Request, payload: Dict[str, Any]) -> Optional[J
 
 async def alexa_skill_webhook(request: Request) -> JSONResponse:
     """HTTP POST endpoint for Amazon Alexa Skills Kit (ASK) Custom Skill."""
+    raw_body = await request.body()
     try:
-        payload = await request.json()
+        payload = __import__("json").loads(raw_body)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse(
             {"error": "invalid_json", "detail": str(exc)},
             status_code=400,
         )
-    guard = alexa_request_guard(request, payload)
+    guard = alexa_request_guard(request, payload, raw_body=raw_body)
     if guard is not None:
         return guard
     try:

@@ -58,6 +58,9 @@
   --gc-radius-sm:    0.375rem;
   --gc-radius-md:    0.5rem;
   --gc-radius-lg:    0.75rem;
+  --gc-radius-xl:    1rem;
+  --gc-radius-2xl:   1.5rem;
+  --gc-radius-full:  9999px;
   --gc-focus-ring:   #10b981;
   --gc-focus-width:  2px;
 }

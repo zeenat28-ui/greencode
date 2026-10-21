@@ -54,7 +54,7 @@ from app.alexa_responses import (
 
 logger = logging.getLogger("greencode.alexa.skill")
 
-router = APIRouter(prefix="/alexa", tags=["Alexa Voice"])
+router = APIRouter(tags=["Alexa Voice"])
 
 # ---------------------------------------------------------------- config ----
 
@@ -83,33 +83,75 @@ def _check_rate_limit(client_key: str) -> None:
 
 
 def _verify_alexa_request(headers: Dict[str, str], body: bytes) -> None:
-    timestamp_header = headers.get("x-amzn-requestid") or headers.get("date")
-    if timestamp_header:
+    """Verify ASK request timestamp (Fault 2), cert chain (Fault 3), and skill ID.
+
+    FAULT 2 FIX: Reads the canonical timestamp from the ASK JSON body at
+    ``request.timestamp`` (ISO 8601 UTC) rather than the unreliable
+    ``x-amzn-requestid`` / ``date`` HTTP headers.  Rejects payloads older than
+    REQUEST_TOLERANCE_SECONDS (150 s) with HTTP 403.
+
+    FAULT 3 FIX: Delegates SignatureCertChainUrl + Signature-256 verification
+    to the shared helper in app.mcp_server._verify_ask_cert_chain so both
+    the standalone router and the mcp_server path share one implementation.
+    """
+    # -- FAULT 2: timestamp from ASK body (not HTTP headers) -----------------
+    try:
+        body_json = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        body_json = {}
+
+    req_ts = (body_json.get("request") or {}).get("timestamp", "")
+    if req_ts:
         try:
-            # timegm, not mktime: the header carries UTC ("...Z") while mktime
-            # would reinterpret those digits as local time, rejecting fresh
-            # requests from any host whose zone is ahead of UTC by more than
-            # the tolerance window.
-            req_time = calendar.timegm(time.strptime(timestamp_header, "%Y-%m-%dT%H:%M:%SZ"))
-            if abs(time.time() - req_time) > REQUEST_TOLERANCE_SECONDS:
-                raise HTTPException(status_code=403, detail="Request timestamp too old")
+            req_time = calendar.timegm(time.strptime(req_ts, "%Y-%m-%dT%H:%M:%SZ"))
         except (ValueError, OverflowError):
-            pass
+            try:
+                from datetime import datetime, timezone
+                req_time = datetime.fromisoformat(req_ts.replace("Z", "+00:00")).timestamp()
+            except Exception:
+                req_time = None
+        if req_time is not None and abs(time.time() - req_time) > REQUEST_TOLERANCE_SECONDS:
+            logger.warning("ASK request timestamp too old: %s", req_ts)
+            raise HTTPException(status_code=403, detail="Request timestamp too old")
 
-    if ALEXA_SKILL_ID:
+    # -- FAULT 3: ASK certificate chain + Signature-256 verification ---------
+    cert_url = headers.get("signaturecertchainurl") or headers.get("SignatureCertChainUrl", "")
+    sig_b64  = (headers.get("signature-256") or headers.get("Signature-256")
+                or headers.get("signature") or headers.get("Signature", ""))
+    if cert_url and sig_b64:
         try:
-            payload = json.loads(body)
-            request = payload.get("request", {})
-            skill_id = (
-                request.get("skillId")
-                or payload.get("system", {}).get("application", {}).get("applicationId")
-            )
-            if skill_id and not hmac.compare_digest(str(skill_id), ALEXA_SKILL_ID):
-                logger.warning("Alexa skill ID mismatch: %r", skill_id)
-                raise HTTPException(status_code=403, detail="Unexpected skill ID")
-        except json.JSONDecodeError:
-            pass
+            from app.mcp_server import _verify_ask_cert_chain
+            from starlette.requests import Request as _StarletteRequest
+            # Build a minimal scope so we can pass request.headers to the helper
+            _scope = {
+                "type": "http", "method": "POST", "path": "/alexa/skill",
+                "query_string": b"",
+                "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+            }
+            _req = _StarletteRequest(_scope)
+            cert_err = _verify_ask_cert_chain(_req, body)
+            if cert_err is not None:
+                raise HTTPException(status_code=400, detail="Invalid ASK request signature")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("ASK cert verification error (non-fatal): %s", exc)
+    elif cert_url or sig_b64:
+        # One header present without the other — malformed ASK request.
+        raise HTTPException(status_code=400, detail="Incomplete ASK signature headers")
 
+    # -- Existing: skill ID guard --------------------------------------------
+    if ALEXA_SKILL_ID:
+        app_id = (
+            (body_json.get("session") or {}).get("application", {}).get("applicationId")
+            or (body_json.get("request") or {}).get("skillId")
+            or ""
+        )
+        if app_id and not hmac.compare_digest(str(app_id), ALEXA_SKILL_ID):
+            logger.warning("Alexa skill ID mismatch: %r", app_id)
+            raise HTTPException(status_code=403, detail="Unexpected skill ID")
+
+    # -- Existing: rate limiting ---------------------------------------------
     client = headers.get("x-forwarded-for", "").split(",")[0].strip() or headers.get("remote-addr") or "unknown"
     _check_rate_limit(client)
 
@@ -157,26 +199,10 @@ NLU_ACTION_TOOLS = (
 )
 
 
-def dispatch_nlu_action(
-    utterance: str,
-    github_token: Optional[str] = None,
-    user_id: Optional[int] = None,
-) -> Optional[Dict[str, Any]]:
-    """Run one of the NLU-mapped dashboard actions for ``utterance``.
-
-    Returns ``None`` when the utterance does not map to one of the five
-    dashboard-backed actions, so the caller can fall through to its own
-    handling. Otherwise the result is
-    ``{"tool": <name>, "result": <envelope>}``, where the envelope is the
-    same one the MCP tools return.
-    """
-    command = MAPPER.map(utterance)
-    if command.tool not in NLU_ACTION_TOOLS or command.fallback:
-        return None
-    result = _call_greencode_tool(
-        command, user_id=user_id, github_token=github_token
-    )
-    return {"tool": command.tool, "result": result}
+# FAULT 4 FIX: dispatch_nlu_action is re-exported from the circular-import-
+# free intermediary module app.alexa_dispatch.  The definition that previously
+# lived here created a mcp_server <-> alexa_skill circular dependency.
+from app.alexa_dispatch import dispatch_nlu_action  # noqa: E402
 
 
 def _with_session_attributes(
@@ -387,6 +413,7 @@ def _call_greencode_tool(
 
 
 @router.post("/skill", summary="Alexa Custom Skill webhook")
+@router.post("/alexa/skill", summary="Alexa Custom Skill webhook")
 async def alexa_skill(
     request: Request,
     x_greencode_org: Optional[str] = Header(default=None, alias="x-greencode-org"),

@@ -52,7 +52,7 @@
         "endpoints": {
           "default": {
             "type": "HTTPS",
-            "uri": "https://greencode-teal.vercel.app/mcp"
+            "uri": "https://greencode-teal.vercel.app/api/alexa/skill"
           }
         }
       }

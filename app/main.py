@@ -409,6 +409,11 @@ app.include_router(billing_router)
 app.include_router(support_router)
 app.include_router(amazon_router)
 
+# FAULT 1 FIX: Mount the alexa_skill SSML router so POST /alexa/skill
+# is reachable via the full SSML pipeline in app/alexa_skill.py.
+from app import alexa_skill as _alexa_skill_module
+app.include_router(_alexa_skill_module.router)
+
 # A published literal is worse than no check at all: it invites operators to
 # believe the deployment is protected while every access token in the fleet is
 # signed with a key that is in the repository's history.
@@ -3123,7 +3128,7 @@ async def api_sync_aws_marketplace_usage(payload: Dict[str, Any]):
 
 @app.post("/alexa/skill", tags=["Alexa Voice & MCP"])
 @app.post("/api/alexa/skill", tags=["Alexa Voice & MCP"])
-async def api_alexa_custom_skill_webhook(request: Request, payload: Dict[str, Any]):
+async def api_alexa_custom_skill_webhook(request: Request):
     """Amazon Alexa Skills Kit (ASK) v1.0 Custom Skill HTTPS Webhook endpoint.
 
     Alexa aborts the turn on ANY non-ASK body, so this endpoint must always
@@ -3138,7 +3143,15 @@ async def api_alexa_custom_skill_webhook(request: Request, payload: Dict[str, An
         handle_alexa_skill_request,
     )
 
-    guard = alexa_request_guard(request, payload)
+    raw_body = await request.body()
+    import json as _json
+    try:
+        payload = _json.loads(raw_body)
+    except Exception as _exc:  # noqa: BLE001
+        from fastapi.responses import JSONResponse as _JR
+        return _JR({"error": "invalid_json", "detail": str(_exc)}, status_code=400)
+
+    guard = alexa_request_guard(request, payload, raw_body=raw_body)
     if guard is not None:
         return guard
     try:

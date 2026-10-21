@@ -9,17 +9,15 @@ import sys
 import traceback
 from pathlib import Path
 
-# Add the project root to Python path so 'app' module can be imported
+# Add project root to sys.path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Set Vercel-specific environment markers before importing app
+# Set Vercel-specific environment markers
 os.environ.setdefault("VERCEL", "1")
 os.environ.setdefault("ENV", "production")
 
-# B5 FIX: On Vercel only /tmp is writable. Point SQLite to /tmp so init_db()
-# does not crash trying to create greencode.db in the read-only project root.
-# When DATABASE_URL is set (Postgres on Vercel) this env var is ignored.
+# Point SQLite to writable /tmp directory on Vercel serverless
 if not os.environ.get("DATABASE_URL"):
     _tmp_db = "sqlite+aiosqlite:////tmp/greencode.db"
     os.environ.setdefault("DATABASE_URL", _tmp_db)
@@ -28,8 +26,7 @@ if not os.environ.get("DATABASE_URL"):
 
 try:
     from app.main import app
-
-except BaseException as _startup_exc:
+except Exception as _startup_exc:
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
 
@@ -39,7 +36,7 @@ except BaseException as _startup_exc:
     _err_type = type(_startup_exc).__name__
 
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"])
-    async def diag_fallback_handler(path: str):
+    async def diag_handler(path: str):
         return JSONResponse(
             status_code=500,
             content={

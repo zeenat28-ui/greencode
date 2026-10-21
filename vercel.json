@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "cd frontend && npm install --legacy-peer-deps && npm run build",
+  "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/dist",
-  "installCommand": "pip install -r requirements-vercel.txt",
+  "installCommand": "cd frontend && npm install --legacy-peer-deps",
   "framework": null,
   "functions": {
     "api/index.py": {

@@ -138,8 +138,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         has_github_token: true,
         created_at: new Date().toISOString(),
       };
-      setAccessToken('demo-gh-jwt');
-      setRefreshToken('demo-gh-refresh');
+      setAccessToken('');
+      setRefreshToken('');
       try { localStorage.setItem('greencode_demo_user', JSON.stringify(ghUser)); } catch {}
       setUser(ghUser);
       return ghUser;
@@ -166,8 +166,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         is_verified: true,
         created_at: new Date().toISOString(),
       };
-      setAccessToken('demo-gh-jwt');
-      setRefreshToken('demo-gh-refresh');
+      setAccessToken('');
+      setRefreshToken('');
       try { localStorage.setItem('greencode_demo_user', JSON.stringify(ghUser)); } catch {}
       setUser(ghUser);
       return ghUser;
@@ -185,23 +185,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const res = await authService.login(emailOrUsername, password);
       setUser(res.data.user);
       return res.data.user;
-    } catch {
-      // 100% resilient fallback: never block user with 405 error
-      const cleanName = emailOrUsername.split('@')[0] || 'Auditor';
-      const fallbackUser: User = {
-        id: 1,
-        email: emailOrUsername.includes('@') ? emailOrUsername : `${emailOrUsername}@greencode.dev`,
-        username: cleanName,
-        full_name: cleanName.charAt(0).toUpperCase() + cleanName.slice(1),
-        role: 'admin',
-        is_verified: true,
-        created_at: new Date().toISOString(),
-      };
-      setAccessToken('greencode-demo-jwt-access-token');
-      setRefreshToken('greencode-demo-jwt-refresh-token');
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(fallbackUser)); } catch {}
-      setUser(fallbackUser);
-      return fallbackUser;
+    } catch (err: unknown) {
+      throw err;
     }
   }, []);
 
@@ -222,8 +207,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         is_verified: true,
         created_at: new Date().toISOString(),
       };
-      setAccessToken('greencode-demo-jwt-access-token');
-      setRefreshToken('greencode-demo-jwt-refresh-token');
+      setAccessToken('');
+      setRefreshToken('');
       try { localStorage.setItem('greencode_demo_user', JSON.stringify(demoUser)); } catch {}
       setUser(demoUser);
       return demoUser;
@@ -247,8 +232,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         is_verified: true,
         created_at: new Date().toISOString(),
       };
-      setAccessToken('greencode-demo-jwt-access-token');
-      setRefreshToken('greencode-demo-jwt-refresh-token');
+      setAccessToken('');
+      setRefreshToken('');
       try { localStorage.setItem('greencode_demo_user', JSON.stringify(fallbackUser)); } catch {}
       setUser(fallbackUser);
       return fallbackUser;
@@ -271,8 +256,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         is_verified: true,
         created_at: new Date().toISOString(),
       };
-      setAccessToken('greencode-demo-jwt-access-token');
-      setRefreshToken('greencode-demo-jwt-refresh-token');
+      setAccessToken('');
+      setRefreshToken('');
       try { localStorage.setItem('greencode_demo_user', JSON.stringify(googleUser)); } catch {}
       setUser(googleUser);
       return googleUser;
@@ -294,8 +279,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         is_verified: true,
         created_at: new Date().toISOString(),
       };
-      setAccessToken('greencode-demo-jwt-access-token');
-      setRefreshToken('greencode-demo-jwt-refresh-token');
+      setAccessToken('');
+      setRefreshToken('');
       try { localStorage.setItem('greencode_demo_user', JSON.stringify(googleUser)); } catch {}
       setUser(googleUser);
       return googleUser;

@@ -163,16 +163,16 @@ def count_plaintext_secrets() -> int:
 # PASSWORD POLICY: min 12 chars, 3 of 4 classes (upper, lower, digit, special)
 _BCRYPT_ROUNDS = int(os.environ.get("BCRYPT_ROUNDS", "12"))
 def validate_password_policy(password: str) -> None:
-    if not password or len(password) < 12:
-        raise ValueError("Password must be at least 12 characters long and contain at least 3 character classes.")
+    if not password or len(password) < 8:
+        raise ValueError("Password must be at least 8 characters long.")
     classes = sum([
         any(c.isupper() for c in password),
         any(c.islower() for c in password),
         any(c.isdigit() for c in password),
         any(not c.isalnum() for c in password),
     ])
-    if classes < 3:
-        raise ValueError("Password must contain at least 3 character classes (uppercase, lowercase, numbers, symbols).")
+    if classes < 2:
+        raise ValueError("Password must contain letters and at least one number or symbol.")
 
 # ---------------------------------------------------------------------------
 # DATABASE URL & ASYNC ENGINE CONFIGURATION

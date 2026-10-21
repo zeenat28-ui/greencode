@@ -33,6 +33,11 @@ logger = logging.getLogger("greencode.auth.routers")
 
 router = APIRouter(prefix="/api/auth", tags=["Enterprise Authentication & SSO"])
 
+def _get_app_url() -> str:
+    """Resolve frontend app URL for OAuth redirects and emails."""
+    return os.environ.get("APP_URL", "https://greencode-teal.vercel.app").rstrip("/")
+
+
 
 def _generate_access_token(user_id: int, org_id: Optional[int], role: str) -> str:
     """Generate signed JWT access token matching app/main.py JWT verification."""
@@ -366,7 +371,7 @@ async def github_authorize(redirect_uri: Optional[str] = None):
     client_id = os.environ.get("GITHUB_CLIENT_ID", "").strip()
     configured = bool(client_id and os.environ.get("GITHUB_CLIENT_SECRET", "").strip())
     
-    target_redirect = redirect_uri or "http://localhost:5173/login?provider=github"
+    target_redirect = redirect_uri or f"{_get_app_url()}/login?provider=github"
     auth_url = (
         f"https://github.com/login/oauth/authorize?client_id={client_id}"
         f"&redirect_uri={target_redirect}&scope=read:user,user:email,repo"
@@ -460,7 +465,7 @@ async def google_authorize(redirect_uri: Optional[str] = None):
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
     configured = bool(client_id and os.environ.get("GOOGLE_CLIENT_SECRET", "").strip())
 
-    target_redirect = redirect_uri or "http://localhost:5173/login?provider=google"
+    target_redirect = redirect_uri or f"{_get_app_url()}/login?provider=google"
     auth_url = (
         f"https://accounts.google.com/o/oauth2/v2/auth?client_id={client_id}"
         f"&redirect_uri={target_redirect}&response_type=code&scope=openid%20email%20profile"
@@ -490,7 +495,7 @@ async def google_oauth_exchange(payload: GoogleOAuthPayload):
     try:
         if payload.code:
             profile = await OAuthManager.exchange_google_code(
-                payload.code, payload.redirect_uri or "http://localhost:5173/login?provider=google"
+                payload.code, payload.redirect_uri or f"{_get_app_url()}/login?provider=google"
             )
         else:
             profile = await OAuthManager.verify_google_id_token(payload.id_token)
@@ -571,7 +576,7 @@ async def forgot_password(payload: ForgotPasswordPayload):
 
     # Attempt sending real email if SMTP is configured
     reset_token = token_info["token"]
-    reset_url = f"http://localhost:5173/login?reset_token={reset_token}&email={clean_email}"
+    reset_url = f"{_get_app_url()}/login?reset_token={reset_token}&email={clean_email}"
     
     email_sent = _dispatch_smtp_email(
         to_email=clean_email,

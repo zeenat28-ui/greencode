@@ -1,0 +1,36 @@
+﻿version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - JWT_SECRET=demo-jwt-secret-min-32-characters-long
+      - SECRETS_ENCRYPTION_KEY=demo-fernet-key-gAAAAABexample123456789=
+      - DATABASE_URL=sqlite:///app/greencode.db
+      - VITE_API_URL=http://localhost:8000
+      # Optional: Add your real AWS keys for Bedrock
+      # - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      # - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      # - GREENCODE_LLM_PROVIDER=bedrock
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend/src:/app/src
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  postgres_data:

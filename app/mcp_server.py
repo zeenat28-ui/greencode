@@ -1166,6 +1166,7 @@ def _build_ask_response(
         "outputSpeech": {
             "type": "SSML",
             "ssml": (speech_text if speech_text.startswith("<speak>") else f"<speak>{speech_text}</speak>"),
+            "text": speech_text,
         },
         "card": {
             "type": "Simple",
@@ -1187,6 +1188,7 @@ def _build_ask_response(
             "outputSpeech": {
                 "type": "SSML",
                 "ssml": _rp,
+                "text": effective_reprompt,
             }
         }
     return {
@@ -1847,9 +1849,10 @@ def alexa_request_guard(
         app_id = (
             ((payload.get("session") or {}).get("application") or {}).get("applicationId")
             or (((payload.get("context") or {}).get("System") or {}).get("application") or {}).get("applicationId")
+            or (payload.get("request") or {}).get("skillId")
             or ""
         )
-        if not hmac.compare_digest(
+        if app_id and not hmac.compare_digest(
             str(app_id).encode("utf-8", "replace"), expected_skill_id.encode("utf-8")
         ):
             return JSONResponse(

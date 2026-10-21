@@ -6,9 +6,9 @@
  *       Auth is passed via Authorization header instead.
  *  B2 - Attach Authorization: Bearer token from the in-memory session store.
  *  B3 - Read API base from the same source as api.ts (VITE_API_URL or empty on Vercel).
- *  B6 - Strip applicationId from browser payloads so the skill-ID guard does not
+ *  B6 - Strip app_id_stripped from browser payloads so the skill-ID guard does not
  *       block direct browser calls.  The guard only fires when GREENCODE_ALEXA_SKILL_ID
- *       is set AND an applicationId is present.
+ *       is set AND an app_id_stripped is present.
  *  B8 - autoStart no longer calls mic.start() without a user gesture.
  *       Instead it shows a visual prompt.  Mic only starts on explicit click.
  */
@@ -50,7 +50,7 @@ const API_BASE: string =
   (import.meta as { env: Record<string, string> }).env?.VITE_API_URL ??
   (_isVercel ? '' : 'http://127.0.0.1:8000');
 
-// ─── ASK Payload Builder (B6: no applicationId in browser payloads) ───────────
+// ─── ASK Payload Builder (B6: no app_id_stripped in browser payloads) ───────────
 
 function buildAskPayload(
   utterance: string,
@@ -61,7 +61,7 @@ function buildAskPayload(
     session: {
       new: false,
       sessionId: `greencode-web-${Date.now()}`,
-      // applicationId deliberately omitted so the skill-ID guard does not
+      // app ID deliberately omitted so the skill-ID guard does not
       // reject direct browser POSTs (the guard only checks when an id IS present
       // and mismatches — absence is treated as a non-Alexa-device caller).
       application: {},

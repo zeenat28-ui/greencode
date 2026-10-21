@@ -558,6 +558,7 @@ export default function GreenCodeAuditorApp() {
   } = useAlexaVoice(true);
   // voiceLogs are now provided by useAlexaVoice hook
   const voiceLogs = alexaVoiceLogs;
+  const [voiceTextInput, setVoiceTextInput] = useState('');
 
   const recognitionRef = useRef(null);
 
@@ -1425,6 +1426,27 @@ export default function GreenCodeAuditorApp() {
               )}
             </div>
           </button>
+
+          {/* Text input fallback */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (voiceTextInput.trim()) {
+                alexaSendText(voiceTextInput.trim());
+                setVoiceTextInput('');
+              }
+            }}
+            className="w-80 flex items-center gap-2 bg-slate-950/95 backdrop-blur-md rounded-xl border border-cyan-400/40 p-2 shadow-lg"
+          >
+            <input
+              type="text"
+              value={voiceTextInput}
+              onChange={(e) => setVoiceTextInput(e.target.value)}
+              placeholder="Type: compare Ireland and Virginia"
+              className="flex-1 bg-transparent text-white text-xs font-mono focus:outline-none placeholder:text-slate-500"
+            />
+            <button type="submit" className="px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold rounded-lg border border-cyan-400/30 cursor-pointer">Send</button>
+          </form>
         </div>
       </main>
 

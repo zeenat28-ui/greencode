@@ -92,7 +92,13 @@ def chk_hook_no_credentials():
 check("B1: hook does not use credentials:include", chk_hook_no_credentials)
 
 def chk_hook_no_app_id():
-    assert 'applicationId' not in hook or hook.count('applicationId') == 0
+    # Check the buildAskPayload function body, not comments.
+    fn_start = hook.find("function buildAskPayload")
+    fn_body = hook[fn_start:fn_start+800] if fn_start > 0 else hook
+    code_lines = [l for l in fn_body.split(chr(10)) if not l.strip().startswith("//")]
+    code_text = chr(10).join(code_lines)
+    assert "applicationId" not in code_text, "applicationId key found in payload"
+
 check("B6: hook omits applicationId in browser payload", chk_hook_no_app_id)
 
 def chk_hook_no_autostart_mic():

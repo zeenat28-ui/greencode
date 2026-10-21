@@ -27,7 +27,8 @@ export interface VoiceLogEntry {
 
 export interface UseAlexaVoiceReturn {
   isListening: boolean;
-  isReady: boolean;          // true once user has clicked mic at least once (B8)
+  isReady: boolean;
+  speechSupported: boolean;  // false when browser lacks SpeechRecognition
   lastUtterance: string;
   lastReply: string;
   logs: VoiceLogEntry[];
@@ -120,8 +121,11 @@ function extractSpeech(body: Record<string, unknown>): string {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
-  // B8: autoStart is accepted but ignored — mic requires explicit user gesture.
-  // We track isReady so the UI can show a "click mic to activate" hint.
+  // Detect SpeechRecognition support once at module init (not per-render)
+  const _speechSupported =
+    typeof window !== 'undefined' &&
+    !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+
   const [isListening, setIsListening] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [lastUtterance, setLastUtterance] = useState('');
@@ -228,7 +232,9 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
     const SpeechRec = win.SpeechRecognition || win.webkitSpeechRecognition;
 
     if (!SpeechRec) {
-      // Browser lacks speech recognition — sendText() still works.
+      // Browser lacks speech recognition — set a visible error via lastReply.
+      console.warn('[useAlexaVoice] SpeechRecognition not available in this browser');
+      setLastReply('Voice recognition is not available in this browser. Use the text input to type your command.');
       return;
     }
 
@@ -320,6 +326,7 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
   return {
     isListening,
     isReady,
+    speechSupported: _speechSupported,
     lastUtterance,
     lastReply,
     logs,

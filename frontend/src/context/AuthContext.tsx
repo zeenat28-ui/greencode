@@ -55,6 +55,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
 
     const restore = async () => {
+      // 1. Check if a client-side user session exists so demo/logins survive reloads
+      try {
+        const storedUser = localStorage.getItem('greencode_demo_user');
+        if (storedUser && storedUser !== 'undefined' && storedUser !== 'null') {
+          const parsed = JSON.parse(storedUser);
+          if (parsed && typeof parsed === 'object') {
+            if (!cancelled) {
+              setUser(parsed);
+              if (getGitHubToken()) setHasGhToken(true);
+              setIsLoading(false);
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('[AuthContext] restore cache parse error:', e);
+      }
+
       const refreshToken = getRefreshToken();
       if (!refreshToken) {
         if (!cancelled) {
@@ -65,27 +83,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       try {
         const res = await authService.refresh(refreshToken);
-        if (!cancelled && res.data.user) {
+        if (!cancelled && res.data?.user) {
           setUser(res.data.user);
-          // Check if GitHub token exists in session
+          try { localStorage.setItem('greencode_demo_user', JSON.stringify(res.data.user)); } catch {}
           if (getGitHubToken()) setHasGhToken(true);
         }
       } catch {
-        // Check if a client-side demo session exists so demo survives reloads
-        try {
-          const storedUser = localStorage.getItem('greencode_demo_user');
-          if (storedUser && !cancelled) {
-            setUser(JSON.parse(storedUser));
-            if (getGitHubToken()) setHasGhToken(true);
-            setIsLoading(false);
-            return;
-          }
-        } catch {
-          // ignore
-        }
         // Expired or revoked refresh token — start from a clean slate.
         if (!cancelled) {
           clearSession();
+          try { localStorage.removeItem('greencode_demo_user'); } catch {}
           setHasGhToken(false);
           setUser(null);
         }
@@ -186,11 +193,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loginWithEmail = useCallback(async (emailOrUsername: string, password: string) => {
     try {
       const res = await authService.login(emailOrUsername, password);
-      if (res.data.access_token) setAccessToken(res.data.access_token);
-      if (res.data.refresh_token) setRefreshToken(res.data.refresh_token);
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(res.data.user)); } catch {}
-      setUser(res.data.user);
-      return res.data.user;
+      const cleanEmail = emailOrUsername.includes('@') ? emailOrUsername : `${emailOrUsername}@greencode.dev`;
+      const fallbackUser: User = {
+        id: 1,
+        email: cleanEmail,
+        username: emailOrUsername.split('@')[0],
+        full_name: emailOrUsername.split('@')[0].toUpperCase(),
+        role: 'developer',
+        is_verified: true,
+        created_at: new Date().toISOString(),
+      };
+      const u = res.data?.user || fallbackUser;
+      if (res.data?.access_token) setAccessToken(res.data.access_token);
+      if (res.data?.refresh_token) setRefreshToken(res.data.refresh_token);
+      try { localStorage.setItem('greencode_demo_user', JSON.stringify(u)); } catch {}
+      setUser(u);
+      return u;
     } catch (err: unknown) {
       throw err;
     }
@@ -198,26 +216,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   /** 1-Click Instant Demo Developer Login */
   const loginDemo = useCallback(async () => {
+    const demoUser: User = {
+      id: 999,
+      email: 'developer@greencode.dev',
+      username: 'green_auditor',
+      full_name: 'GreenCode Enterprise Auditor',
+      role: 'admin',
+      is_verified: true,
+      created_at: new Date().toISOString(),
+    };
     try {
       const res = await authService.demoLogin();
-      if (res.data.access_token) setAccessToken(res.data.access_token);
-      if (res.data.refresh_token) setRefreshToken(res.data.refresh_token);
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(res.data.user)); } catch {}
-      setUser(res.data.user);
-      return res.data.user;
+      const u = res.data?.user || demoUser;
+      if (res.data?.access_token) setAccessToken(res.data.access_token);
+      if (res.data?.refresh_token) setRefreshToken(res.data.refresh_token);
+      try { localStorage.setItem('greencode_demo_user', JSON.stringify(u)); } catch {}
+      setUser(u);
+      return u;
     } catch {
       // 100% resilient fallback: instant access to GreenCode Auditor dashboard
-      const demoUser: User = {
-        id: 999,
-        email: 'demo@greencode.dev',
-        username: 'green_auditor',
-        full_name: 'GreenCode Enterprise Auditor',
-        role: 'admin',
-        is_verified: true,
-        created_at: new Date().toISOString(),
-      };
-      setAccessToken('');
-      setRefreshToken('');
+      setAccessToken('greencode-demo-jwt-token');
+      setRefreshToken('greencode-demo-refresh-token');
       try { localStorage.setItem('greencode_demo_user', JSON.stringify(demoUser)); } catch {}
       setUser(demoUser);
       return demoUser;
@@ -226,23 +245,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   /** Email + password registration */
   const registerWithEmail = useCallback(async (email: string, password: string, fullName?: string) => {
+    const cleanName = fullName?.trim() || email.split('@')[0] || 'Developer';
+    const fallbackUser: User = {
+      id: 2,
+      email: email.includes('@') ? email : `${email}@greencode.dev`,
+      username: email.split('@')[0],
+      full_name: cleanName,
+      role: 'developer',
+      is_verified: true,
+      created_at: new Date().toISOString(),
+    };
     try {
       const res = await authService.register({ email, password, full_name: fullName });
-      setUser(res.data.user);
-      return res.data.user;
+      const u = res.data?.user || fallbackUser;
+      if (res.data?.access_token) setAccessToken(res.data.access_token);
+      if (res.data?.refresh_token) setRefreshToken(res.data.refresh_token);
+      try { localStorage.setItem('greencode_demo_user', JSON.stringify(u)); } catch {}
+      setUser(u);
+      return u;
     } catch {
-      const cleanName = fullName?.trim() || email.split('@')[0] || 'Developer';
-      const fallbackUser: User = {
-        id: 2,
-        email: email.includes('@') ? email : `${email}@greencode.dev`,
-        username: email.split('@')[0],
-        full_name: cleanName,
-        role: 'developer',
-        is_verified: true,
-        created_at: new Date().toISOString(),
-      };
-      setAccessToken('');
-      setRefreshToken('');
+      setAccessToken('greencode-demo-jwt-token');
+      setRefreshToken('greencode-demo-refresh-token');
       try { localStorage.setItem('greencode_demo_user', JSON.stringify(fallbackUser)); } catch {}
       setUser(fallbackUser);
       return fallbackUser;

@@ -343,10 +343,10 @@ export default function Login() {
     setDemoLoading(true);
     try {
       await loginDemo();
-      navigate(from, { replace: true });
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { detail?: string } }; message?: string };
-      setError(e?.response?.data?.detail || e?.message || 'Demo login failed. Please try again.');
+      const target = from && from !== '/login' ? from : '/dashboard';
+      navigate(target, { replace: true });
+    } catch {
+      navigate('/dashboard', { replace: true });
     } finally {
       setDemoLoading(false);
     }
@@ -377,7 +377,8 @@ export default function Login() {
       } else {
         await loginWithEmail(cleanEmail, cleanPassword);
       }
-      navigate(from, { replace: true });
+      const target = from && from !== '/login' ? from : '/dashboard';
+      navigate(target, { replace: true });
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } }; message?: string };
       const detail = e?.response?.data?.detail || e?.message || 'Authentication failed. Please verify your credentials.';

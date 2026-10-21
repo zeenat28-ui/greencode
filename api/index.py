@@ -1,4 +1,4 @@
-﻿"""Vercel Serverless Function Entry Point for GreenCode Auditor.
+"""Vercel Serverless Function Entry Point for GreenCode Auditor.
 
 Uses Python's standard BaseHTTPRequestHandler interface which is natively
 and reliably supported on Vercel without ASGI bridge cold-start failures.

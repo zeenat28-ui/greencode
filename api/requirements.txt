@@ -1,6 +1,4 @@
-﻿# Minimal dependencies for Vercel serverless deployment
-# Excludes: docker, celery, redis, streamlit, boto3, mcp, tree-sitter (heavy/native)
-
+# Minimal dependencies for Vercel serverless deployment
 fastapi==0.141.1
 uvicorn==0.54.0
 sqlalchemy==2.0.54

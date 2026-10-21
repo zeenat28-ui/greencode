@@ -3,7 +3,7 @@
   "buildCommand": "cd frontend && npm install --legacy-peer-deps && npm run build",
   "outputDirectory": "frontend/dist",
   "installCommand": "pip install -r requirements-vercel.txt",
-  "framework": "vite",
+  "framework": null,
   "functions": {
     "api/index.py": {
       "runtime": "python3.11",

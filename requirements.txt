@@ -1,48 +1,20 @@
-# GreenCode Auditor - fully pinned runtime dependencies.
-#
-# Versions are pinned to the exact set the 201-test suite passes against. `pip
-# install -r requirements.txt` therefore reproduces a known-good environment
-# instead of silently picking up a breaking minor release on deploy day.
-#
-# Regenerate after an intentional upgrade:  pip list --format=freeze
-fastapi==0.141.1
-uvicorn==0.54.0
-streamlit==1.65.0
-streamlit-code-diff==0.1.2
-pandas==3.0.6
-plotly==7.1.0
-sqlalchemy==2.0.54
-alembic==1.20.0
-docker==7.2.0
-requests==2.34.2
-psutil==7.2.2
-pydantic==2.13.4
-python-dotenv==1.2.3
-huggingface-hub>=0.20.0
-tree-sitter==0.26.0
-tree-sitter-languages==1.10.2
-asyncpg==0.32.0
-aiosqlite==0.22.1
-celery==5.6.3
-redis==8.1.0
-bcrypt==5.0.0
-python-multipart==0.0.32
-pyjwt==2.15.0
-cryptography==50.0.2
-psycopg2-binary==2.9.9
-cachetools==7.2.0
-httpx==0.28.1
-# Rate limiting. Previously an optional import that silently disabled itself when
-# absent (app/main.py), which meant the deployed service had no request
-# throttling at all. It is a hard dependency now.
-slowapi==0.1.9
-
-# --- Amazon Alexa+ & MCP Server (app/mcp_server.py) ----------------------------
-# Speaks Model Context Protocol over Streamable HTTP (RFC 9728 / RFC 8414).
-mcp>=2.3.0
-
-# --- Amazon Web Services (AWS) SDK & Amazon Bedrock Integration ---------------
-# app/bedrock_client.py uses boto3's bedrock-runtime Converse API. Imported
-# lazily inside the client so the rest of the app still runs on a host with no
-# AWS account and no boto3 installed.
+# GreenCode Auditor - Serverless & Production Runtime Dependencies
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pydantic>=2.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+aiosqlite>=0.20.0
+asyncpg>=0.29.0
+cryptography>=42.0.0
+pyjwt>=2.8.0
+bcrypt>=4.0.0
+slowapi>=0.1.9
+httpx>=0.27.0
+python-multipart>=0.0.9
+cachetools>=5.3.0
+mcp>=1.0.0
 boto3>=1.34.0
+psutil>=5.9.0

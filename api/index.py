@@ -1,7 +1,7 @@
 """Vercel Serverless Function Entry Point for GreenCode Auditor.
 
 This module adapts the FastAPI application for Vercel's Python serverless runtime.
-It imports the main FastAPI app and makes it available as a handler.
+It imports the main FastAPI app and exposes it as `app`.
 """
 
 import os
@@ -28,7 +28,7 @@ if not os.environ.get("DATABASE_URL"):
 
 
 def _make_error_asgi_app(err_type: str, err_msg: str, err_tb: str):
-    """Pure Python ASGI fallback that never crashes even if external dependencies are missing."""
+    """Pure Python ASGI fallback that returns JSON error diagnostics without crashing."""
     import json
 
     async def asgi_app(scope, receive, send):
@@ -77,6 +77,3 @@ except BaseException as _startup_exc:
     _err_tb = traceback.format_exc()
     _err_type = type(_startup_exc).__name__
     app = _make_error_asgi_app(_err_type, _err_msg, _err_tb)
-
-# Export for Vercel
-handler = app

@@ -31,6 +31,10 @@
       "destination": "/api/index.py"
     },
     {
+      "source": "/_vercel/health",
+      "destination": "/api/index.py"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

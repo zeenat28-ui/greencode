@@ -1,0 +1,526 @@
+﻿[
+  {
+    "path": "/",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/alexa/skill",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/alexa/skill",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/audit-diff",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/audit/context",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/auth/github",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/logout",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/me",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/auth/refresh",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/user/{user_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/auth/user/{user_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/badge/repo/{repo_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/badge/score/{score}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/billing/aws-marketplace-sync",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/compliance/export-s3-worm",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/dynamic/analyze",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/dynamic/status",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/enterprise/audit-logs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/enterprise/aws/bedrock-telemetry",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/enterprise/aws/cloudwatch-energy",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/enterprise/aws/graviton-migration",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/enterprise/calibrated-model",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/enterprise/compliance/esg-disclosure",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/enterprise/organizations",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/enterprise/organizations",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/enterprise/organizations/me",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/enterprise/sso/callback",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/enterprise/sso/configure",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/enterprise/sso/enforce-check",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/enterprise/sso/initiate",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/enterprise/sso/verify-saml",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/grid/zone/{zone_code}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/grid/zones",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/health",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/history",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/k8s/kepler-parse",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/ml/audit",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/ml/tokens",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/pipeline/claim",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/pipeline/claim/{claim_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/pipeline/claims",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/pipeline/evidence",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/pipeline/ledger",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/pipeline/ledger/verify",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/pipeline/n8n-workflow",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/pipeline/status",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/pricing/tiers",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/profile",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/profile/benchmarks",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/refactor",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/reports/esg-evidence-bundle",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/repositories",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/repository/{repo_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/repository/{repo_id}/sarif",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/scan/github",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/scan/github/async",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/scan/local-workspace",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/scim/v2/Users",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/scope/inventory",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/sla/evaluate",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/task/{task_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/tenants/switch",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/voice/ask",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/voice/audit-log",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/voice/audit-log",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/voice/recording/{record_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/{full_path:path}",
+    "methods": [
+      "DELETE",
+      "POST",
+      "GET",
+      "PUT",
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/budgets",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/dashboard",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/deployments",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/docs",
+    "methods": [
+      "GET",
+      "HEAD"
+    ]
+  },
+  {
+    "path": "/docs/oauth2-redirect",
+    "methods": [
+      "GET",
+      "HEAD"
+    ]
+  },
+  {
+    "path": "/github/pull-request",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/github/repos",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/github/repos/{owner}/{name}/branches",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/github/repos/{owner}/{name}/inspect",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/github/user",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/metrics",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/openapi.json",
+    "methods": [
+      "GET",
+      "HEAD"
+    ]
+  },
+  {
+    "path": "/policies",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/projects",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/redoc",
+    "methods": [
+      "GET",
+      "HEAD"
+    ]
+  },
+  {
+    "path": "/reports",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/settings/org",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/settings/security",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/{full_path:path}",
+    "methods": [
+      "GET"
+    ]
+  }
+]

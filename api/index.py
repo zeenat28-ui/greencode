@@ -128,6 +128,57 @@ class handler(BaseHTTPRequestHandler):
                 "message": "Google OAuth ready" if configured else "Google Client ID not configured"
             })
             return
+        # GitHub user profile
+        if parsed_path in ("/github/user", "/api/github/user"):
+            github_token = self.headers.get("X-GitHub-Token") or self.headers.get("Authorization", "").replace("Bearer ", "").replace("token ", "")
+            if not github_token:
+                self._send_json({"authenticated": False, "error": "No GitHub token provided"}, 401)
+                return
+            try:
+                import urllib.request as _ur
+                req = _ur.Request("https://api.github.com/user",
+                    headers={"Authorization": "token " + github_token, "Accept": "application/vnd.github.v3+json", "User-Agent": "GreenCode-Auditor"})
+                user_data = json.loads(_ur.urlopen(req, timeout=10).read())
+                self._send_json({"authenticated": True, "user": user_data})
+            except Exception as e:
+                self._send_json({"authenticated": False, "error": str(e)}, 401)
+            return
+
+        # GitHub list repositories
+        if parsed_path in ("/github/repos", "/api/github/repos"):
+            github_token = self.headers.get("X-GitHub-Token") or self.headers.get("Authorization", "").replace("Bearer ", "").replace("token ", "")
+            limit = int(query_params.get("limit", ["50"])[0])
+            if not github_token:
+                self._send_json({"count": 0, "repositories": [], "message": "No GitHub token provided"}, 200)
+                return
+            try:
+                import urllib.request as _ur
+                req = _ur.Request(f"https://api.github.com/user/repos?per_page={limit}&sort=updated&direction=desc",
+                    headers={"Authorization": "token " + github_token, "Accept": "application/vnd.github.v3+json", "User-Agent": "GreenCode-Auditor"})
+                repos_data = json.loads(_ur.urlopen(req, timeout=15).read())
+                repositories = []
+                for repo in repos_data:
+                    repositories.append({
+                        "id": repo.get("id"),
+                        "full_name": repo.get("full_name"),
+                        "name": repo.get("name"),
+                        "owner": repo.get("owner", {}).get("login"),
+                        "description": repo.get("description"),
+                        "language": repo.get("language"),
+                        "stars": repo.get("stargazers_count", 0),
+                        "forks": repo.get("forks_count", 0),
+                        "open_issues": repo.get("open_issues_count", 0),
+                        "updated_at": repo.get("updated_at"),
+                        "default_branch": repo.get("default_branch"),
+                        "private": repo.get("private", False),
+                        "html_url": repo.get("html_url")
+                    })
+                self._send_json({"count": len(repositories), "repositories": repositories})
+            except Exception as e:
+                self._send_json({"count": 0, "repositories": [], "error": str(e)}, 500)
+            return
+
+
 
         # Grid zone carbon intensity
         if parsed_path.startswith("/api/grid/zone/"):
@@ -330,5 +381,95 @@ class handler(BaseHTTPRequestHandler):
                     "message": "Authenticated as @" + login})
             except Exception as e:
                 self._send_json({"success": False, "detail": str(e)}, 400)
+            return
+
+
+        # GitHub Pull Request creation
+        if parsed_path in ("/github/pull-request", "/api/github/pull-request"):
+            repo_full_name = body.get("repo_full_name", "")
+            file_path = body.get("file_path", "")
+            refactored_code = body.get("refactored_code", "")
+            violation_title = body.get("violation_title", "Code optimization")
+            energy_reduction_pct = body.get("energy_reduction_pct", 0)
+            
+            github_token = self.headers.get("X-GitHub-Token") or self.headers.get("Authorization", "").replace("Bearer ", "").replace("token ", "")
+            
+            if not github_token:
+                self._send_json({"success": False, "detail": "No GitHub token provided"}, 401)
+                return
+                
+            if not repo_full_name or not file_path or not refactored_code:
+                self._send_json({"success": False, "detail": "Missing required fields: repo_full_name, file_path, refactored_code"}, 400)
+                return
+            
+            try:
+                import urllib.request as _ur, urllib.parse as _up
+                
+                # Get default branch
+                req = _ur.Request(f"https://api.github.com/repos/{repo_full_name}",
+                    headers={"Authorization": "token " + github_token, "Accept": "application/vnd.github.v3+json", "User-Agent": "GreenCode-Auditor"})
+                repo_info = json.loads(_ur.urlopen(req, timeout=10).read())
+                default_branch = repo_info.get("default_branch", "main")
+                
+                # Get latest commit SHA
+                req = _ur.Request(f"https://api.github.com/repos/{repo_full_name}/git/refs/heads/{default_branch}",
+                    headers={"Authorization": "token " + github_token, "Accept": "application/vnd.github.v3+json", "User-Agent": "GreenCode-Auditor"})
+                ref_data = json.loads(_ur.urlopen(req, timeout=10).read())
+                base_sha = ref_data["object"]["sha"]
+                
+                # Create new branch
+                branch_name = f"greencode-fix-{int(time.time())}"
+                branch_data = json.dumps({"ref": f"refs/heads/{branch_name}", "sha": base_sha}).encode()
+                req = _ur.Request(f"https://api.github.com/repos/{repo_full_name}/git/refs",
+                    data=branch_data,
+                    headers={"Authorization": "token " + github_token, "Accept": "application/vnd.github.v3+json", 
+                             "Content-Type": "application/json", "User-Agent": "GreenCode-Auditor"},
+                    method="POST")
+                _ur.urlopen(req, timeout=10)
+                
+                # Update file content
+                import base64 as b64
+                encoded_content = b64.b64encode(refactored_code.encode()).decode()
+                file_data = json.dumps({
+                    "message": f"GreenCode: {violation_title}",
+                    "content": encoded_content,
+                    "branch": branch_name
+                }).encode()
+                req = _ur.Request(f"https://api.github.com/repos/{repo_full_name}/contents/{file_path}",
+                    data=file_data,
+                    headers={"Authorization": "token " + github_token, "Accept": "application/vnd.github.v3+json", 
+                             "Content-Type": "application/json", "User-Agent": "GreenCode-Auditor"},
+                    method="PUT")
+                _ur.urlopen(req, timeout=10)
+                
+                # Create pull request
+                pr_body = f"## GreenCode Energy Optimization
+
+**Energy Reduction:** {energy_reduction_pct}%
+
+**File:** {file_path}
+
+This PR optimizes code to reduce energy consumption and carbon footprint."
+                pr_data = json.dumps({
+                    "title": f"[GreenCode] {violation_title}",
+                    "head": branch_name,
+                    "base": default_branch,
+                    "body": pr_body
+                }).encode()
+                req = _ur.Request(f"https://api.github.com/repos/{repo_full_name}/pulls",
+                    data=pr_data,
+                    headers={"Authorization": "token " + github_token, "Accept": "application/vnd.github.v3+json", 
+                             "Content-Type": "application/json", "User-Agent": "GreenCode-Auditor"},
+                    method="POST")
+                pr_result = json.loads(_ur.urlopen(req, timeout=10).read())
+                
+                self._send_json({
+                    "success": True,
+                    "pr_url": pr_result.get("html_url"),
+                    "pr_number": pr_result.get("number"),
+                    "branch": branch_name
+                })
+            except Exception as e:
+                self._send_json({"success": False, "detail": str(e)}, 500)
             return
 

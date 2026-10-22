@@ -443,13 +443,7 @@ class handler(BaseHTTPRequestHandler):
                 _ur.urlopen(req, timeout=10)
                 
                 # Create pull request
-                pr_body = f"## GreenCode Energy Optimization
-
-**Energy Reduction:** {energy_reduction_pct}%
-
-**File:** {file_path}
-
-This PR optimizes code to reduce energy consumption and carbon footprint."
+                pr_body = f"## GreenCode Energy Optimization\n\n**Energy Reduction:** {energy_reduction_pct}%\n\n**File:** {file_path}\n\nThis PR optimizes code to reduce energy consumption and carbon footprint."
                 pr_data = json.dumps({
                     "title": f"[GreenCode] {violation_title}",
                     "head": branch_name,
@@ -473,3 +467,9 @@ This PR optimizes code to reduce energy consumption and carbon footprint."
                 self._send_json({"success": False, "detail": str(e)}, 500)
             return
 
+
+
+# Vercel entry point - expose handler class as module-level callable
+# This allows Vercel to invoke: from api.index import handler
+# The handler class inherits from BaseHTTPRequestHandler and will be
+# instantiated by Vercel's WSGI bridge automatically.

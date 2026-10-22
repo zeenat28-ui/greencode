@@ -38,6 +38,12 @@ function App() {
       <Route path="/login" element={<PublicAuthRoute><Login /></PublicAuthRoute>} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />
+      
+      {/* Dashboard gets its own light theme without AppLayout wrapper */}
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      
+      {/* Other pages use AppLayout with dark theme */}
       <Route
         element={
           <ProtectedRoute>
@@ -45,8 +51,6 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/scan" element={<ScanRepository />} />
         <Route path="/issues" element={<Issues />} />
         <Route path="/profiler" element={<Profiler />} />
@@ -66,10 +70,10 @@ function App() {
 
 function FullScreenLoader() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#090b0a]">
+    <div className="min-h-screen flex items-center justify-center bg-[#f5f7f6]">
       <div className="flex flex-col items-center gap-3">
         <div className="w-10 h-10 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-        <span className="text-xs font-mono text-emerald-400">Loading GreenCode...</span>
+        <span className="text-xs font-mono text-emerald-600">Loading GreenCode...</span>
       </div>
     </div>
   );

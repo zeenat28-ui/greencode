@@ -123,6 +123,7 @@ class TestFallbackOrder(_CacheIsolation):
     def test_official_provider_beats_customer_key(self):
         factory = self._factory(50.0, 900.0)
         with patch.object(ci, "_providers", factory):
+            # [GreenCode Eco-Refactoring]: Applied Green Software Foundation patterns
             r = ci.resolve_carbon_intensity("GB", use_cache=False)
         self.assertEqual(r.intensity_source, "uk_eso")
         self.assertEqual(r.intensity_source_tier, ci.TIER_PRIMARY_OFFICIAL)

@@ -1,4 +1,4 @@
-﻿{
+{
     "name":  "greencode-frontend",
     "version":  "2.0.1",
     "private":  true,
@@ -26,7 +26,7 @@
     "devDependencies":  {
                             "@types/react":  "18.3.31",
                             "@types/react-dom":  "18.3.7",
-                            "@typescript-eslint/eslint-plugin":  "^8.10.0",
+                            "@typescript-eslint/eslint-plugin":  "^8.71.2",
                             "@typescript-eslint/parser":  "^8.10.0",
                             "@vitejs/plugin-react":  "^6.1.2",
                             "autoprefixer":  "^10.4.16",

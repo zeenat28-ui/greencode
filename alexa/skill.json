@@ -1,0 +1,30 @@
+{
+  "manifest": {
+    "publishingInformation": {
+      "locales": {
+        "en-US": {
+          "name": "GreenCode Auditor",
+          "summary": "Energy auditing and carbon optimization for software",
+          "description": "GreenCode Auditor analyzes your code for energy efficiency, calculates carbon footprint, and provides AI-powered refactoring suggestions.",
+          "keywords": [
+            "green",
+            "carbon",
+            "energy",
+            "sustainability",
+            "developer",
+            "productivity"
+          ]
+        }
+      }
+    },
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "uri": "https://greencode-teal.vercel.app/api/alexa/skill"
+        },
+        "interfaces": []
+      }
+    },
+    "manifestVersion": "1.0"
+  }
+}

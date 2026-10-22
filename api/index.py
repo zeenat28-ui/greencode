@@ -55,6 +55,18 @@ def _generate_jwt(sub, email, username, role="developer", expires_in_seconds=864
     return f"{hdr_b64}.{pay_b64}.{signature}"
 
 
+def _make_jwt(uid, username, email):
+    import hmac, hashlib, base64, datetime
+    secret = os.environ.get("JWT_SECRET", "greencode-secret").encode()
+    now = int(datetime.datetime.utcnow().timestamp())
+    hdr = base64.urlsafe_b64encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode()).rstrip(b"=")
+    pay = base64.urlsafe_b64encode(json.dumps({"sub": str(uid), "email": email, "username": username,
+        "role": "developer", "org_id": 1, "iat": now, "exp": now + 86400}).encode()).rstrip(b"=")
+    msg = hdr + b"." + pay
+    sig = base64.urlsafe_b64encode(hmac.new(secret, msg, hashlib.sha256).digest()).rstrip(b"=")
+    return (msg + b"." + sig).decode()
+
+
 class handler(BaseHTTPRequestHandler):
     def _send_cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -286,73 +298,37 @@ class handler(BaseHTTPRequestHandler):
 
         # GitHub OAuth exchange
         if parsed_path in ("/api/auth/github/oauth", "/auth/github/oauth"):
-            code = body.get("code")
-            redirect_uri = body.get("redirect_uri")
+            code = body.get("code", "")
+            redirect_uri = body.get("redirect_uri", "")
             cid = os.environ.get("GITHUB_CLIENT_ID", "").strip()
             csec = os.environ.get("GITHUB_CLIENT_SECRET", "").strip()
-
-            gh_user = {
-                "id": 101,
-                "email": "github.developer@greencode.dev",
-                "username": "github_developer",
-                "full_name": "GitHub Verified Developer",
-                "role": "developer",
-                "is_verified": True,
-                "has_github_token": True,
-            }
-            gh_token = "gho_demo_verified_developer"
-
-            if cid and csec and code:
-                try:
-                    import urllib.request as _ur, urllib.parse as _up
-                    token_data = _up.urlencode({
-                        "client_id": cid,
-                        "client_secret": csec,
-                        "code": code,
-                        "redirect_uri": redirect_uri or "",
-                    }).encode("utf-8")
-                    req = _ur.Request(
-                        "https://github.com/login/oauth/access_token",
-                        data=token_data,
-                        headers={"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"},
-                        method="POST"
-                    )
-                    resp = json.loads(_ur.urlopen(req, timeout=10).read().decode("utf-8"))
-                    at = resp.get("access_token")
-                    if at:
-                        gh_token = at
-                        req2 = _ur.Request(
-                            "https://api.github.com/user",
-                            headers={"Authorization": f"Bearer {at}", "Accept": "application/vnd.github.v3+json", "User-Agent": "GreenCode-Auditor"}
-                        )
-                        u_profile = json.loads(_ur.urlopen(req2, timeout=10).read().decode("utf-8"))
-                        login = u_profile.get("login", "developer")
-                        gh_user = {
-                            "id": u_profile.get("id", 101),
-                            "email": u_profile.get("email") or f"{login}@users.noreply.github.com",
-                            "username": login,
-                            "full_name": u_profile.get("name") or login,
-                            "role": "developer",
-                            "is_verified": True,
-                            "has_github_token": True,
-                        }
-                except Exception as ex:
-                    print("GitHub OAuth exchange warning:", ex)
-
-            access_tok = _generate_jwt(gh_user["id"], gh_user["email"], gh_user["username"])
-            refresh_tok = _generate_jwt(gh_user["id"], gh_user["email"], gh_user["username"], expires_in_seconds=86400 * 30)
-            self._send_json({
-                "success": True,
-                "access_token": access_tok,
-                "refresh_token": refresh_tok,
-                "token_type": "bearer",
-                "user": gh_user,
-                "github_token": gh_token,
-            })
+            if not cid or not csec:
+                self._send_json({"success": False, "detail": "GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET not set on server"}, 400)
+                return
+            try:
+                import urllib.request as _ur, urllib.parse as _up
+                data = _up.urlencode({"client_id": cid, "client_secret": csec, "code": code, "redirect_uri": redirect_uri}).encode()
+                req = _ur.Request("https://github.com/login/oauth/access_token", data=data,
+                    headers={"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+                tok = json.loads(_ur.urlopen(req, timeout=10).read())
+                at = tok.get("access_token")
+                if not at:
+                    self._send_json({"success": False, "detail": "GitHub token exchange failed: " + str(tok.get("error_description", tok))}, 400)
+                    return
+                r2 = _ur.Request("https://api.github.com/user",
+                    headers={"Authorization": "token " + at, "Accept": "application/vnd.github.v3+json"})
+                p = json.loads(_ur.urlopen(r2, timeout=10).read())
+                login = p.get("login", "user")
+                email = p.get("email") or login + "@users.noreply.github.com"
+                full_name = p.get("name") or login
+                avatar = p.get("avatar_url", "")
+                token = _make_jwt(1, login, email)
+                u = {"id": 1, "email": email, "username": login, "full_name": full_name,
+                     "role": "developer", "org_id": 1, "avatar_url": avatar}
+                self._send_json({"success": True, "access_token": token, "refresh_token": token,
+                    "token_type": "bearer", "user": u, "github_token": at,
+                    "message": "Authenticated as @" + login})
+            except Exception as e:
+                self._send_json({"success": False, "detail": str(e)}, 400)
             return
 
-        # Default POST handler
-        self._send_json({
-            "received": True,
-            "path": self.path,
-        })

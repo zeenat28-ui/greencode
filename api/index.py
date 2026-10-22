@@ -323,8 +323,8 @@ class handler(BaseHTTPRequestHandler):
                 full_name = p.get("name") or login
                 avatar = p.get("avatar_url", "")
                 token = _make_jwt(1, login, email)
-                u = {"id": 1, "email": email, "username": login, "full_name": full_name,
-                     "role": "developer", "org_id": 1, "avatar_url": avatar}
+                u = {"id": 1, "email": email, "username": login, "github_username": login, "full_name": full_name,
+                     "role": "developer", "org_id": 1, "avatar_url": avatar, "is_verified": True, "created_at": "2026-01-01T00:00:00Z"}
                 self._send_json({"success": True, "access_token": token, "refresh_token": token,
                     "token_type": "bearer", "user": u, "github_token": at,
                     "message": "Authenticated as @" + login})

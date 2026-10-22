@@ -1,10 +1,13 @@
 {
   "version": 2,
-  "buildCommand": "cd frontend && npm run build",
-  "outputDirectory": "frontend/dist",
-  "installCommand": "cd frontend && npm install --legacy-peer-deps",
-  "framework": null,
   "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
     {
       "src": "api/index.py",
       "use": "@vercel/python"
@@ -28,43 +31,15 @@
       "dest": "/api/index.py"
     },
     {
-      "src": "/mcp",
-      "dest": "/api/index.py"
-    },
-    {
       "src": "/_vercel/health",
       "dest": "/api/index.py"
     },
     {
+      "handle": "filesystem"
+    },
+    {
       "src": "/(.*)",
       "dest": "/index.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        {
-          "key": "Access-Control-Allow-Credentials",
-          "value": "true"
-        },
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "https://greencode-teal.vercel.app"
-        },
-        {
-          "key": "Access-Control-Allow-Methods",
-          "value": "GET,POST,PUT,DELETE,OPTIONS"
-        },
-        {
-          "key": "Access-Control-Allow-Headers",
-          "value": "Authorization,Content-Type,Accept,X-GitHub-Token"
-        },
-        {
-          "key": "Vary",
-          "value": "Origin"
-        }
-      ]
     }
   ]
 }

@@ -81,12 +81,13 @@ class TestAskWebhookHardening(_WebhookTestBase):
         speech = body["response"]["outputSpeech"]
         self.assertIn(speech["type"], ("SSML", "PlainText"))
         self.assertIn("GreenCode", json.dumps(speech))
-        self.assertIn("cannot access your dashboard or GitHub account", speech["ssml"])
+        self.assertIn("link your GreenCode dashboard", speech["ssml"])
+        self.assertIn("selected repository and audit", speech["ssml"])
         self.assertNotIn("audit your Python", speech["ssml"])
         self.assertFalse(body["response"]["shouldEndSession"])
         self.assertIn("compare named grid regions", body["response"]["reprompt"]["outputSpeech"]["ssml"])
 
-    def test_help_intent_does_not_promise_unavailable_repository_actions(self):
+    def test_help_intent_explains_dashboard_pairing(self):
         payload = {
             "version": "1.0",
             "request": {
@@ -97,8 +98,8 @@ class TestAskWebhookHardening(_WebhookTestBase):
         resp = self._post("/alexa/skill", json_body=payload)
         self.assertEqual(resp.status_code, 200)
         speech = resp.json()["response"]["outputSpeech"]["ssml"]
-        self.assertIn("not linked to your GitHub account", speech)
-        self.assertIn("use the dashboard", speech)
+        self.assertIn("link your account", speech)
+        self.assertIn("Pair Alexa", speech)
         self.assertNotIn("audit my Python code", speech)
 
     def test_invalid_json_returns_400(self):
@@ -157,6 +158,17 @@ class TestNlpMapper(unittest.TestCase):
         self.assertEqual(cmd.payload["repo"], "")
         self.assertFalse(cmd.fallback)
         self.assertGreaterEqual(cmd.confidence, 0.65)
+
+    def test_list_github_repositories_utterance(self):
+        for utterance in (
+            "list my GitHub repositories",
+            "show my repositories",
+            "get repositories",
+        ):
+            with self.subTest(utterance=utterance):
+                command = alexa_nlp.MAPPER.map(utterance)
+                self.assertEqual(command.tool, "list_repositories")
+                self.assertFalse(command.fallback)
 
     def test_green_score_utterance_maps_to_end_to_end_audit(self):
         cmd = alexa_nlp.MAPPER.map("what is my green score")
@@ -233,13 +245,13 @@ class TestSsmlBuilders(unittest.TestCase):
         for phrase in (
             "documented features",
             "compare named grid regions",
-            "not linked to your GitHub account",
-            "cannot scan your repositories",
-            "open pull requests",
+            "uses its connected GitHub account",
+            "Pair the standalone Alexa skill",
             "Amazon controls when the session ends",
         ):
             self.assertIn(phrase, ssml)
-        self.assertNotIn("to scan a GitHub repo", ssml)
+        self.assertNotIn("not linked to your GitHub account", ssml)
+        self.assertNotIn("cannot scan your repositories", ssml)
         self.assertFalse(resp["response"]["shouldEndSession"])
 
     def test_scores_are_spoken_as_cardinal_percent(self):
@@ -251,6 +263,15 @@ class TestSsmlBuilders(unittest.TestCase):
         self.assertIn("<say-as interpret-as='cardinal'>88</say-as> percent", ssml)
         # ...and the phone card must show plain text, not markup.
         self.assertEqual(resp["response"]["card"]["content"], "88 percent")
+
+    def test_repository_list_does_not_claim_dashboard_selection_is_unknown(self):
+        resp = alexa_responses.build_list_response(
+            {"data": {"repositories": [{"name": "greencode"}]}}
+        )
+        ssml = resp["response"]["outputSpeech"]["ssml"]
+
+        self.assertIn("connected repositories: greencode", ssml)
+        self.assertNotIn("cannot tell which repository", ssml)
 
 
 class TestStandaloneRouterGuards(unittest.TestCase):

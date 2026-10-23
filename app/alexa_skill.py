@@ -12,7 +12,7 @@ Authentication:
   - Verifies the Alexa application ID (skillId) to prevent spoofing.
   - Extracts org_id / user_id from the Bearer token or x-greencode-org header
     for multi-tenant isolation (individual developer vs enterprise).
-  - Zero-knowledge: GitHub tokens are per-request, never stored.
+  - Alexa account pairing uses an encrypted GitHub credential and Amazon-signed user ID.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
+from dotenv import load_dotenv
 
 from app.alexa_nlp import AlexaCommand, MAPPER
 from app.alexa_responses import (
@@ -59,6 +60,7 @@ router = APIRouter(tags=["Alexa Voice"])
 
 # ---------------------------------------------------------------- config ----
 
+load_dotenv()
 ALEXA_SKILL_ID = os.environ.get("GREENCODE_ALEXA_SKILL_ID", "").strip() or None
 REQUEST_TOLERANCE_SECONDS = 150
 RATE_LIMIT_WINDOW_SECONDS = 60
@@ -319,8 +321,8 @@ def _call_greencode_tool(
             "status": "error",
             "data": {
                 "reason": (
-                    "GitHub account linking is not configured for Alexa. Sign in to "
-                    "GitHub in the GreenCode dashboard to perform repository changes."
+                    "This request has no GitHub credential. Connect GitHub in the "
+                    "GreenCode dashboard before asking for a repository change."
                 )
             },
         }

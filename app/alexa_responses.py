@@ -160,10 +160,10 @@ def build_help_response(
     speech = (
         "You can ask questions about GreenCode's documented features and local setup, "
         "compare named grid regions such as Ireland and Virginia, or ask which energy "
-        "sensor the GreenCode server reports. This Alexa skill is not linked to your "
-        "GitHub account, so it cannot scan your repositories, refactor their code, or "
-        "open pull requests. Use the GreenCode dashboard for those actions. Alexa "
-        "listens during this conversation, but Amazon controls when the session ends."
+        "sensor the GreenCode server reports. The signed-in dashboard voice assistant "
+        "uses its connected GitHub account. Pair the standalone Alexa skill from the "
+        "dashboard before asking it to access your repositories. Alexa listens during "
+        "this conversation, but Amazon controls when the session ends."
     )
     return build_response(
         speech, should_end_session=False, session_attributes=session_attributes
@@ -382,8 +382,7 @@ def build_list_response(result: Dict[str, Any]) -> Dict[str, Any]:
     else:
         names = [r.get("name", "unknown") for r in repos[:10]]
         speech = (
-            f"You have {_say_number(len(repos))} connected repositories: {_list_items(names)}. "
-            "I cannot tell which repository is currently selected in the dashboard."
+            f"You have {_say_number(len(repos))} connected repositories: {_list_items(names)}."
         )
 
     return build_response(speech, card_title="Your Repositories")

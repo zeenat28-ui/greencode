@@ -1303,6 +1303,44 @@ def _build_ask_knowledge_response(
     )
 
 
+def _build_current_repository_response(
+    payload: Dict[str, Any],
+    session_attributes: Dict[str, Any],
+) -> Dict[str, Any]:
+    system = (payload.get("context") or {}).get("System") or {}
+    alexa_user_id = (system.get("user") or {}).get("userId")
+    if alexa_user_id:
+        from app.alexa_account_link import get_linked_account
+
+        account = get_linked_account(alexa_user_id)
+    else:
+        account = None
+
+    repository = account.get("selected_repository") if account else None
+    if repository:
+        speech = f"Your GreenCode dashboard currently has {repository} selected."
+        card_title = "Current GitHub Repository"
+    elif account:
+        speech = (
+            "Your GreenCode account is linked, but no repository is currently "
+            "selected. Choose one in the dashboard repository scanner."
+        )
+        card_title = "No Repository Selected"
+    else:
+        speech = (
+            "Your Alexa account is not linked to GreenCode yet. In the GreenCode "
+            "dashboard repository scanner, choose Pair Alexa with this repository, "
+            "then say link my GreenCode account with code followed by the displayed digits."
+        )
+        card_title = "Link GreenCode to Read Your Repository"
+
+    return _build_ask_response(
+        speech,
+        card_title=card_title,
+        session_attributes=session_attributes,
+    )
+
+
 def _dispatch_nlu_action(utterance: str) -> Optional[Dict[str, Any]]:
     """Run a dashboard-backed action for ``utterance``, if it maps to one.
 
@@ -1360,8 +1398,8 @@ def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
         speech = (
             f"Welcome to GreenCode Auditor. Active energy backend is {sensor_desc}. "
             "You can ask questions about GreenCode features and local setup, compare "
-            "named grid regions, or check which energy sensor this server reports. "
-            "This skill cannot access your dashboard or GitHub account."
+            "named grid regions, or link your GreenCode dashboard from the repository "
+            "scanner to ask about its selected repository and audit."
         )
         return _build_ask_response(
             speech,
@@ -1388,11 +1426,10 @@ def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         if intent_name in ("AMAZON.HelpIntent", "AMAZON.NavigateHomeIntent"):
             speech = (
-                "I can answer questions using GreenCode's documented features and setup "
-                "guidance, compare named grid regions, and report which energy sensor "
-                "the GreenCode server detects. This skill is not linked to your GitHub "
-                "account, so use the dashboard to scan or refactor a repository and "
-                "create pull requests."
+                "I can answer GreenCode questions, compare named grid regions, report the "
+                "server's energy sensor, and read the selected GitHub repository after "
+                "you link your account. In the dashboard repository scanner, choose Pair "
+                "Alexa and say, link my GreenCode account with code, followed by the digits."
             )
             return _build_ask_response(
                 speech,
@@ -1401,6 +1438,61 @@ def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "Ask about GreenCode features or setup, or compare named grid regions."
                 ),
                 should_end_session=False,
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "LinkGreenCodeAccountIntent":
+            system = (payload.get("context") or {}).get("System") or {}
+            alexa_user_id = (system.get("user") or {}).get("userId")
+            code_slot = slots.get("pairing_code") or {}
+            code = str(code_slot.get("value") or "").strip()
+            if not alexa_user_id:
+                return _build_ask_response(
+                    "I could not identify this Alexa account. Please try linking again from your Alexa device.",
+                    card_title="Alexa Account Not Available",
+                    session_attributes=session_attrs,
+                )
+            if not code:
+                return _build_ask_response(
+                    "Say, link my GreenCode account with code, followed by the eight digit code shown in your dashboard.",
+                    card_title="GreenCode Pairing Code Needed",
+                    session_attributes=session_attrs,
+                )
+            from app.alexa_account_link import claim_pairing_code
+
+            linked = claim_pairing_code(alexa_user_id, code)
+            if not linked:
+                return _build_ask_response(
+                    "That pairing code is invalid, expired, or already used. Generate a new code in the GreenCode repository scanner.",
+                    card_title="Pairing Code Not Accepted",
+                    session_attributes=session_attrs,
+                )
+            return _build_ask_response(
+                f"Your Alexa account is now linked to GreenCode. The selected repository is {linked['selected_repository']}.",
+                card_title="GreenCode Account Linked",
+                session_attributes=session_attrs,
+            )
+
+        if intent_name == "UnlinkGreenCodeAccountIntent":
+            system = (payload.get("context") or {}).get("System") or {}
+            alexa_user_id = (system.get("user") or {}).get("userId")
+            if not alexa_user_id:
+                return _build_ask_response(
+                    "I could not identify this Alexa account, so I could not unlink it.",
+                    card_title="Alexa Account Not Available",
+                    session_attributes=session_attrs,
+                )
+            from app.alexa_account_link import unlink_alexa_account
+
+            if unlink_alexa_account(alexa_user_id):
+                return _build_ask_response(
+                    "Your Alexa account has been unlinked from GreenCode. You can pair it again from the dashboard at any time.",
+                    card_title="GreenCode Account Unlinked",
+                    session_attributes=session_attrs,
+                )
+            return _build_ask_response(
+                "This Alexa account is not linked to GreenCode.",
+                card_title="No GreenCode Account Link",
                 session_attributes=session_attrs,
             )
 
@@ -1518,12 +1610,67 @@ def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
             )
 
         if intent_name == "AuditRepositoryIntent":
+            system = (payload.get("context") or {}).get("System") or {}
+            alexa_user_id = (system.get("user") or {}).get("userId")
+            if not alexa_user_id:
+                account = None
+            else:
+                from app.alexa_account_link import get_linked_account
+
+                account = get_linked_account(alexa_user_id)
+            if not account:
+                return _build_ask_response(
+                    "Your Alexa account is not linked to GreenCode yet. In the dashboard repository scanner, choose Pair Alexa, then say link my GreenCode account with code followed by the displayed digits.",
+                    card_title="Link GreenCode to Run an Audit",
+                    session_attributes=session_attrs,
+                )
+            repository = account.get("selected_repository")
+            if not repository:
+                return _build_ask_response(
+                    "There is no repository selected in your GreenCode dashboard. Select a GitHub repository in the repository scanner, then ask me to audit it.",
+                    card_title="No Repository Selected",
+                    session_attributes=session_attrs,
+                )
+            from app.scanner import AuditRejected, run_github_audit
+            from app.github_client import GitHubAPIError
+
+            try:
+                result = run_github_audit(
+                    repo_ref=repository,
+                    token=account["github_token"],
+                    user_id=account["user_id"],
+                    max_mb=25,
+                )
+            except (AuditRejected, GitHubAPIError) as exc:
+                message = getattr(exc, "message", str(exc))
+                return _build_ask_response(
+                    f"I could not audit {repository}: {message}",
+                    card_title="Repository Audit Could Not Complete",
+                    session_attributes=session_attrs,
+                )
+            score = float(result.get("green_score", 0.0))
+            violations = result.get("violations") or []
+            grade = result.get("grade", "unavailable")
+            session_attrs["last_score"] = score
+            session_attrs["last_grade"] = grade
+            session_attrs["last_violation_count"] = len(violations)
+            speech = (
+                f"Audited {repository}. Its Green Score is {score} out of 100, "
+                f"grade {grade}, with {len(violations)} energy anti-patterns detected. "
+                "This is a static code audit; it did not measure workload energy or software carbon intensity."
+            )
+            finding_titles = [
+                str(item.get("title") or item.get("violation_type") or item.get("rule"))
+                for item in violations[:3]
+                if isinstance(item, dict)
+                and (item.get("title") or item.get("violation_type") or item.get("rule"))
+            ]
+            if finding_titles:
+                speech += " Leading findings include " + "; ".join(finding_titles) + "."
             return _build_ask_response(
-                "I cannot audit a connected GitHub repository from this Alexa request. "
-                "Alexa account linking is not configured, and no repository was supplied. "
-                "Connect GitHub and select a repository in the GreenCode dashboard to run a real audit.",
-                card_title="GreenCode Repository Audit",
-                reprompt_text="Ask a GreenCode question or compare named grid regions.",
+                speech,
+                card_title=f"GreenCode Audit: {repository}",
+                reprompt_text="Ask me to explain this score or run the audit again.",
                 session_attributes=session_attrs,
             )
 
@@ -1534,14 +1681,7 @@ def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
             )
 
         if intent_name == "GetCurrentRepositoryIntent":
-            return _build_ask_response(
-                "I cannot determine which GitHub repository is currently selected. "
-                "Alexa account linking is not configured for this skill, so it cannot "
-                "read your GreenCode dashboard selection. Open the dashboard to see "
-                "and select your connected repository.",
-                card_title="Current GitHub Repository",
-                session_attributes=session_attrs,
-            )
+            return _build_current_repository_response(payload, session_attrs)
 
         if intent_name == "CalculateSciIntent":
             return _build_ask_response(
@@ -1625,6 +1765,11 @@ def handle_alexa_skill_request(payload: Dict[str, Any]) -> Dict[str, Any]:
             or _extract_alexa_slot(slots, "region")
             or intent_name
         ).lower()
+
+        from app.alexa_knowledge import is_current_repository_question
+
+        if is_current_repository_question(raw_query):
+            return _build_current_repository_response(payload, session_attrs)
 
         # Dashboard-backed actions (diff audit, energy SLA, Scope 1-3
         # inventory, audit history, dynamic analysis) are reached through the

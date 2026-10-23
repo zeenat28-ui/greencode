@@ -10,7 +10,7 @@ import { Input } from '../components/primitives/Input';
 import { Select } from '../components/primitives/Select';
 import {
   Search, Loader2, AlertCircle, RefreshCw, GitBranch, Star,
-  Lock, Globe, ChevronDown, CheckCircle2, Cpu, ArrowRight,
+  Lock, Globe, ChevronDown, CheckCircle2, Cpu, ArrowRight, Link2,
 } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
 
@@ -42,6 +42,9 @@ export default function ScanRepository() {
   const [isScanning, setIsScanning] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [scanError, setScanError] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [pairingError, setPairingError] = useState<string | null>(null);
+  const [isPairing, setIsPairing] = useState(false);
   const pollTimer = useRef<number | null>(null);
   const branchRequestVersion = useRef(0);
 
@@ -86,6 +89,13 @@ export default function ScanRepository() {
     setBranches([]);
     setBranchesError(null);
     setScanError(null);
+    setPairingCode(null);
+    setPairingError(null);
+    try {
+      await githubService.saveAlexaRepository(repo.full_name);
+    } catch (err: any) {
+      setScanError(err?.response?.data?.detail || 'Could not save the selected repository for Alexa.');
+    }
     setBranchesLoading(true);
     try {
       const res = await githubService.listBranches(repo.owner || repo.full_name.split('/')[0], repo.name);
@@ -97,6 +107,21 @@ export default function ScanRepository() {
       setBranchesError(err?.response?.data?.detail || t('scan.branchLoadError'));
     } finally {
       if (requestVersion === branchRequestVersion.current) setBranchesLoading(false);
+    }
+  };
+
+  const handlePairAlexa = async () => {
+    if (!selected) return;
+    setIsPairing(true);
+    setPairingCode(null);
+    setPairingError(null);
+    try {
+      const response = await githubService.createAlexaPairingCode(selected.full_name);
+      setPairingCode(response.data.code);
+    } catch (err: any) {
+      setPairingError(err?.response?.data?.detail || 'Could not create an Alexa pairing code.');
+    } finally {
+      setIsPairing(false);
     }
   };
 
@@ -282,6 +307,20 @@ export default function ScanRepository() {
                 <Button onClick={handleScan} disabled={isScanning} variant="primary" size="lg" className="w-full shadow-sm">
                   {isScanning ? (<><Loader2 size={14} className="animate-spin text-white" /> {t('scan.auditingCode')}</>) : (<><ArrowRight size={14} /> {t('scan.startAudit')}</>)}
                 </Button>
+                <Button onClick={handlePairAlexa} disabled={isPairing} variant="secondary" size="md" className="w-full">
+                  {isPairing ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                  {isPairing ? 'Generating code...' : 'Pair Alexa with this repository'}
+                </Button>
+                {pairingCode && (
+                  <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3.5 dark:border-emerald-800 dark:bg-emerald-950/30">
+                    <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">Alexa pairing code (valid for 10 minutes)</p>
+                    <p className="my-2 text-center font-mono text-2xl font-bold tracking-[0.3em] text-emerald-900 dark:text-emerald-100">{pairingCode}</p>
+                    <p className="text-xs leading-relaxed text-emerald-800 dark:text-emerald-300">
+                      Open GreenCode Auditor in Alexa and say: “link my GreenCode account with code {pairingCode}”.
+                    </p>
+                  </div>
+                )}
+                {pairingError && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{pairingError}</p>}
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-[var(--gc-border-default)] px-4 py-8 text-center">

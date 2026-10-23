@@ -6,16 +6,19 @@ Example: *"Alexa, ask Green Code Auditor how GreenCode measures energy"*
 
 ## Important limits
 
-Alexa account linking is not configured. The Alexa skill cannot see which
-GitHub repository is selected in the GreenCode dashboard or access a user's
-private repositories. Repository scans, source-code audits, refactors, SLA
-evaluations, and IaC scans require real input and must be run from the
-dashboard. Alexa must not claim those operations completed without that input.
+The ASK Custom Skill can read the dashboard's selected GitHub repository after
+you pair it from **Scan Repository** using an eight-digit, single-use code. Ask
+“which repository is currently selected” or “audit my repository” after
+pairing; say “unlink my GreenCode account” to revoke access. Pairing requires
+`SECRETS_ENCRYPTION_KEY`; the skill stores the linked GitHub credential
+encrypted at rest until you unlink. This custom pairing flow is separate from
+Amazon OAuth account linking.
 
 The Alexa skill can answer questions grounded in the project documentation,
 look up grid intensity, compare named regions, and report which host energy
 backend is available. Energy backend availability is not a measurement of a
-specific running workload.
+specific running workload. Repository audits report static findings only and
+do not measure workload energy or SCI.
 
 ### Green Release Briefing in the signed-in dashboard
 
@@ -27,16 +30,16 @@ line. This is read-only: it does not edit files, push commits, or create a PR.
 The request requires a signed-in GreenCode session and the browser's connected
 GitHub token. If either is missing, or no GitHub repository scan is available
 in the dashboard, the briefing is refused rather than guessing. The standalone
-Echo/Developer Console skill does not have this account-linked repository
-context.
+Echo/Developer Console skill can access the selected repository after it is
+paired from the dashboard using the one-time account-link flow described above.
 
 ## 1. Repository Audits
 
 | What the boss says | What happens |
 |---|---|
-| "audit my repository" | Alexa explains that GitHub account linking is unavailable and directs you to select a repo in the dashboard |
-| "which repository am I working on" | Alexa does not guess; the browser assistant can list connected repos, but does not know the dashboard's current selection |
-| "run a green code audit" | Use the dashboard after connecting GitHub and selecting a repository |
+| "audit my repository" | After pairing, Alexa audits the selected repository and reports its static score, finding count, and leading findings |
+| "which repository am I working on" | After pairing, Alexa names the dashboard's current repository selection |
+| "run a green code audit" | After pairing and selecting a repository, Alexa runs a static audit; otherwise pair or select a repository in the dashboard |
 
 ## 2. Code Snippet Audit
 
@@ -135,12 +138,9 @@ context.
 
 | What the boss says | What happens |
 |---|---|
-| "my repositories" | The local browser assistant can list repos after GitHub sign-in; the public Alexa skill is not linked |
-| "list my repos" | Does not list private repos through the public Alexa skill |
-| "show all repositories" | Repo inventory is available in the signed-in dashboard |
-| "what repos do I have" | Alexa cannot determine the dashboard's current selection |
-| "show my connected repositories" | Use the signed-in dashboard |
-| "list all my github repos" | Public Alexa account linking is not configured |
+| "list my GitHub repositories" | The dashboard assistant lists connected repositories after GitHub sign-in; the standalone Alexa skill lists them after pairing from Scan Repository |
+| "which repository am I working on" | Reports the dashboard's selected repository when the dashboard has one, or the paired repository for the standalone Alexa skill |
+| "audit my repository" | After GitHub sign-in in the dashboard or account pairing in the standalone skill, reports the selected repository's static audit |
 
 ## 11. Billing & FinOps
 
@@ -183,13 +183,15 @@ Each developer can also have their own individual instance:
 
 - **Individual developers**: Each gets their own GreenCode instance with isolated data
 - **Enterprises**: Central Alexa skill routes to the correct org based on the JWT token or `x-greencode-org` header
-- **Zero-knowledge**: GitHub tokens are sent per-request, never stored on the server
+- **Credential protection**: GitHub credentials are encrypted at rest when the encryption key is configured; the Alexa link is removed when you unlink the skill
 
 ## Example of a truthful response
 
 > **Boss:** "Alexa, ask Green Code Auditor to audit my repository"
 >
-> **Alexa:** "Alexa account linking is not configured, so I cannot access or audit a repository. Select a repository in the GreenCode dashboard."
+> **Alexa (unlinked):** "Your Alexa account is not linked to GreenCode yet. Pair it from the dashboard using the displayed one-time code."
+>
+> **Alexa (linked):** "Audited owner/repository. The Green Score is 91 out of 100 with 2 energy anti-patterns detected. This is a static audit; it did not measure workload energy or software carbon intensity."
 >
 > **Boss:** "Compare Ireland and Virginia"
 >

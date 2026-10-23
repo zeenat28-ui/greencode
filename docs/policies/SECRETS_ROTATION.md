@@ -12,7 +12,7 @@ GreenCode reads its secrets from the environment (`.env`, Docker Compose, Helm v
 | Secret | Read by | Blast radius if leaked | Rotation impact |
 |---|---|---|---|
 | `JWT_SECRET` | `app/core/config.py` (`resolve_jwt_secret`) | Forge valid access/refresh tokens - full API impersonation | Every session invalidated; users re-login |
-| `SECRETS_ENCRYPTION_KEY` | `app/database.py` (Fernet at rest) | Decrypt every stored GitHub PAT from a DB dump | **Must** go through `scripts/rekey_secrets.py`, or stored tokens strand |
+| `SECRETS_ENCRYPTION_KEY` | `app/database.py` (Fernet at rest) | Decrypt every stored dashboard GitHub credential, pending Alexa pairing credential, and linked Alexa credential from a DB dump | **Must** go through `scripts/rekey_secrets.py`, or stored credentials strand |
 | `DATABASE_URL` (DB password) | `app/database.py` | Full read/write of tenants, repositories, audit ledgers | Short connection cutover |
 | `REDIS_PASSWORD` | queue / token-revocation paths | Inject or clear revocation entries | Brief in-memory fallback during cutover |
 | Third-party keys (`HUGGINGFACE_API_KEY`, carbon-intensity keys, `GITHUB_TOKEN`) | feature clients | Abuse of the upstream account | Feature-scoped only; no stored data affected |
@@ -46,6 +46,9 @@ Never swap only the env var: tokens already on disk were sealed with the **old**
 6. If plaintext rows are reported, run `python scripts/migrate_plaintext_secrets.py --apply`.
 7. Restart the service onto the new key, then remove `OLD_SECRETS_ENCRYPTION_KEY` from the environment.
 8. Verify: `GET /api/health` → `security.credential_encryption_configured: true`, `plaintext_tokens_pending_migration: 0`.
+
+The rekey and plaintext-migration helpers cover the user GitHub credential,
+pending Alexa pairing records, and active Alexa account links.
 
 ### 3.3 PostgreSQL and Redis Credentials
 - **PostgreSQL**: `ALTER ROLE greencode_admin WITH PASSWORD '<new>';` → update `DATABASE_URL` → rolling restart. Verify `/api/health` shows `deps.database: "ok"` and, in production, `deps.database_backend: "ok"` (a production host on SQLite is reported as degraded and refused at boot when `DATABASE_REQUIRE_POSTGRES=1`).

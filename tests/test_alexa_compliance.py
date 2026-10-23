@@ -779,7 +779,7 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
             }
         )
         speech = _spoken_text(resp)
-        self.assertIn("Alexa account linking is not configured", speech)
+        self.assertIn("Your Alexa account is not linked to GreenCode yet", speech)
         self.assertNotIn("repository audit completed", speech.lower())
         self.assertNotIn("100.0 out of 100", speech)
 
@@ -793,10 +793,9 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
                 },
             }
         )
-        self.assertIn(
-            "cannot determine which GitHub repository",
-            _spoken_text(resp),
-        )
+        speech = _spoken_text(resp)
+        self.assertIn("choose Pair Alexa with this repository", speech)
+        self.assertNotIn("account linking is not configured", speech)
 
     def test_compare_regions_intent_with_slots(self):
         payload = {

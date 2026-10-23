@@ -108,9 +108,9 @@ export default function Privacy() {
 
           {/* Section 4 */}
           <div>
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 mb-2">4. Zero-Knowledge Credential Custody & Client-Side Encryption</h2>
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 mb-2">4. Credential Handling & Encryption</h2>
             <p>
-              GreenCode implements a Zero-Knowledge security architecture for external repository and cloud provider credentials. When you provide GitHub Personal Access Tokens (PATs) or AWS/Azure/GCP service credentials, such tokens are retained solely within your client browser session memory and transmitted via TLS-encrypted HTTPS headers per transaction. Our persistent databases never store unencrypted third-party developer access tokens.
+              GitHub credentials may be retained for authenticated repository operations and are encrypted at rest when the deployment has a valid SECRETS_ENCRYPTION_KEY. Per-request GitHub headers are not separately persisted. If you explicitly pair an Alexa account, GreenCode stores a separate encrypted copy so Alexa can audit the selected repository; it is retained until you say “unlink my GreenCode account.” Alexa pairing is blocked unless encryption is configured. Other cloud-provider credentials remain in the browser session and are sent over TLS only when needed.
             </p>
           </div>
 

@@ -146,7 +146,9 @@ _pat(
     priority=5,
 )
 _pat(
-    r"\b(my repos|list repos|show repositories|my repositories|all repos)\b",
+    r"\b(?:list|show|find|get)\s+(?:my\s+)?(?:github\s+)?repositories\b"
+    r"|\b(?:my\s+)?(?:github\s+)?repositories\b"
+    r"|\b(my repos|list repos|show repositories|my repositories|all repos)\b",
     "list_repositories",
     lambda m: {},
 )

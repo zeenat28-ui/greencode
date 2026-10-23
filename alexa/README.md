@@ -69,7 +69,8 @@ not prerequisites for the local hackathon demo:
 
 - **Alexa Skill ID:** `GREENCODE_ALEXA_SKILL_ID` (Amazon Developer Console)
 - **API Base URL:** Public HTTPS server reachable by Alexa's cloud service
-- **GitHub Token:** Optional per-request GitHub token for repository auditing
+- **Dashboard pairing:** `SECRETS_ENCRYPTION_KEY` must be configured so the
+  GitHub credential can be encrypted before it is retained for Alexa requests.
 
 The MCP bearer-token check is not an OAuth authorization-code/account-linking
 implementation. Do not configure Alexa+ account linking against this endpoint
@@ -213,12 +214,26 @@ the MCP add-on uses `alexa/addon.json` and `/mcp`; the ASK skill uses
    using the same Amazon account and region with the skill enabled for
    development.
 
-Alexa account linking is not configured. The skill can answer project questions
-from documentation and run supported grid lookups, but it cannot see the
-dashboard's selected GitHub repository or audit private repositories. Run
-repository scans, source-code refactors, SLA evaluations, and IaC audits from
-the authenticated GreenCode dashboard with the actual repository or source
-files selected.
+The ASK Custom Skill supports a one-time pairing flow with the authenticated
+GreenCode dashboard; it is separate from Amazon's OAuth account-linking
+feature. To connect it:
+
+1. Sign in to GreenCode and connect GitHub in the same browser session.
+2. Open **Scan Repository**, select the repository, and choose **Pair Alexa
+   with this repository**. Pairing is blocked unless GitHub access is verified
+   and `SECRETS_ENCRYPTION_KEY` is configured.
+3. In the Alexa skill, say “link my GreenCode account with code” and the
+   displayed eight digits. The code expires after ten minutes and works once.
+4. Ask “which repository is currently selected” or “audit my repository.”
+   Changing the dashboard selection updates the repository Alexa uses.
+5. Say “unlink my GreenCode account” to revoke Alexa's access.
+
+The pairing code is stored only as a digest. The linked GitHub token is
+encrypted at rest and is used by the skill to read repository source for
+audits; Alexa does not receive the token or perform write operations. Repository
+scans, source-code refactors, SLA evaluations, and IaC audits that need other
+dashboard inputs should still be run from the authenticated GreenCode
+dashboard.
 
 The Alexa Developer Console simulator has its own browser microphone control.
 Allow microphone access for `developer.amazon.com` in the browser and use a
@@ -250,7 +265,7 @@ GREENCODE_ALEXA_RATE_WINDOW_SECONDS=60
 alexa-ai deploy
 ```
 
-## Voice Commands (12 Custom Intents)
+## Voice Commands (15 Custom Intents)
 
 Served by `app/mcp_server.py::handle_alexa_skill_request` on both webhook
 mounts (`/alexa/skill` and `/api/alexa/skill`). Responses describe what was
@@ -258,13 +273,13 @@ actually looked up or measured; Alexa does not invent repository audit results,
 source code, energy readings, or scores.
 
 The skill can look up grid intensity for a named region, compare named regions,
-answer project questions from documentation, and report the host's available
-energy backend. Backend availability is not a measurement of a workload.
-Alexa account linking is not configured, and a voice request does not provide
-repository selection, source code, or measured workload values. Repository
-audits, code refactors, SCI calculations, score explanations, SLA evaluations,
-and IaC audits therefore require real dashboard inputs and are not claimed as
-completed by Alexa.
+answer project questions from documentation, report the host's available
+energy backend, and—after dashboard pairing—report the current selected
+repository or run a static GitHub audit with its score, count, and leading
+findings. Backend availability is not a measurement of workload energy. Alexa
+does not invent repository audit results, workload measurements, or SCI values;
+code refactors, SLA evaluations, and IaC audits that require other inputs must
+be run from the dashboard.
 
 Standard `AMAZON.HelpIntent` / `Stop` / `Cancel` / `Fallback` / `NavigateHome`
 are handled too. `app/alexa_nlp.py` (utterance → tool mapper) and

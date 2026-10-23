@@ -35,6 +35,10 @@ _CURRENT_REPOSITORY_RE = re.compile(
 )
 
 
+def is_current_repository_question(question: str) -> bool:
+    return bool(_CURRENT_REPOSITORY_RE.search(question))
+
+
 def _terms(text: str) -> set[str]:
     terms = set()
     for word in _WORD_RE.findall(text.lower()):
@@ -119,12 +123,10 @@ def retrieve_project_context(question: str, *, limit: int = 4) -> List[Tuple[str
 
 def answer_product_question(question: str) -> str:
     """Answer from project documentation, or abstain instead of guessing."""
-    if _CURRENT_REPOSITORY_RE.search(question):
+    if is_current_repository_question(question):
         return (
-            "I cannot determine which GitHub repository is currently selected. "
-            "Alexa account linking is not configured for this skill, so it cannot "
-            "read your GreenCode dashboard selection. Open the dashboard to see "
-            "and select your connected repository."
+            "To have Alexa report your selected repository, link your GreenCode "
+            "account from the dashboard repository scanner, then ask again."
         )
 
     context = retrieve_project_context(question)

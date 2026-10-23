@@ -88,7 +88,7 @@ manual review.
 
 ### 🔒 Security & Compliance
 - **OAuth 2.0 authorization-code flow with state validation** for GitHub login
-- **Zero-knowledge architecture** — GitHub tokens never hit the database
+- **Encrypted GitHub credentials** — GitHub credentials used for repository access are encrypted at rest when `SECRETS_ENCRYPTION_KEY` is configured; Alexa pairing retains a separate encrypted copy until unlinked
 - **Secrets encrypted at rest** with Fernet (AES-256-CBC)
 - **Pre-commit hooks** block secrets and API keys
 
@@ -202,6 +202,14 @@ certificate from a certificate authority**, then save the endpoint and build
 the interaction model. Use the URL printed by your own launcher; it must be
 online whenever you test the skill. In the **Test** tab, enable **Development**
 and try `open green code auditor` or `help`.
+
+To let Alexa read the dashboard selection, sign in to GreenCode, connect GitHub,
+select a repository in **Scan Repository**, and choose **Pair Alexa with this
+repository**. Say “link my GreenCode account with code” followed by the
+eight-digit code in the Alexa skill. It expires in ten minutes, works once,
+and requires `SECRETS_ENCRYPTION_KEY`; say “unlink my GreenCode account” to
+revoke access. This is GreenCode's explicit pairing flow, not Amazon OAuth
+account linking. See [Alexa pairing details](alexa/README.md#configure-the-alexa-skill).
 
 #### Connect Alexa+ to the MCP server
 Alexa+ uses the separate `alexa/addon.json` manifest and the self-hosted

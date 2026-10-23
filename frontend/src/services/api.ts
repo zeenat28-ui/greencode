@@ -12,7 +12,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '';
  * long-lived bearer credential in localStorage.
  * 
  * GitHub OAuth access token is kept in session-scoped browser storage, never in localStorage.
- * It is sent with each request via X-GitHub-Token header. Server NEVER stores it.
+ * Dashboard API calls send it via X-GitHub-Token without persisting it. Explicit
+ * Alexa pairing is the exception: it encrypts a copy at rest for repository audits.
  */
 const REFRESH_TOKEN_KEY = 'greencode_refresh_token';
 export const GITHUB_CONNECT_STATE_KEY = 'greencode_github_connect_state';
@@ -105,12 +106,13 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (_accessToken) {
     config.headers.Authorization = `Bearer ${_accessToken}`;
   }
-  // Attach the GitHub OAuth token only to repository API requests.
+  // Attach the GitHub OAuth token only to repository and Alexa pairing requests.
   const ghTok = getGitHubToken();
   if (ghTok && config.url) {
     const url = config.url;
     const needsGithubToken = 
       url.includes('/api/scan') ||
+      url.includes('/api/alexa/') ||
       url.startsWith('/github/') ||
       url.includes('/api/dynamic/analyze');
     if (needsGithubToken) {

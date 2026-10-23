@@ -60,6 +60,7 @@ from app.database import (
     update_user_preferred_org,
     validate_github_token,
 )
+from app.alexa_account_link import create_pairing_code, set_selected_repository
 from app.github_client import (
     GitHubAPIError,
     create_refactoring_pull_request,
@@ -741,12 +742,12 @@ def resolve_benchmark_path(benchmark_id: str) -> str:
     return abs_path
 
 
-# ZERO-KNOWLEDGE: Extract GitHub token from custom header (never query params, never stored)
+# Extract a per-request GitHub token from the header, never from query parameters.
 async def get_github_token_from_header(request: Request) -> Optional[str]:
     """Extract GitHub token from X-GitHub-Token header.
-    
-    ZERO-KNOWLEDGE: Token comes from user's browser session per-request.
-    Never stored, never logged, immediately discarded after use.
+
+    Header values are used transiently. GitHub sign-in may separately persist an
+    encrypted token, and Alexa pairing stores its own encrypted copy.
     """
     token = request.headers.get("X-GitHub-Token")
     if token:
@@ -761,18 +762,17 @@ def resolve_github_token(
     required: bool = True,
 ) -> Optional[str]:
     """Resolve the GitHub token to use for an API call.
-    
-    ZERO-KNOWLEDGE Architecture:
-    Priority: explicit param -> X-GitHub-Token header -> server env var (fallback only)
-    
-    Tokens are NEVER stored in database. User must send token per-request via header.
+
+    Tokens may come from an explicit parameter, the per-request header, an
+    encrypted user credential, or an internal server-level fallback. Alexa
+    pairing stores a separate encrypted credential for repository audits.
     If required=False, returns None when no token is available, permitting public repo scans.
     """
     # 1. Explicit parameter (backward compat for some endpoints)
     if explicit:
         return explicit
     
-    # 2. X-GitHub-Token header (ZERO-KNOWLEDGE primary method)
+    # 2. X-GitHub-Token header for per-request credentials
     if header_token:
         return header_token
     
@@ -804,7 +804,7 @@ def resolve_github_token(
         status_code=400,
         detail=(
             "No GitHub token provided. Include 'X-GitHub-Token' header with your request. "
-            "Your token is never stored on our servers (Zero-Knowledge Architecture)."
+            "Dashboard requests do not persist this token; Alexa pairing is a separate opt-in."
         ),
     )
 
@@ -957,8 +957,7 @@ def health_check():
         overall = "degraded"
         deps["credential_encryption"] = "insecure"
         crypto_faults = list(crypto_faults) + [
-            f"{plaintext_tokens} GitHub token(s) are still stored in plaintext from "
-            "before the encryption key was configured. Run: "
+            f"{plaintext_tokens} GitHub credential(s) are stored in plaintext. Run: "
             "python scripts/migrate_plaintext_secrets.py --apply"
         ]
 
@@ -1125,6 +1124,69 @@ def _repo_root(workdir: str) -> str:
         if os.path.isdir(candidate):
             return candidate
     return workdir
+
+
+def _validate_alexa_dashboard_repo(request: Request, repo_value: Any) -> tuple[str, str]:
+    """Verify the browser's GitHub credential can access the chosen repository."""
+    token = (request.headers.get("X-GitHub-Token") or "").strip()
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Reconnect GitHub in the dashboard before linking Alexa.",
+        )
+    try:
+        slug = normalize_repo_slug(str(repo_value or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not get_authenticated_user(token):
+        raise HTTPException(
+            status_code=401,
+            detail="The connected GitHub credential is invalid or expired. Reconnect GitHub.",
+        )
+    try:
+        from app.github_client import inspect_repository_before_audit
+
+        inspect_repository_before_audit(slug, token=token)
+    except GitHubAPIError as exc:
+        raise HTTPException(status_code=github_error_to_http(exc), detail=exc.message) from exc
+    return slug, token
+
+
+@app.post("/api/alexa/selected-repository", tags=["Alexa Voice & MCP"])
+def save_alexa_dashboard_repository(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Persist the user's dashboard selection after validating GitHub access."""
+    slug, _ = _validate_alexa_dashboard_repo(request, payload.get("repo"))
+    try:
+        set_selected_repository(current_user["id"], slug)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"selected_repository": slug}
+
+
+@app.post("/api/alexa/pairing-code", tags=["Alexa Voice & MCP"])
+def create_alexa_dashboard_pairing_code(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Create a one-use Alexa pairing code for a verified dashboard repository."""
+    slug, token = _validate_alexa_dashboard_repo(request, payload.get("repo"))
+    try:
+        set_selected_repository(current_user["id"], slug)
+        code = create_pairing_code(current_user["id"], slug, token)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "code": code,
+        "expires_in_seconds": 600,
+        "selected_repository": slug,
+    }
 
 
 
@@ -1676,12 +1738,9 @@ async def api_switch_tenant(
 def github_auth_endpoint(request: Request, req: GitHubAuthRequest):
     """Sign in (or auto-provision) using a GitHub Personal Access Token.
     
-    ZERO-KNOWLEDGE ARCHITECTURE:
-    - Token is validated against GitHub but NEVER stored in any database
-    - Token lives ONLY in your browser session memory
-    - Token must be sent with each request via 'X-GitHub-Token' header
-    - Server discards token immediately after each request
-    - This means: zero legal liability, zero token leakage risk, 100% user trust
+    The sign-in flow validates GitHub credentials and stores them encrypted for
+    dashboard API access. Alexa pairing separately stores an encrypted copy for
+    repository audits until the Alexa account is unlinked.
     """
     gh_user_data = get_authenticated_user(req.github_token)
     if not gh_user_data:
@@ -1692,7 +1751,6 @@ def github_auth_endpoint(request: Request, req: GitHubAuthRequest):
                 "scope at https://github.com/settings/tokens"
             ),
         )
-    # ZERO-KNOWLEDGE: Token validated but NOT stored
     user = get_or_create_github_user(github_token=req.github_token, gh_user_data=gh_user_data)
     user_org_id = user.get("org_id") or user.get("preferred_org_id")
     user_role = user.get("role", "developer")
@@ -1704,14 +1762,21 @@ def github_auth_endpoint(request: Request, req: GitHubAuthRequest):
     refresh_token = refresh_result if isinstance(refresh_result, str) else refresh_result["refresh_token"]
     return {
         "success": True,
-        "message": f"Connected as {gh_user_data.get('login', user['username'])}. Your GitHub token is NOT stored on our servers.",
+        "message": (
+            f"Connected as {gh_user_data.get('login', user['username'])}. "
+            "Your GitHub credential is encrypted at rest. Alexa pairing can "
+            "store a separate encrypted copy until you unlink the skill."
+        ),
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "expires_in": int(ACCESS_TOKEN_EXPIRE.total_seconds()),
         "user": user,
         "github_login": gh_user_data.get("login"),
-        "zero_knowledge_notice": "GreenCode NEVER stores your GitHub credentials. Token lives only in your browser session.",
+        "credential_storage_notice": (
+            "GitHub credentials are encrypted at rest. Alexa pairing stores a "
+            "separate encrypted copy until the skill is unlinked."
+        ),
     }
 
 
@@ -1737,14 +1802,13 @@ def update_profile_endpoint(
 ):
     """Update the caller's profile. IDOR-protected.
     
-    ZERO-KNOWLEDGE: GitHub token is validated but NEVER stored.
-    Token lives only in your browser session and must be sent per-request via X-GitHub-Token header.
+    The profile endpoint validates a supplied GitHub token but does not persist it.
+    Dashboard API calls send it per-request via the X-GitHub-Token header.
     """
     if user_id != current_user["id"]:
         raise HTTPException(status_code=403, detail="You cannot update another user's profile.")
 
     if req.github_token:
-        # Validate token but don't store it (Zero-Knowledge)
         if not get_authenticated_user(req.github_token):
             raise HTTPException(
                 status_code=400,
@@ -1759,7 +1823,7 @@ def update_profile_endpoint(
     )
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-    return {"success": True, "message": "Profile updated successfully. GitHub token validated but not stored (Zero-Knowledge).", "user": user}
+    return {"success": True, "message": "Profile updated successfully. A token supplied for this profile update was validated but not changed.", "user": user}
 
 
 @app.get("/api/repository/{repo_id}/sarif", tags=["SARIF Integration"])
@@ -2010,8 +2074,8 @@ def _violation_breakdown(violations: List[Dict[str, Any]]) -> Dict[str, int]:
 # ---------------------------------------------------------------------------
 # GITHUB INTEGRATION
 #
-# ZERO-KNOWLEDGE: GitHub token comes from X-GitHub-Token header per-request.
-# Never stored, never logged, immediately discarded after use.
+# Header credentials are per-request; GitHub sign-in and Alexa pairing may
+# separately retain encrypted credentials for authenticated repository access.
 # ---------------------------------------------------------------------------
 
 @app.post("/api/auth/github/connect", tags=["GitHub Integration"])
@@ -2057,7 +2121,7 @@ def get_github_user_endpoint(
 ):
     """Retrieve the connected GitHub account profile.
     
-    ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
+    Uses the request header when supplied, otherwise the user's encrypted credential.
     """
     header_token = http_request.headers.get("X-GitHub-Token")
     token = resolve_github_token(current_user["id"], header_token=header_token)
@@ -2078,7 +2142,7 @@ def list_github_repositories_endpoint(
 ):
     """List repositories accessible to the connected GitHub account.
     
-    ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
+    Uses the request header when supplied, otherwise the user's encrypted credential.
     """
     header_token = http_request.headers.get("X-GitHub-Token")
     token = resolve_github_token(current_user["id"], header_token=header_token)
@@ -2104,7 +2168,7 @@ def list_github_branches_endpoint(
 ):
     """List branches for a repository so a specific ref can be audited.
     
-    ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
+    Uses the request header when supplied, otherwise the user's encrypted credential.
     """
     try:
         slug = normalize_repo_slug(f"{owner}/{name}")
@@ -2125,7 +2189,7 @@ def inspect_github_repository_endpoint(
 ):
     """Pre-flight check: is this repository auditable, and how large is it?
     
-    ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
+    Uses the request header when supplied, otherwise the user's encrypted credential.
     """
     try:
         slug = normalize_repo_slug(f"{owner}/{name}")
@@ -2149,7 +2213,7 @@ def create_github_pull_request_endpoint(
 ):
     """Create a branch, commit the eco-refactored code, and open a Pull Request.
     
-    ZERO-KNOWLEDGE: Requires X-GitHub-Token header with each request.
+    Uses the request header when supplied, otherwise the user's encrypted credential.
     """
     header_token = request.headers.get("X-GitHub-Token")
     token = resolve_github_token(current_user["id"], explicit=req.token, header_token=header_token)

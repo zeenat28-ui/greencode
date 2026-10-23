@@ -5,7 +5,7 @@ F2 - timestamp replay protection in alexa_request_guard
 F3 - ASK cert chain verification helpers present
 F4 - dispatch_nlu_action re-exported from alexa_dispatch (no circular import)
 F5 - SSML outputSpeech + default reprompt in _build_ask_response
-F6 - addon.json endpoint points to /api/alexa/skill
+F6 - ASK and Alexa+ manifests point to their respective endpoints
 """
 from __future__ import annotations
 import json, os, sys, time, unittest, pathlib
@@ -49,20 +49,22 @@ class TestF5SSML(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# F6 - addon.json endpoint URI
+# F6 - ASK and Alexa+ endpoint URIs
 # ---------------------------------------------------------------------------
 class TestF6AddonJson(unittest.TestCase):
-    def _addon(self):
-        p = pathlib.Path(__file__).parent.parent / "alexa" / "addon.json"
+    def _manifest(self, name):
+        p = pathlib.Path(__file__).parent.parent / "alexa" / name
         return json.loads(p.read_text(encoding="utf-8"))
 
-    def test_uri_is_ask_webhook_not_mcp(self):
-        uri = self._addon()["integrations"][0]["config"]["endpoints"]["default"]["uri"]
-        self.assertFalse(uri.endswith("/mcp"), f"URI must not end with /mcp, got: {uri}")
-        self.assertTrue(uri.endswith("/api/alexa/skill"), f"URI must end with /api/alexa/skill, got: {uri}")
+    def test_ask_custom_skill_uses_ask_webhook(self):
+        uri = self._manifest("skill.json")["manifest"]["apis"]["custom"]["endpoint"]["uri"]
+        self.assertTrue(uri.endswith("/api/alexa/skill"), uri)
 
-    def test_mcp_type_preserved(self):
-        self.assertEqual(self._addon()["integrations"][0]["type"], "MCP")
+    def test_alexa_plus_addon_uses_mcp_transport(self):
+        integration = self._manifest("addon.json")["integrations"][0]
+        uri = integration["config"]["endpoints"]["default"]["uri"]
+        self.assertEqual(integration["type"], "MCP")
+        self.assertTrue(uri.endswith("/mcp"), uri)
 
 
 # ---------------------------------------------------------------------------

@@ -10,10 +10,10 @@
     "dismiss": "Dismiss"
   },
   "voice": {
-    "title": "GreenCode voice assistant",
+    "title": "GreenCode Alexa",
     "subtitle": "Speak naturally; GreenCode listens again after each reply",
-    "open": "Open voice assistant",
-    "close": "Close voice assistant",
+    "open": "Open Alexa",
+    "close": "Close Alexa",
     "ready": "Select Start hands-free once, allow microphone access, and ask your question aloud. GreenCode will answer and keep listening.",
     "releaseBriefingHint": "After signing in, connecting GitHub, and scanning a repository, try “audit pull request 42”. GreenCode will brief you on changed-line findings; it will not modify code or open a PR.",
     "handsFreeReady": "Hands-free is on. Speak whenever you are ready; GreenCode will listen again after each reply.",
@@ -189,14 +189,14 @@
     "verifyingCreds": "Verifying credentials...",
     "continueGithub": "Continue with GitHub",
     "continueSso": "Continue with SSO / SAML",
-    "zeroKnowledgeArch": "🛡️ Zero-Knowledge Architecture",
-    "tokenNeverStored": "Token NEVER stored in database",
-    "noserverPersistence": "No server-side token persistence",
-    "tokenInBrowserMemory": "Token lives only in browser memory",
+    "zeroKnowledgeArch": "🛡️ Encrypted GitHub credentials",
+    "tokenNeverStored": "Credentials are excluded from API responses",
+    "noserverPersistence": "GitHub sign-in credentials are encrypted at rest when configured",
+    "tokenInBrowserMemory": "Dashboard API credentials are session-scoped",
     "sentPerrequest": "Sent per-request via secure header",
     "measuringTagline": "Software Carbon Intensity & FinOps",
     "ephemeralSession": "Client-Side Ephemeral Session",
-    "ephemeralNote": "Your token is retained only in transient browser memory for GitHub API requests. It is never saved to disk, database, or server logs."
+    "ephemeralNote": "GitHub credentials may be encrypted at rest for dashboard access. Alexa pairing stores a separate encrypted copy for audits until you unlink the skill; pairing requires encryption to be configured."
   },
   "topbar": {
     "gate": "Gate ≥ {threshold}",

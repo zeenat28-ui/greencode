@@ -175,6 +175,15 @@ export const githubService = {
       `/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/inspect`
     ),
 
+  saveAlexaRepository: (repo: string) =>
+    api.post<{ selected_repository: string }>('/api/alexa/selected-repository', { repo }),
+
+  createAlexaPairingCode: (repo: string) =>
+    api.post<{ code: string; expires_in_seconds: number; selected_repository: string }>(
+      '/api/alexa/pairing-code',
+      { repo },
+    ),
+
   createPullRequest: (
     repoFullName: string,
     filePath: string,

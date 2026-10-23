@@ -16,7 +16,7 @@ import secrets
 import sys
 import time
 import uuid
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import re
 try: from cryptography.fernet import Fernet, InvalidToken; FERNET_OK=True
@@ -152,13 +152,6 @@ def is_encrypted_secret(value: Optional[str]) -> bool:
     """
     return bool(value) and str(value).startswith(FERNET_TOKEN_PREFIX)
 
-
-def count_plaintext_secrets() -> int:
-    """ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database.
-    
-    Returns 0 always. No tokens to migrate or encrypt.
-    """
-    return 0
 
 # PASSWORD POLICY: min 12 chars, 3 of 4 classes (upper, lower, digit, special)
 _BCRYPT_ROUNDS = int(os.environ.get("BCRYPT_ROUNDS", "12"))
@@ -574,6 +567,7 @@ class User(Base):
     full_name = Column(String(255), nullable=True)
     github_username = Column(String(100), nullable=True)
     github_token = Column(Text, nullable=True)
+    selected_repository = Column(String(255), nullable=True)
     avatar_url = Column(String(1024), nullable=True)
     role = Column(String(50), default="developer")  # admin, engineer, auditor, viewer
     is_verified = Column(Boolean, default=False, nullable=False)
@@ -591,6 +585,30 @@ class User(Base):
     repositories = relationship(
         "Repository", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
+
+
+class AlexaPairingCode(Base):
+    """Short-lived, one-use code for linking a signed Alexa user to GreenCode."""
+
+    __tablename__ = "alexa_pairing_codes"
+
+    code_digest = Column(String(64), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    selected_repository = Column(String(255), nullable=False)
+    encrypted_github_token = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+
+class AlexaAccountLink(Base):
+    """Maps an Amazon-signed Alexa user ID to an authenticated GreenCode account."""
+
+    __tablename__ = "alexa_account_links"
+
+    alexa_user_id = Column(String(255), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    encrypted_github_token = Column(Text, nullable=False)
+    linked_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class Repository(Base):
@@ -816,6 +834,8 @@ def init_db(*, use_alembic: Optional[bool] = None) -> None:
                 u_cols = [r[1] for r in u_res]
                 if "org_id" not in u_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN org_id INTEGER REFERENCES organizations(id);"))
+                if "selected_repository" not in u_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN selected_repository VARCHAR(255);"))
                 if "is_verified" not in u_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 0;"))
                 if "verification_token" not in u_cols:
@@ -1435,7 +1455,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def user_to_dict(user: Optional[User], include_sensitive: bool = False) -> Optional[Dict[str, Any]]:
-    """Serialize User model to sanitized dictionary (never exposes password_hash; tokens never stored)."""
+    """Serialize User model without exposing password hashes or credential values."""
     if not user:
         return None
 
@@ -1606,8 +1626,8 @@ def create_user(
 ) -> Dict[str, Any]:
     """Create a new user account with hashed password and verification token.
     
-    ZERO-KNOWLEDGE: GitHub token is validated but NEVER stored in database.
-    Token lives only in user's browser session and is sent per-request.
+    A token supplied during this registration path is validated but not stored
+    by the registration function.
     """
     init_db()
     db = SessionLocal()
@@ -1632,7 +1652,6 @@ def create_user(
         hashed_pwd = hash_password(password)
         now_utc = datetime.now(timezone.utc)
         v_token = None if auto_verify else secrets.token_urlsafe(32)
-        # ZERO-KNOWLEDGE: github_token is validated but NOT stored
         user = User(
             org_id=org_id,
             email=clean_email,
@@ -1640,7 +1659,7 @@ def create_user(
             password_hash=hashed_pwd,
             full_name=full_name.strip() if full_name else clean_username,
             github_username=github_username.strip() if github_username else None,
-            github_token=None,  # NEVER store GitHub token
+            github_token=None,
             avatar_url=avatar_url,
             role=role,
             is_verified=auto_verify,
@@ -1745,17 +1764,14 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
 
 
 def get_user_raw_github_token(user_id: int) -> Optional[str]:
-    """ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database.
-    
-    Returns None always. Caller must provide token per-request via header.
-    """
+    """Legacy no-op; callers resolve encrypted tokens through the supported path."""
     return None
 
 
 def validate_github_token(github_token: str) -> Optional[Dict[str, Any]]:
     """Validate a GitHub token by calling GitHub API.
     
-    ZERO-KNOWLEDGE: Token is used only for this validation call, never stored.
+    This function only validates the supplied token; it does not persist it.
     
     Returns GitHub user data if valid, None if invalid.
     """
@@ -1775,7 +1791,7 @@ def update_user_profile(
 ) -> Optional[Dict[str, Any]]:
     """Update user profile details.
     
-    ZERO-KNOWLEDGE: GitHub token is accepted for validation but NEVER stored.
+    A supplied token is not persisted by this profile update.
     """
     init_db()
     db = SessionLocal()
@@ -1783,9 +1799,7 @@ def update_user_profile(
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             return None
-        # ZERO-KNOWLEDGE: github_token is accepted but NOT stored
         if github_token is not None:
-            # Token validated by caller, but we don't persist it
             pass
         if github_username is not None:
             user.github_username = github_username.strip() if github_username else None
@@ -1805,9 +1819,9 @@ def update_user_profile(
 
 def get_or_create_github_user(github_token: str, gh_user_data: Dict[str, Any]) -> Dict[str, Any]:
     """Auto-provision or sign in a user via GitHub token authentication.
-    
-    ZERO-KNOWLEDGE: GitHub token is validated but NEVER stored in database.
-    Token lives only in user's browser session and is sent per-request.
+
+    The user's GitHub token is encrypted at rest when secret encryption is
+    configured. Serialized user data never exposes the token itself.
     """
     init_db()
     db = SessionLocal()
@@ -1916,11 +1930,29 @@ def create_password_reset_token(email: str) -> Optional[Dict[str, Any]]:
 
 
 
+def _stored_github_credential_records(db) -> List[Tuple[str, Any, str]]:
+    """Return credential-bearing records across dashboard and Alexa storage."""
+    records: List[Tuple[str, Any, str]] = []
+    for user in db.query(User).filter(User.github_token.isnot(None), User.github_token != "").all():
+        records.append((f"user {user.id}", user, "github_token"))
+    for pairing in db.query(AlexaPairingCode).filter(
+        AlexaPairingCode.encrypted_github_token.isnot(None),
+        AlexaPairingCode.encrypted_github_token != "",
+    ).all():
+        records.append(("Alexa pairing code", pairing, "encrypted_github_token"))
+    for link in db.query(AlexaAccountLink).filter(
+        AlexaAccountLink.encrypted_github_token.isnot(None),
+        AlexaAccountLink.encrypted_github_token != "",
+    ).all():
+        records.append(("Alexa account link", link, "encrypted_github_token"))
+    return records
+
+
 # ---------------------------------------------------------------------------
-# ZERO-KNOWLEDGE: GitHub tokens are NEVER stored in database
+# Migrate and rotate all credentials encrypted at rest.
 # ---------------------------------------------------------------------------
 def encrypt_plaintext_secrets(*, dry_run: bool = False) -> Dict[str, Any]:
-    """Re-encrypt GitHub tokens that were stored before a key existed."""
+    """Encrypt any plaintext GitHub credentials already present in the database."""
     report: Dict[str, Any] = {
         "dry_run": dry_run,
         "encryption_enabled": _fernet is not None,
@@ -1941,14 +1973,9 @@ def encrypt_plaintext_secrets(*, dry_run: bool = False) -> Dict[str, Any]:
     init_db()
     db = SessionLocal()
     try:
-        users = (
-            db.query(User)
-            .filter(User.github_token.isnot(None), User.github_token != "")
-            .all()
-        )
-        for user in users:
+        for record_label, record, attribute in _stored_github_credential_records(db):
             report["scanned"] += 1
-            current = user.github_token
+            current = getattr(record, attribute)
             if not current:
                 continue
             if is_encrypted_secret(current):
@@ -1962,7 +1989,7 @@ def encrypt_plaintext_secrets(*, dry_run: bool = False) -> Dict[str, Any]:
             except Exception as exc:
                 report["failed"] += 1
                 report["errors"].append(
-                    f"user {user.id}: verification failed, left as plaintext ({exc})"
+                    f"{record_label}: verification failed, left as plaintext ({exc})"
                 )
                 continue
 
@@ -1970,7 +1997,7 @@ def encrypt_plaintext_secrets(*, dry_run: bool = False) -> Dict[str, Any]:
                 report["migrated"] += 1
                 continue
 
-            user.github_token = encrypted
+            setattr(record, attribute, encrypted)
             report["migrated"] += 1
 
         if not dry_run and report["migrated"]:
@@ -1987,7 +2014,7 @@ def encrypt_plaintext_secrets(*, dry_run: bool = False) -> Dict[str, Any]:
 
 
 def reencrypt_secrets(old_key: str, *, dry_run: bool = False) -> Dict[str, Any]:
-    """Move stored GitHub tokens from old_key to current SECRETS_ENCRYPTION_KEY."""
+    """Rotate stored GitHub credentials from old_key to the current encryption key."""
     report: Dict[str, Any] = {
         "dry_run": dry_run,
         "current_key_configured": _fernet is not None,
@@ -2011,14 +2038,9 @@ def reencrypt_secrets(old_key: str, *, dry_run: bool = False) -> Dict[str, Any]:
     init_db()
     db = SessionLocal()
     try:
-        users = (
-            db.query(User)
-            .filter(User.github_token.isnot(None), User.github_token != "")
-            .all()
-        )
-        for user in users:
+        for record_label, record, attribute in _stored_github_credential_records(db):
             report["scanned"] += 1
-            current = user.github_token
+            current = getattr(record, attribute)
             if not current:
                 continue
             if not is_encrypted_secret(current):
@@ -2036,7 +2058,7 @@ def reencrypt_secrets(old_key: str, *, dry_run: bool = False) -> Dict[str, Any]:
             except Exception as exc:
                 report["failed"] += 1
                 report["errors"].append(
-                    f"user {user.id}: neither current nor old key decrypts token ({exc})"
+                    f"{record_label}: neither current nor old key decrypts token ({exc})"
                 )
                 continue
 
@@ -2046,13 +2068,13 @@ def reencrypt_secrets(old_key: str, *, dry_run: bool = False) -> Dict[str, Any]:
                     raise ValueError("round trip did not reproduce original token")
             except Exception as exc:
                 report["failed"] += 1
-                report["errors"].append(f"user {user.id}: verification failed ({exc})")
+                report["errors"].append(f"{record_label}: verification failed ({exc})")
                 continue
 
             if dry_run:
                 report["reencrypted"] += 1
                 continue
-            user.github_token = rotated
+            setattr(record, attribute, rotated)
             report["reencrypted"] += 1
 
         if not dry_run and report["reencrypted"]:
@@ -2069,23 +2091,21 @@ def reencrypt_secrets(old_key: str, *, dry_run: bool = False) -> Dict[str, Any]:
 
 
 def count_plaintext_secrets() -> int:
-    """How many users still have a GitHub token stored in the clear."""
-    if _fernet is None:
-        return 0
+    """Count plaintext GitHub credentials across dashboard and Alexa records."""
     try:
         init_db()
         db = SessionLocal()
         try:
-            rows = db.query(User.github_token).filter(
-                User.github_token.isnot(None), User.github_token != ""
-            ).all()
             return sum(
-                1 for (value,) in rows if value and not is_encrypted_secret(value)
+                1
+                for _label, record, attribute in _stored_github_credential_records(db)
+                if not is_encrypted_secret(getattr(record, attribute))
             )
         finally:
             db.close()
     except Exception:
-        return 0
+        logger.exception("Could not count plaintext GitHub credential records.")
+        raise
 
 
 def reset_password_with_token(token: str, new_password: str) -> Dict[str, Any]:
@@ -2474,4 +2494,3 @@ def delete_aws_account_record(account_id: str, org_id: Optional[int] = None) -> 
         raise
     finally:
         db.close()
-

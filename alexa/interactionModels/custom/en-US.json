@@ -90,6 +90,29 @@
           ]
         },
         {
+          "name": "LinkGreenCodeAccountIntent",
+          "slots": [
+            {
+              "name": "pairing_code",
+              "type": "AMAZON.NUMBER"
+            }
+          ],
+          "samples": [
+            "link my GreenCode account with code {pairing_code}",
+            "pair my Alexa account with code {pairing_code}",
+            "connect GreenCode with code {pairing_code}"
+          ]
+        },
+        {
+          "name": "UnlinkGreenCodeAccountIntent",
+          "slots": [],
+          "samples": [
+            "unlink my GreenCode account",
+            "disconnect my GreenCode account",
+            "forget my GreenCode account"
+          ]
+        },
+        {
           "name": "GetCurrentRepositoryIntent",
           "slots": [],
           "samples": [

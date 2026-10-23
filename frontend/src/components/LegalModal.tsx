@@ -163,9 +163,9 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'terms' }: Le
               </div>
 
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">5. Zero-Knowledge Credential Custody</h4>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1.5">5. Credential Handling & Encryption</h4>
                 <p>
-                  When providing GitHub Personal Access Tokens (PATs) or cloud provider API credentials, such credentials remain strictly in client browser session memory under our Zero-Knowledge security architecture and are transmitted via TLS-encrypted HTTPS headers per request. The GreenCode relational database does not store unencrypted customer API secret keys.
+                  GitHub credentials may be retained for authenticated repository operations and are encrypted at rest when the deployment has a valid SECRETS_ENCRYPTION_KEY. Per-request GitHub headers are not separately persisted. If you explicitly pair an Alexa account, GreenCode stores a separate encrypted copy so Alexa can audit the selected repository; it is retained until you say “unlink my GreenCode account.” Alexa pairing is blocked unless encryption is configured. Other cloud-provider credentials remain in the browser session and are sent over TLS only when needed.
                 </p>
               </div>
 

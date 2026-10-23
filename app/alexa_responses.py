@@ -377,15 +377,46 @@ def build_billing_response(result: Dict[str, Any]) -> Dict[str, Any]:
 def build_list_response(result: Dict[str, Any]) -> Dict[str, Any]:
     data = result.get("data", {}) or {}
     repos = data.get("repositories", []) or []
+    selected_repository = data.get("selected_repository")
     if not repos:
-        speech = "You have no repositories connected to GreenCode."
+        if selected_repository:
+            speech = f"Your currently selected dashboard repository is {selected_repository}."
+        else:
+            speech = "You have no repositories connected to GreenCode."
     else:
         names = [r.get("name", "unknown") for r in repos[:10]]
-        speech = (
+        speech = ""
+        if selected_repository:
+            speech = f"Your currently selected dashboard repository is {selected_repository}. "
+        speech += (
             f"You have {_say_number(len(repos))} connected repositories: {_list_items(names)}."
         )
 
     return build_response(speech, card_title="Your Repositories")
+
+
+def build_dashboard_scan_response(result: Dict[str, Any]) -> Dict[str, Any]:
+    data = result.get("data", {}) or {}
+    repo = str(data.get("repo") or "your selected repository")
+    score = _say_number(data["green_score"])
+    finding_count = _say_number(data["total_violations"])
+    file_count = _say_number(data["total_files"])
+    speech = (
+        f"Your latest dashboard scan for {repo} scored {score} out of 100 "
+        f"and found {finding_count} findings across {file_count} files."
+    )
+    findings = data.get("top_findings") or []
+    if findings:
+        finding = findings[0]
+        title = str(finding.get("title") or "A code issue")
+        severity = str(finding.get("severity") or "unrated").lower()
+        location = str(finding.get("file_path") or "an unknown file")
+        line = finding.get("line_number")
+        if isinstance(line, int) and not isinstance(line, bool) and line > 0:
+            location += f" at line {_say_number(line)}"
+        speech += f" The first listed finding is {severity}: {title}, in {location}."
+    speech += " This is a static code scan, not a hardware energy measurement."
+    return build_response(speech, card_title="Latest Dashboard Scan")
 
 
 def build_help_from_hint(hint: str) -> Dict[str, Any]:

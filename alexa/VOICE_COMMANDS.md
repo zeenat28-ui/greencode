@@ -20,6 +20,22 @@ backend is available. Energy backend availability is not a measurement of a
 specific running workload. Repository audits report static findings only and
 do not measure workload energy or SCI.
 
+### Signed-in dashboard microphone
+
+After signing in, connecting GitHub, selecting a repository, and completing a
+scan, the dashboard microphone can read the selected repository and the latest
+scan summary. Try:
+
+| What you say | What Alexa reads |
+|---|---|
+| "which repository am I working on" | The repository selected in the dashboard |
+| "what is my green score" | The latest scan score, finding count, file count, and leading finding |
+| "how many issues did my latest scan find" | The latest scan finding count and leading finding |
+
+The summary comes from the dashboard's saved scan. It is a static code scan,
+not a hardware energy measurement. A scan must be completed for the currently
+selected repository before Alexa can report its score.
+
 ### Green Release Briefing in the signed-in dashboard
 
 In the GreenCode browser voice assistant, after scanning a GitHub repository

@@ -85,6 +85,12 @@ export default function ScanRepository() {
   const selectRepo = async (repo: GitHubRepo) => {
     const requestVersion = ++branchRequestVersion.current;
     setSelected(repo);
+    try {
+      window.localStorage.setItem('greencode_active_repo', repo.full_name);
+    } catch (error: unknown) {
+      console.error('[ScanRepository] could not save the selected repository for voice context', error);
+      setScanError('The selected repository could not be saved for the dashboard microphone.');
+    }
     setRef(repo.default_branch || 'main');
     setBranches([]);
     setBranchesError(null);

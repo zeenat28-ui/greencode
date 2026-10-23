@@ -35,6 +35,7 @@ from app.alexa_responses import (
     build_audit_response,
     build_billing_response,
     build_compare_response,
+    build_dashboard_scan_response,
     build_deploy_response,
     build_diff_response,
     build_dynamic_response,
@@ -192,6 +193,7 @@ _TOOL_RESPONSE_BUILDERS = {
     "refactor_code": build_refactor_response,
     "explain_score": build_explain_response,
     "list_repositories": build_list_response,
+    "dashboard_scan_summary": build_dashboard_scan_response,
     "reconcile_focus_billing": build_billing_response,
     "push_green_fix": build_github_response,
     "create_pull_request": build_github_response,
@@ -565,7 +567,96 @@ async def alexa_skill(
     github_token = x_github_token.strip() if x_github_token else None
 
     command = MAPPER.map(utterance)
-    if command.tool == "audit_diff":
+    active_repo = session_attrs.get("active_repo")
+    if (
+        isinstance(active_repo, str)
+        and not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", active_repo.strip())
+    ):
+        active_repo = None
+
+    if command.tool == "dashboard_scan_summary":
+        scan = session_attrs.get("dashboard_scan")
+        if user_id is None:
+            result = {
+                "status": "error",
+                "data": {"reason": "Sign in to GreenCode before asking for dashboard scan results."},
+            }
+        elif not isinstance(scan, dict):
+            result = {
+                "status": "error",
+                "data": {
+                    "reason": (
+                        "I could not find a scan for the selected repository. Run a "
+                        "repository scan in the dashboard, then ask for your Green Score."
+                    )
+                },
+            }
+        else:
+            score = scan.get("green_score")
+            total_files = scan.get("total_files")
+            total_violations = scan.get("total_violations")
+            repo = scan.get("repo")
+            valid_score = (
+                isinstance(score, (int, float))
+                and not isinstance(score, bool)
+                and 0 <= score <= 100
+            )
+            valid_counts = all(
+                isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                for value in (total_files, total_violations)
+            )
+            if (
+                not valid_score
+                or not valid_counts
+                or not isinstance(repo, str)
+                or not repo.strip()
+                or len(repo) > 255
+            ):
+                result = {
+                    "status": "error",
+                    "data": {"reason": "The dashboard scan summary is incomplete. Run the scan again."},
+                }
+            else:
+                findings = scan.get("top_findings")
+                result = {
+                    "status": "ok",
+                    "data": {
+                        "repo": repo.strip(),
+                        "green_score": score,
+                        "total_files": total_files,
+                        "total_violations": total_violations,
+                        "top_findings": [
+                            {
+                                "title": item.get("title", "")[:160]
+                                if isinstance(item.get("title"), str)
+                                else "",
+                                "severity": item.get("severity", "")[:20]
+                                if isinstance(item.get("severity"), str)
+                                else "",
+                                "file_path": item.get("file_path", "")[:240]
+                                if isinstance(item.get("file_path"), str)
+                                else "",
+                                "line_number": item.get("line_number")
+                                if isinstance(item.get("line_number"), int)
+                                and not isinstance(item.get("line_number"), bool)
+                                and item.get("line_number") > 0
+                                else None,
+                            }
+                            for item in findings[:3]
+                            if isinstance(item, dict)
+                        ] if isinstance(findings, list) else [],
+                    },
+                }
+    elif command.tool == "list_repositories" and active_repo and user_id is not None:
+        if github_token:
+            result = _call_greencode_tool(
+                command, org_id=org_id, user_id=user_id, github_token=github_token
+            )
+        else:
+            result = {"status": "ok", "data": {"repositories": []}}
+        if result.get("status") == "ok":
+            result.setdefault("data", {})["selected_repository"] = active_repo.strip()
+    elif command.tool == "audit_diff":
         if user_id is None:
             result = {
                 "status": "error",
@@ -587,7 +678,7 @@ async def alexa_skill(
                 },
             }
         else:
-            repo = command.payload.get("repo") or session_attrs.get("active_repo")
+            repo = command.payload.get("repo") or active_repo
             if not isinstance(repo, str) or not re.fullmatch(
                 r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo.strip()
             ):

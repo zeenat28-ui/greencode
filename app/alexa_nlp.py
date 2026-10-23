@@ -49,6 +49,13 @@ _pat(
     "audit_repository",
     lambda m: {"repo": _extract_repo(m.group(0)) or "", "branch": "main"},
 )
+_pat(
+    r"\b(what is|what's|tell me|show me|read me|how many)\b.*\b(my|latest|dashboard|scan|green score|findings|issues|violations)\b"
+    r"|\b(my|latest|dashboard)\s+(green score|scan results|findings|issues|violations)\b",
+    "dashboard_scan_summary",
+    lambda m: {},
+    priority=10,
+)
 
 # 2. SNIPPET / CODE AUDIT ---------------------------------------------------
 _pat(

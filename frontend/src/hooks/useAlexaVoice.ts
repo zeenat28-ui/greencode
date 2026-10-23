@@ -49,20 +49,71 @@ function buildAskPayload(
   sessionAttributes: Record<string, unknown> = {},
 ) {
   let activeRepo = '';
+  let dashboardScan: Record<string, unknown> | null = null;
   try {
+    const selectedRepo = window.localStorage.getItem('greencode_active_repo') || '';
     const storedScan = window.localStorage.getItem('greencode_scan_data');
-    const scan = storedScan ? JSON.parse(storedScan) as { repo_path?: unknown } : null;
-    if (typeof scan?.repo_path === 'string') {
-      const slug = scan.repo_path
+    const scan = storedScan ? JSON.parse(storedScan) as Record<string, unknown> : null;
+    const scanRepo = typeof scan?.full_name === 'string'
+      ? scan.full_name
+      : typeof scan?.repo_path === 'string'
+        ? scan.repo_path
+        : '';
+    const selectedSlug = selectedRepo
+      .replace(/^https?:\/\/github\.com\//i, '')
+      .replace(/\.git$/i, '')
+      .replace(/\/$/, '')
+      .trim();
+    const scanSlug = scanRepo
         .replace(/^https?:\/\/github\.com\//i, '')
         .replace(/\.git$/i, '')
         .replace(/\/$/, '')
         .trim();
-      if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(slug)) activeRepo = slug;
+    if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(selectedSlug)) {
+      activeRepo = selectedSlug;
+    } else if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(scanSlug)) {
+      activeRepo = scanSlug;
+    }
+
+    const matchesSelected = !activeRepo || activeRepo.toLowerCase() === scanSlug.toLowerCase();
+    const greenScore = scan?.green_score;
+    const totalFiles = scan?.total_files;
+    const totalViolations = scan?.total_violations;
+    if (
+      scan &&
+      matchesSelected &&
+      typeof greenScore === 'number' &&
+      Number.isFinite(greenScore) &&
+      typeof totalFiles === 'number' &&
+      Number.isFinite(totalFiles) &&
+      typeof totalViolations === 'number' &&
+      Number.isFinite(totalViolations)
+    ) {
+      const violations = Array.isArray(scan.violations) ? scan.violations : [];
+      dashboardScan = {
+        repo: scanRepo || activeRepo,
+        green_score: greenScore,
+        total_files: totalFiles,
+        total_violations: totalViolations,
+        top_findings: violations.slice(0, 3).map((item: unknown) => {
+          if (!item || typeof item !== 'object') return null;
+          const finding = item as Record<string, unknown>;
+          return {
+            title: typeof finding.title === 'string' ? finding.title.slice(0, 160) : '',
+            severity: typeof finding.severity === 'string' ? finding.severity.slice(0, 20) : '',
+            file_path: typeof finding.file_path === 'string' ? finding.file_path.slice(0, 240) : '',
+            line_number:
+              typeof finding.line_number === 'number' && Number.isInteger(finding.line_number)
+                ? finding.line_number
+                : null,
+          };
+        }).filter(Boolean),
+      };
     }
   } catch (error: unknown) {
     console.warn('[useAlexaVoice] could not read the latest repository scan context', error);
     activeRepo = '';
+    dashboardScan = null;
   }
 
   return {
@@ -74,9 +125,15 @@ function buildAskPayload(
       // reject direct browser POSTs (the guard only checks when an id IS present
       // and mismatches — absence is treated as a non-Alexa-device caller).
       application: {},
-      attributes: activeRepo
-        ? { ...sessionAttributes, active_repo: activeRepo }
-        : sessionAttributes,
+      attributes: {
+        ...Object.fromEntries(
+          Object.entries(sessionAttributes).filter(
+            ([key]) => key !== 'active_repo' && key !== 'dashboard_scan',
+          ),
+        ),
+        ...(activeRepo ? { active_repo: activeRepo } : {}),
+        ...(dashboardScan ? { dashboard_scan: dashboardScan } : {}),
+      },
       user: { userId: 'web-dashboard-user' },
     },
     context: {

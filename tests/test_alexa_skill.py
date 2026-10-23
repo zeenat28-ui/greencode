@@ -102,6 +102,91 @@ class TestAskWebhookHardening(_WebhookTestBase):
         self.assertIn("Pair Alexa", speech)
         self.assertNotIn("audit my Python code", speech)
 
+    def test_dashboard_microphone_reads_authenticated_scan_summary(self):
+        app = FastAPI()
+        app.include_router(alexa_skill.router)
+        client = TestClient(app)
+        token = create_tokens(user_id=19, org_id=23, role="developer")["access_token"]
+        payload = {
+            "version": "1.0",
+            "session": {
+                "application": {},
+                "attributes": {
+                    "active_repo": "owner/repo",
+                    "dashboard_scan": {
+                        "repo": "owner/repo",
+                        "green_score": 92,
+                        "total_files": 14,
+                        "total_violations": 1,
+                        "top_findings": [{
+                            "title": "Nested loop",
+                            "severity": "HIGH",
+                            "file_path": "src/main.py",
+                            "line_number": 12,
+                        }],
+                    },
+                },
+            },
+            "request": {
+                "type": "IntentRequest",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "intent": {
+                    "name": "FreeformGreenCodeQueryIntent",
+                    "slots": {"query": {"name": "query", "value": "what is my green score"}},
+                },
+            },
+        }
+        with mock.patch.object(alexa_skill, "ALEXA_SKILL_ID", None):
+            response = client.post(
+                "/api/voice/alexa/ask",
+                json=payload,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        speech = response.json()["response"]["outputSpeech"]["ssml"]
+        self.assertIn("latest dashboard scan for owner/repo", speech)
+        self.assertIn("Nested loop", speech)
+        client.close()
+
+    def test_dashboard_microphone_reads_selected_repository_without_github_oauth(self):
+        app = FastAPI()
+        app.include_router(alexa_skill.router)
+        client = TestClient(app)
+        token = create_tokens(user_id=19, org_id=23, role="developer")["access_token"]
+        payload = {
+            "version": "1.0",
+            "session": {
+                "application": {},
+                "attributes": {"active_repo": "owner/repo"},
+            },
+            "request": {
+                "type": "IntentRequest",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "intent": {
+                    "name": "FreeformGreenCodeQueryIntent",
+                    "slots": {
+                        "query": {
+                            "name": "query",
+                            "value": "which repository am I working on",
+                        }
+                    },
+                },
+            },
+        }
+        with mock.patch.object(alexa_skill, "ALEXA_SKILL_ID", None):
+            response = client.post(
+                "/api/voice/alexa/ask",
+                json=payload,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        speech = response.json()["response"]["outputSpeech"]["ssml"]
+        self.assertIn("currently selected dashboard repository is owner/repo", speech)
+        self.assertNotIn("no repositories connected", speech)
+        client.close()
+
     def test_invalid_json_returns_400(self):
         resp = self._post(
             "/alexa/skill", content=b"{not json", headers={"Content-Type": "application/json"}
@@ -170,10 +255,20 @@ class TestNlpMapper(unittest.TestCase):
                 self.assertEqual(command.tool, "list_repositories")
                 self.assertFalse(command.fallback)
 
-    def test_green_score_utterance_maps_to_end_to_end_audit(self):
+    def test_dashboard_scan_question_maps_to_dashboard_summary(self):
+        for utterance in (
+            "what is my green score",
+            "how many issues did my latest scan find",
+            "tell me my dashboard scan results",
+        ):
+            with self.subTest(utterance=utterance):
+                command = alexa_nlp.MAPPER.map(utterance)
+                self.assertEqual(command.tool, "dashboard_scan_summary")
+                self.assertFalse(command.fallback)
+
+    def test_green_score_question_reads_dashboard_scan(self):
         cmd = alexa_nlp.MAPPER.map("what is my green score")
-        self.assertEqual(cmd.tool, "audit_and_score")
-        self.assertEqual(cmd.payload["source_code"], "")
+        self.assertEqual(cmd.tool, "dashboard_scan_summary")
 
     def test_region_comparison_utterance(self):
         cmd = alexa_nlp.MAPPER.map("compare ireland and virginia for my batch job")
@@ -272,6 +367,29 @@ class TestSsmlBuilders(unittest.TestCase):
 
         self.assertIn("connected repositories: greencode", ssml)
         self.assertNotIn("cannot tell which repository", ssml)
+
+    def test_dashboard_scan_response_uses_real_scan_summary_and_caveat(self):
+        resp = alexa_responses.build_dashboard_scan_response({
+            "data": {
+                "repo": "owner/repo",
+                "green_score": 92,
+                "total_files": 14,
+                "total_violations": 1,
+                "top_findings": [{
+                    "title": "Nested loop",
+                    "severity": "HIGH",
+                    "file_path": "src/main.py",
+                    "line_number": 12,
+                }],
+            },
+        })
+        ssml = resp["response"]["outputSpeech"]["ssml"]
+
+        self.assertIn("latest dashboard scan for owner/repo", ssml)
+        self.assertIn("92</say-as> out of 100", ssml)
+        self.assertIn("1</say-as> findings across", ssml)
+        self.assertIn("Nested loop", ssml)
+        self.assertIn("static code scan, not a hardware energy measurement", ssml)
 
 
 class TestStandaloneRouterGuards(unittest.TestCase):

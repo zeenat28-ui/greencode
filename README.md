@@ -194,6 +194,15 @@ Developer Console once; the assigned ngrok hostname stays stable across local
 restarts. The bridge exposes only the ASK webhook path. See [Alexa local
 setup](alexa/README.md#deploying) for details.
 
+In the Developer Console, open your skill's **Build → Endpoint** page, select
+**HTTPS**, and paste the launcher's `https://.../api/alexa/skill` URL into
+**Default Region**. For an ngrok `*.ngrok-free.dev` hostname, choose **My
+development endpoint is a sub-domain of a domain that has a wildcard
+certificate from a certificate authority**, then save the endpoint and build
+the interaction model. Use the URL printed by your own launcher; it must be
+online whenever you test the skill. In the **Test** tab, enable **Development**
+and try `open green code auditor` or `help`.
+
 #### Connect Alexa+ to the MCP server
 Alexa+ uses the separate `alexa/addon.json` manifest and the self-hosted
 Streamable HTTP endpoint ending in `/mcp`. It must not be pointed at the ASK
@@ -290,7 +299,7 @@ The separate browser voice assistant is not an Amazon Alexa connection:
 greencode/
 ├── 📱 alexa/                    # Alexa+ MCP & ASK configurations
 │   ├── addon.json               # Alexa+ Add-On manifest
-│   ├── interaction_model_en_US.json
+│   ├── interactionModels/custom/en-US.json  # ASK Custom Skill interaction model
 │   └── skill.json
 ├── 🐍 app/                      # Core Python backend
 │   ├── main.py                  # FastAPI application

@@ -780,10 +780,12 @@ def test_spine_memory_and_lawyer_upgrades():
     import json
     import pytest
     from app.audit_logs import AuditLogManager
-    from app.database import AuditLog, Repository, SessionLocal, reset_password_with_token
+    from app.database import AuditLog, Repository, SessionLocal, init_db, reset_password_with_token
     from app.reports.esg_report import ESGReportGenerator
     from app.services.billing_service import BillingService
     from app.services.budget_service import BudgetService
+
+    init_db()
 
     # 1. AuditLogManager.verify_integrity detects payload tampering even if prev_hash & record_hash are untouched
     org_id = 77701
@@ -843,13 +845,15 @@ def test_spine_memory_and_lawyer_upgrades():
     assert "scope_2_tonnes_co2e" in esg_data
     assert "scope_3_tonnes_co2e" in esg_data
 
-    # 3. BudgetService.get_team_status & evaluate_pr_impact auto-initialize fresh team budget without crashing
-    fresh_status = BudgetService.get_team_status(org_id=org_id, team_id="new-unallocated-team")
-    assert fresh_status["monthly_budget_kg_co2e"] == 500.0
-    pr_impact = BudgetService.evaluate_pr_impact(
-        org_id=org_id, team_id="new-unallocated-team", additional_projected_kg_co2e=15.0
-    )
-    assert pr_impact["verdict"] == "PASSED"
+    # 3. Unallocated teams do not receive an invented quota or a success-shaped PR verdict.
+    from app.services.budget_service import BudgetNotConfiguredError
+
+    with pytest.raises(BudgetNotConfiguredError):
+        BudgetService.get_team_status(org_id=org_id, team_id="new-unallocated-team")
+    with pytest.raises(BudgetNotConfiguredError):
+        BudgetService.evaluate_pr_impact(
+            org_id=org_id, team_id="new-unallocated-team", additional_projected_kg_co2e=15.0
+        )
 
     # 4. BillingService rejects unknown tiers and sets a 30-day billing period
     with pytest.raises(KeyError):
@@ -929,7 +933,7 @@ def test_full_seven_part_end_to_end_integration(tmp_path):
     AUTH = {"Authorization": f"Bearer {_tokens['access_token']}"}
 
     # /api/repositories (used by Overview.tsx)
-    repos_resp = client.get("/api/repositories?limit=5")
+    repos_resp = client.get("/api/repositories?limit=5", headers=AUTH)
     assert repos_resp.status_code == 200
     repos_json = repos_resp.json()
     assert "repositories" in repos_json
@@ -997,12 +1001,24 @@ def test_control_plane_live_workloads_and_budgets_integration():
     """Verify live workload discovery, baseline calibration, budget allocation, PR quota gate, and local workspace scan."""
     from fastapi.testclient import TestClient
     from app.main import app
+    from app.database import create_organization, create_user
+    from uuid import uuid4
 
     client = TestClient(app)
 
     from app.auth.jwt import create_tokens
     from app.auth.roles import Role
-    _tokens = create_tokens(user_id=1, org_id=1, role=Role.SUPERADMIN.value)
+    suffix = uuid4().hex
+    org = create_organization(name="Control Plane Integration", slug=f"control-plane-{suffix}")
+    user = create_user(
+        email=f"control-plane-{suffix}@greencode.test",
+        username=f"control-plane-{suffix}",
+        password="integration-test-password",
+        role=Role.SUPERADMIN.value,
+        auto_verify=True,
+        org_id=org["id"],
+    )
+    _tokens = create_tokens(user_id=user["id"], org_id=org["id"], role=Role.SUPERADMIN.value)
     AUTH = {"Authorization": f"Bearer {_tokens['access_token']}"}
 
     # 1. Live workloads discovery (/api/energy/workloads)
@@ -1074,18 +1090,20 @@ def test_control_plane_live_workloads_and_budgets_integration():
         "/api/scan/local-workspace",
         json={
             "subpath": "scripts",
-            "repo_name": "greencode-org/greencode",
-            "team_id": "platform-runtime",
         },
+        headers=AUTH,
     )
     assert scan_resp.status_code == 200
     scan_json = scan_resp.json()
     assert scan_json["success"] is True
     assert scan_json["green_score"] == 100.0
-    assert scan_json["repo_name"] == "greencode-org/greencode"
+    assert scan_json["repo_name"] == "greencode"
 
-    repos_after = client.get("/api/repositories?limit=5").json()
-    assert any(r["repo_name"] == "greencode-org/greencode" for r in repos_after["repositories"])
+    repos_after = client.get("/api/repositories?limit=5", headers=AUTH).json()
+    assert any(
+        r["repo_name"] == "greencode" and r["source"] == "local_workspace"
+        for r in repos_after["repositories"]
+    )
 
 
 def test_purza2_multilanguage_static_rules_and_unified_diff_patches():
@@ -1228,9 +1246,13 @@ def test_purza4_csrd_evidence_bundle_endpoints_and_action_manifest():
     from app.main import app
 
     client = TestClient(app)
+    from app.auth.jwt import create_tokens
+    from app.auth.roles import Role
+    tokens = create_tokens(user_id=1, org_id=1, role=Role.SUPERADMIN.value)
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
     # 1. Verify /api/reports/esg/1/evidence-manifest returns SHA-256 digest map
-    man_resp = client.get("/api/reports/esg/1/evidence-manifest")
+    man_resp = client.get("/api/reports/esg/1/evidence-manifest", headers=headers)
     assert man_resp.status_code == 200
     man_data = man_resp.json()
     assert len(man_data.get("bundle_root_sha256", "")) == 64
@@ -1238,7 +1260,7 @@ def test_purza4_csrd_evidence_bundle_endpoints_and_action_manifest():
     assert "audit_chain_certificate.json" in man_data.get("file_digests", {})
 
     # 2. Verify /api/reports/esg/1/evidence-bundle returns a valid ZIP archive with matching root hash
-    zip_resp = client.get("/api/reports/esg/1/evidence-bundle")
+    zip_resp = client.get("/api/reports/esg/1/evidence-bundle", headers=headers)
     assert zip_resp.status_code == 200
     with zipfile.ZipFile(io.BytesIO(zip_resp.content), "r") as zf:
         names = set(zf.namelist())
@@ -1256,8 +1278,3 @@ def test_purza4_csrd_evidence_bundle_endpoints_and_action_manifest():
     assert "license_key:" in action_text
     assert "--diff ${{ inputs.diff_range }}" in action_text
     assert "GREENCODE_LICENSE_KEY" in action_text
-
-
-
-
-

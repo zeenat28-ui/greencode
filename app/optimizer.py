@@ -551,34 +551,106 @@ def list_available_zones() -> List[Dict[str, Any]]:
 
 
 def _refactor_string_concat_code(snippet: str) -> str:
-    """Transform '+=' string concatenation into list append + str.join()."""
+    """Replace simple string accumulation without moving function locals to module scope."""
     lines = snippet.splitlines()
-    transformed_lines = []
-    accumulator_var = "chunks"
-    base_indent = ""
+    accumulation = next(
+        (
+            (index, match)
+            for index, line in enumerate(lines)
+            if (match := re.match(r"^(\s*)([A-Za-z_]\w*)\s*\+=\s*(.+?)\s*$", line))
+        ),
+        None,
+    )
+    if accumulation is None:
+        return snippet
 
+    accumulator = accumulation[1].group(2)
+    chunks = f"{accumulator}_chunks"
+    while re.search(rf"\b{re.escape(chunks)}\b", snippet):
+        chunks += "_"
+
+    function = re.search(r"(?m)^([ \t]*)(?:async\s+)?def\s+\w+\s*\(", snippet)
+    if function:
+        function_indent = len(function.group(1).expandtabs(8))
+        function_start = snippet[: function.start()].count("\n")
+        function_end = len(lines)
+        for index in range(function_start + 1, len(lines)):
+            line = lines[index]
+            if line.strip() and len(line) - len(line.lstrip()) <= function_indent:
+                function_end = index
+                break
+
+        scope = lines[function_start:function_end]
+        empty_init = re.compile(
+            rf"^(\s*){re.escape(accumulator)}\s*=\s*(?:''|\"\")\s*(?:#.*)?$"
+        )
+        inits = [
+            (index, empty_init.match(line))
+            for index, line in enumerate(scope)
+            if empty_init.match(line)
+        ]
+        increments = [
+            (index, re.match(
+                rf"^(\s*){re.escape(accumulator)}\s*\+=\s*(.+?)\s*$", line
+            ))
+            for index, line in enumerate(scope)
+        ]
+        increments = [(index, match) for index, match in increments if match]
+        returns = [
+            (index, re.match(
+                rf"^(\s*)return\s+{re.escape(accumulator)}\s*(?:#.*)?$", line
+            ))
+            for index, line in enumerate(scope)
+        ]
+        returns = [(index, match) for index, match in returns if match]
+        if len(inits) != 1 or not increments or len(returns) != 1:
+            return snippet
+        init_index, init_match = inits[0]
+        return_index, return_match = returns[0]
+        if not (
+            init_index < increments[0][0] < return_index
+            and all(index < return_index for index, _ in increments)
+            and all(
+                len(match.group(1).expandtabs(8)) > function_indent
+                for _, match in increments
+            )
+            and all(
+                not re.search(rf"\b{re.escape(accumulator)}\b", match.group(2))
+                for _, match in increments
+            )
+        ):
+            return snippet
+
+        allowed_lines = {init_index, return_index, *(index for index, _ in increments)}
+        if any(
+            re.search(rf"\b{re.escape(accumulator)}\b", line)
+            for index, line in enumerate(scope)
+            if index not in allowed_lines
+        ):
+            return snippet
+
+        scope[init_index] = f"{init_match.group(1)}{chunks} = []"
+        for index, match in increments:
+            scope[index] = f"{match.group(1)}{chunks}.append({match.group(2)})"
+        scope[return_index] = f"{return_match.group(1)}return ''.join({chunks})"
+        return "\n".join(lines[:function_start] + scope + lines[function_end:])
+
+    base_indent = ""
     for line in lines:
         if line.strip():
             base_indent = line[: len(line) - len(line.lstrip())]
             break
-
+    transformed = [f"{base_indent}{chunks} = []"]
     for line in lines:
-        if "+=" in line:
-            parts = line.split("+=")
-            accumulator_var = parts[0].strip()
-            break
-
-    transformed_lines.append(f"{base_indent}{accumulator_var}_chunks = []")
-    for line in lines:
-        if "+=" in line and accumulator_var in line:
-            val = line.split("+=")[1].strip()
-            indent = line[: len(line) - len(line.lstrip())]
-            transformed_lines.append(f"{indent}{accumulator_var}_chunks.append({val})")
+        match = re.match(
+            rf"^(\s*){re.escape(accumulator)}\s*\+=\s*(.+?)\s*$", line
+        )
+        if match:
+            transformed.append(f"{match.group(1)}{chunks}.append({match.group(2)})")
         else:
-            transformed_lines.append(line)
-
-    transformed_lines.append(f"{base_indent}{accumulator_var} = ''.join({accumulator_var}_chunks)")
-    return "\n".join(transformed_lines)
+            transformed.append(line)
+    transformed.append(f"{base_indent}{accumulator} = ''.join({chunks})")
+    return "\n".join(transformed)
 
 
 def _refactor_db_cursor_code(snippet: str) -> str:
@@ -614,8 +686,9 @@ def _refactor_network_loop_code(snippet: str) -> str:
     """Wrap network calls inside session and batch requests."""
     lines = snippet.splitlines()
     transformed = ["session = requests.Session()"]
+    request_pattern = re.compile(r"\brequests\.(get|post|put|patch|delete|head|options|request)\s*\(")
     for line in lines:
-        transformed_line = line.replace("requests.get(", "session.get(").replace("requests.post(", "session.post(")
+        transformed_line = request_pattern.sub(r"session.\1(", line)
         transformed.append(transformed_line)
     return "\n".join(transformed)
 
@@ -911,124 +984,17 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
     # single ''.join()). A model rewrite cannot beat those, so the flag lets
     # the caller know when the deterministic path is the real answer.
     has_specific_rewrite = True
+    requires_manual_review = False
 
     if "NESTED_LOOPS" in violation_type:
-        if lang in ("javascript", "typescript"):
-            refactored = (
-                "// [GreenCode Eco-Refactoring]: Flattened loop via Map lookup / generator pipeline\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "const lookupMap = new Map();\n"
-                "// Pre-indexed key-value lookup eliminates cubic iteration cascades:\n"
-                "for (const item of dataset) {\n"
-                "    lookupMap.set(item.id, item);\n"
-                "}\n"
-                "const ecoResults = targets.map(t => lookupMap.get(t)).filter(Boolean);"
-            )
-        elif lang in ("cpp", "c"):
-            refactored = (
-                "// [GreenCode Eco-Refactoring]: Vectorized pipeline & std::unordered_map lookup\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "#include <unordered_map>\n"
-                "#include <vector>\n"
-                "std::unordered_map<int, int> lookup;\n"
-                "lookup.reserve(items.size());\n"
-                "for (const auto& item : items) { lookup[item.id] = item.value; }\n"
-                "// O(1) hash lookup eliminates exponential CPU instruction cascades."
-            )
-        elif lang in ("rust", "rs"):
-            refactored = (
-                "// [GreenCode Eco-Refactoring]: Flattened iterator via std::collections::HashMap\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "use std::collections::HashMap;\n"
-                "let lookup: HashMap<_, _> = items.iter().map(|x| (x.id, x)).collect();\n"
-                "let results: Vec<_> = targets.iter().filter_map(|t| lookup.get(t)).collect();"
-            )
-        elif lang in ("c_sharp", "cs", "csharp"):
-            refactored = (
-                "// [GreenCode Eco-Refactoring]: Flattened loop via Dictionary / LINQ indexed lookup\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "using System.Collections.Generic;\n"
-                "using System.Linq;\n"
-                "var lookup = items.ToDictionary(x => x.Id, x => x);\n"
-                "var results = targets.Where(t => lookup.ContainsKey(t)).Select(t => lookup[t]);"
-            )
-        elif lang in ("solidity", "sol"):
-            refactored = (
-                "// [GreenCode Eco-Refactoring]: Gas-Optimized State Storage & Mapping Lookup\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time, slashing Ethereum gas dissipation.\n"
-                "mapping(uint256 => uint256) private cachedLookup;\n"
-                "// Direct storage slot lookup eliminates repetitive dynamic array iterations."
-            )
-        elif lang in ("kotlin", "kt"):
-            refactored = (
-                "// [GreenCode Eco-Refactoring]: Kotlin Sequence / AssociateBy indexed lookup\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "val lookup = items.associateBy { it.id }\n"
-                "val results = targets.asSequence().mapNotNull { lookup[it] }.toList()"
-            )
-        elif lang in ("swift",):
-            refactored = (
-                "// [GreenCode Eco-Refactoring]: Swift Lazy Sequence / Dictionary indexed lookup\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "let lookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })\n"
-                "let results = targets.lazy.compactMap { lookup[$0] }"
-            )
-        elif lang == "java":
-            refactored = (
-                "// [GreenCode Eco-Refactoring]: Java Stream API / HashMap O(1) indexed lookup\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "Map<Integer, Item> lookup = items.stream().collect(Collectors.toMap(Item::getId, x -> x));\n"
-                "List<Item> results = targets.stream().map(lookup::get).filter(Objects::nonNull).toList();"
-            )
-        elif lang == "go":
-            refactored = (
-                "// [GreenCode Eco-Refactoring]: Pre-allocated slice map lookup\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "lookup := make(map[int]Item, len(items))\n"
-                "for _, item := range items { lookup[item.Id] = item }\n"
-                "var results []Item\n"
-                "for _, t := range targets { if val, ok := lookup[t]; ok { results = append(results, val) } }"
-            )
-        elif lang in ("ruby", "rb"):
-            refactored = (
-                "# [GreenCode Eco-Refactoring]: Ruby Lazy Enumerator & Set lookup\n"
-                "# Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "require 'set'\n"
-                "lookup = items.each_with_object({}) { |item, h| h[item.id] = item }\n"
-                "results = targets.lazy.map { |t| lookup[t] }.compact.to_a"
-            )
-        elif lang in ("php",):
-            refactored = (
-                "// [GreenCode Eco-Refactoring]: PHP Generator / Array key lookup\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "$lookup = array_column($items, null, 'id');\n"
-                "$results = array_filter(array_map(fn($t) => $lookup[$t] ?? null, $targets));"
-            )
-        elif lang in ("bash", "sh"):
-            refactored = (
-                "# [GreenCode Eco-Refactoring]: Associative array / batch pipeline\n"
-                "# Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                "declare -A lookup\n"
-                "for item in \"${items[@]}\"; do lookup[\"$item\"]=1; done\n"
-                "for target in \"${targets[@]}\"; do [[ -n \"${lookup[$target]}\" ]] && echo \"$target\"; done"
-            )
-        elif lang == "python":
-            refactored = (
-                "# [GreenCode Eco-Refactoring]: Flattened nested loops via itertools.product\n"
-                "from itertools import product\n\n"
-                + _refactor_nested_loop_code(cleaned)
-            )
-        else:
-            refactored = (
-                f"// [GreenCode Eco-Refactoring]: Flattened iteration pipeline for {lang.title()}\n"
-                "// Algorithmic Complexity: Reduced from O(N^3) to O(N) linear time.\n"
-                + cleaned
-            )
-        reduction = 68.5
-        carbon_saved_10k = 42.15
+        refactored = cleaned
+        reduction = 0.0
+        carbon_saved_10k = 0.0
+        has_specific_rewrite = False
+        requires_manual_review = True
         explanation = (
-            f"Flattened 3-level loop nesting in {lang.title()} using generator pipelining and lookup sets. "
-            "Eliminates exponential branching, cutting CPU branch mispredictions and lowering TDP draw by ~68%."
+            "Loop depth alone is not enough to derive a behavior-preserving optimization. "
+            "This finding needs a contextual refactor and validation before a patch can be proposed."
         )
 
     elif "RAW_DB_CURSOR" in violation_type:
@@ -1045,20 +1011,31 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
         )
 
     elif "UNCACHED_NETWORK" in violation_type:
-        refactored = (
-            "# [GreenCode Eco-Refactoring]: Cached & Pooled HTTP Network Session\n"
-            "# Avoids radio transceiver re-initialization and redundant handshake overhead.\n"
-            "from functools import lru_cache\n"
-            "import requests\n\n"
-            "# Reuse persistent session to utilize TCP keep-alive and avoid continuous TLS handshakes:\n"
-            + _refactor_network_loop_code(cleaned)
-        )
-        reduction = 81.0
-        carbon_saved_10k = 95.80
-        explanation = (
-            "Hoisted HTTP connection session outside iteration loop and applied connection pooling. "
-            "Reuses established TCP sockets, reducing active NIC transceiver power draw and network latency."
-        )
+        request_pattern = re.compile(r"\brequests\.(?:get|post|put|patch|delete|head|options|request)\s*\(")
+        loop_pattern = re.compile(r"(?m)^[ \t]*(?:async\s+)?for\b")
+        if lang == "python" and request_pattern.search(cleaned) and loop_pattern.search(cleaned):
+            refactored = (
+                "# [GreenCode Eco-Refactoring]: Cached & Pooled HTTP Network Session\n"
+                "# Reuse a persistent session and connection pool across loop iterations.\n"
+                "import requests\n\n"
+                + _refactor_network_loop_code(cleaned)
+            )
+            reduction = 81.0
+            carbon_saved_10k = 95.80
+            explanation = (
+                "Hoisted an HTTP session outside the loop and reused its connection pool. "
+                "This rewrite applies only to requests calls contained in the supplied loop."
+            )
+        else:
+            refactored = cleaned
+            reduction = 0.0
+            carbon_saved_10k = 0.0
+            has_specific_rewrite = False
+            requires_manual_review = True
+            explanation = (
+                "This network operation cannot be safely rewritten from the supplied snippet. "
+                "Provide the complete loop and a supported requests call, or review this finding manually."
+            )
 
     elif "QUADRATIC_STRING" in violation_type:
         refactored = (
@@ -1066,12 +1043,23 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
             "# Eliminates quadratic O(N^2) memory reallocations and garbage collection cycles.\n"
             + _refactor_string_concat_code(cleaned)
         )
-        reduction = 54.0
-        carbon_saved_10k = 24.30
-        explanation = (
-            "Replaced iterative '+' string concatenation with an array accumulation and final ''.join(). "
-            "Reduces RAM allocations from O(N^2) to O(N), slashing memory bus throughput energy and GC pressure."
-        )
+        if refactored.strip() == cleaned:
+            refactored = cleaned
+            reduction = 0.0
+            carbon_saved_10k = 0.0
+            has_specific_rewrite = False
+            requires_manual_review = True
+            explanation = (
+                "The supplied snippet does not contain a safely transformable string accumulator. "
+                "Review the complete function before applying a refactor."
+            )
+        else:
+            reduction = 54.0
+            carbon_saved_10k = 24.30
+            explanation = (
+                "Replaced iterative '+' string concatenation with an array accumulation and final ''.join(). "
+                "Reduces repeated string allocation from O(N^2) to O(N)."
+            )
 
     elif "HEAVY_CLIENT_INSTANTIATION" in violation_type:
         if lang in ("javascript", "typescript"):
@@ -1210,17 +1198,15 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
         )
 
     else:
-        refactored = (
-            f"# [GreenCode Eco-Refactoring]: Applied Green Software Foundation patterns\n"
-            f"{cleaned}\n"
-        )
-        reduction = 30.0
-        carbon_saved_10k = 12.0
-        explanation = "Applied general memory profiling and execution efficiency guidelines."
-        # No pattern-specific transformation exists for this rule, so the
-        # deterministic engine only restates the input. This is exactly the
-        # case where a code model can add value, so the caller is told.
+        refactored = cleaned
+        reduction = 0.0
+        carbon_saved_10k = 0.0
         has_specific_rewrite = False
+        requires_manual_review = True
+        explanation = (
+            "No behavior-preserving automatic transformation is available for this finding. "
+            "Review the surrounding code and create a contextual fix manually."
+        )
 
     return {
         "original_code": bad_snippet,
@@ -1233,6 +1219,7 @@ def _synthesize_green_code(bad_snippet: str, violation_type: str, language_id: s
         "explanation": explanation,
         "model_used": "Deterministic GreenCode rule engine",
         "has_specific_rewrite": has_specific_rewrite,
+        "requires_manual_review": requires_manual_review,
     }
 
 
@@ -1274,20 +1261,21 @@ def refactor_repository_code(
     api_key: Optional[str] = None,
     endpoint: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Refactor flagged code with a code model, then verify the result.
+    """Refactor flagged code with the preferred code model, then verify the result.
 
-    Asks a HuggingFace-hosted code model for an energy-focused rewrite and
-    validates the answer before returning it. The deterministic Green Software
-    Foundation transformation in ``_synthesize_green_code`` is always computed
-    first and used as the fallback, so this function always returns a usable
-    suggestion even with no API key or no network.
+    Tries the configured provider chain (Bedrock first by default) for an
+    energy-focused rewrite and validates the answer before returning it. The
+    deterministic Green Software Foundation transformation in
+    ``_synthesize_green_code`` is always computed first and used as the
+    fallback, so this function can still return a rule-based suggestion when
+    no model provider is available.
 
     Args:
         bad_snippet: the offending code.
         violation_type: the rule that fired, e.g. ``"QUADRATIC_STRING"``.
         language_id: detected language.
         file_context: surrounding code, used to guide the rewrite.
-        api_key: optional override for the HuggingFace token.
+        api_key: optional legacy override for the HuggingFace token.
         endpoint: unused; retained for backwards compatibility with the
             previous provider signature.
     """
@@ -1303,14 +1291,22 @@ def refactor_repository_code(
     synthesized = _synthesize_green_code(bad_snippet, violation_type, language_id=lang)
     deterministic_code = synthesized["refactored_code"]
 
-    # When an LLM backend (Amazon Bedrock or HuggingFace) is configured or explicitly
-    # requested, consult the model to synthesize a contextual, variable-preserving rewrite.
+    if synthesized.get("requires_manual_review"):
+        return synthesized
+
+    # When an LLM backend is configured or explicitly requested, consult it for
+    # a contextual, variable-preserving rewrite.
     # Otherwise, or if no LLM is available, return the deterministic transformation immediately.
     llm_requested = bool(
         api_key
-        or os.environ.get("GREENCODE_LLM_PROVIDER") in ("bedrock", "huggingface")
+        or os.environ.get("GREENCODE_LLM_PROVIDER") in ("bedrock", "gemini", "huggingface")
         or (os.environ.get("GREENCODE_LLM_PROVIDER") != "none" and (
             os.environ.get("AWS_ACCESS_KEY_ID")
+            or os.environ.get("AWS_PROFILE")
+            or os.environ.get("AWS_WEB_IDENTITY_TOKEN_FILE")
+            or os.environ.get("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI")
+            or os.environ.get("BEDROCK_MODEL_ID")
+            or os.environ.get("GEMINI_API_KEY")
             or os.environ.get("HUGGINGFACE_API_KEY")
             or os.environ.get("HF_TOKEN")
         ))
@@ -1354,12 +1350,15 @@ def refactor_repository_code(
         synthesized["refactored_code"] = outcome.refactored
         synthesized["unified_diff"] = generate_unified_diff(bad_snippet, outcome.refactored)
         synthesized["github_suggestion_markdown"] = generate_github_suggestion_block(outcome.refactored)
-        provider_label = (
-            "Amazon Bedrock"
-            if getattr(outcome, "provider", None) == "aws_bedrock"
+        if (
+            getattr(outcome, "provider", None) == "aws_bedrock"
             or (outcome.model and outcome.model.startswith(("anthropic.", "amazon.", "meta.")))
-            else "HuggingFace"
-        )
+        ):
+            provider_label = "Amazon Bedrock"
+        elif getattr(outcome, "provider", None) == "google_gemini":
+            provider_label = "Google Gemini"
+        else:
+            provider_label = "HuggingFace"
         synthesized["model_used"] = f"{provider_label} {outcome.model} (verified)"
     else:
         synthesized["model_used"] = "Deterministic rule engine (LLM output rejected)"
@@ -1607,5 +1606,3 @@ def calculate_region_carbon_migration_advisor(
             f"{pct_reduction}% (-{round(kg_saved, 1)} kg CO2eq/year) without altering a single line of application logic."
         ),
     }
-
-

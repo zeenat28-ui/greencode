@@ -214,6 +214,12 @@ export interface RefactorResult {
   carbon_saved_gco2_10k_runs: number;
   explanation: string;
   model_used: string;
+  verification?: {
+    provider?: string | null;
+    source?: string;
+    accepted?: boolean;
+    behaviour_verified?: boolean | null;
+  };
 }
 
 export interface CIGateResult {

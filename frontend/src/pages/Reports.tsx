@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Download, ShieldCheck, ExternalLink, FileSpreadsheet, Archive, RefreshCw } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
 import { authHeaders } from '../services/api';
+import { useTenant } from '../context/TenantContext';
 
 export default function Reports() {
   const t = useT();
+  const { currentOrg, isLoading: tenantLoading } = useTenant();
   const [integrityData, setIntegrityData] = useState<any>(null);
   const [verifying, setVerifying] = useState(false);
   const [esgData, setEsgData] = useState<any>(null);
@@ -13,58 +15,116 @@ export default function Reports() {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [ifManifest, setIfManifest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   const loadReportsData = async () => {
+    if (!currentOrg) {
+      setLoading(false);
+      setLoadError(t('reports.organizationRequired'));
+      return;
+    }
     setLoading(true);
-    try {
-      const [esgRes, manRes, compRes, logsRes, ifRes] = await Promise.all([
-        fetch('/api/reports/esg/1', { headers: authHeaders() }),
-        fetch('/api/reports/esg/1/evidence-manifest', { headers: authHeaders() }),
-        fetch('/api/reports/compliance/1', { headers: authHeaders() }),
-        fetch('/api/reports/audit-logs/1?limit=8', { headers: authHeaders() }),
-        fetch('/api/reports/impact-framework-manifest', { headers: authHeaders() }),
-      ]);
-      if (esgRes.ok) setEsgData(await esgRes.json());
-      if (manRes.ok) setManifestData(await manRes.json());
-      if (compRes.ok) setComplianceData(await compRes.json());
-      if (logsRes.ok) {
-        // The audit trail endpoint returns a bare JSON array of ledger entries.
-        const lJson = await logsRes.json();
-        setAuditLogs(Array.isArray(lJson) ? lJson : (lJson?.entries ?? []));
+    setLoadError(null);
+    const basePath = `/api/reports`;
+    const orgId = currentOrg.id;
+    const requests = await Promise.allSettled([
+      fetch(`${basePath}/esg/${orgId}`, { headers: authHeaders() }),
+      fetch(`${basePath}/esg/${orgId}/evidence-manifest`, { headers: authHeaders() }),
+      fetch(`${basePath}/compliance/${orgId}`, { headers: authHeaders() }),
+      fetch(`${basePath}/audit-logs/${orgId}?limit=8`, { headers: authHeaders() }),
+      fetch(`${basePath}/impact-framework-manifest`, { headers: authHeaders() }),
+    ]);
+    const errors: string[] = [];
+    const readJson = async (index: number): Promise<any | null> => {
+      const result = requests[index];
+      if (result.status === 'rejected') {
+        errors.push(result.reason instanceof Error ? result.reason.message : t('reports.requestFailed'));
+        return null;
       }
-      if (ifRes.ok) setIfManifest(await ifRes.json());
-    } catch {
-      // Non-blocking
+      const response = result.value;
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        errors.push(typeof data?.detail === 'string' ? data.detail : `${t('reports.requestFailed')} (HTTP ${response.status})`);
+        return null;
+      }
+      return data;
+    };
+    try {
+      const [esg, manifest, compliance, logs, impactManifest] = await Promise.all(
+        requests.map((_, index) => readJson(index)),
+      );
+      setEsgData(esg);
+      setManifestData(manifest);
+      setComplianceData(compliance);
+      setAuditLogs(Array.isArray(logs) ? logs : (Array.isArray(logs?.entries) ? logs.entries : []));
+      setIfManifest(impactManifest);
+      setLoadError(errors.length ? errors.join(' · ') : null);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : t('reports.requestFailed'));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadReportsData();
-  }, []);
+    if (!tenantLoading) void loadReportsData();
+  }, [currentOrg?.id, tenantLoading]);
 
   const verifyAuditLedger = async () => {
+    if (!currentOrg) {
+      setActionError(t('reports.organizationRequired'));
+      return;
+    }
     setVerifying(true);
+    setActionError(null);
     try {
-      const res = await fetch('/api/reports/audit-logs/1/verify', { headers: authHeaders() });
-      if (res.ok) {
-        setIntegrityData(await res.json());
+      const res = await fetch(`/api/reports/audit-logs/${currentOrg.id}/verify`, { headers: authHeaders() });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(typeof data?.detail === 'string' ? data.detail : `HTTP ${res.status}`);
       }
-    } catch {
-      // Non-blocking
+      setIntegrityData(data);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t('reports.verifyFailed'));
     } finally {
       setVerifying(false);
     }
   };
 
+  const downloadReport = async (kind: string, path: string, extension: string) => {
+    if (!currentOrg) return;
+    setDownloading(kind);
+    setActionError(null);
+    try {
+      const response = await fetch(path, { headers: authHeaders() });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(typeof data?.detail === 'string' ? data.detail : `HTTP ${response.status}`);
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `greencode-${currentOrg.slug}-esg.${extension}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t('reports.downloadFailed'));
+    } finally {
+      setDownloading(null);
+    }
+  };
+
   const summary = esgData?.emissions_summary || {};
-  const scope2Tonnes = summary.scope_2_cloud_operational_tco2e ?? esgData?.scope_2_tonnes_co2e ?? 0;
-  const scope3Tonnes = summary.scope_3_embodied_infrastructure_tco2e ?? esgData?.scope_3_tonnes_co2e ?? 0;
-  const totalKwh = summary.total_energy_consumption_kwh ?? 0;
-  const avoidedTonnes = summary.avoided_carbon_emissions_tco2e ?? 0;
-  const savingsUsd = summary.financial_cloud_savings_usd ?? 0;
-  const operationalCostUsd = Number((totalKwh * 0.12).toFixed(2));
+  const scope2Tonnes = summary.scope_2_cloud_operational_tco2e ?? esgData?.scope_2_tonnes_co2e;
+  const scope3Tonnes = summary.scope_3_embodied_infrastructure_tco2e ?? esgData?.scope_3_tonnes_co2e;
+  const totalKwh = summary.total_energy_consumption_kwh;
+  const avoidedTonnes = summary.avoided_carbon_emissions_tco2e;
+  const savingsUsd = summary.financial_cloud_savings_usd;
+  const displayValue = (value: unknown) => value === null || value === undefined ? t('actions.notReported') : String(value);
 
   return (
     <div className="space-y-5">
@@ -81,42 +141,53 @@ export default function Reports() {
         </div>
         <div className="flex flex-wrap gap-1.5">
           <button
-            onClick={loadReportsData}
+            onClick={() => void loadReportsData()}
             disabled={loading}
             className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> {t('reports.refresh')}
           </button>
-          <a
-            href="/api/reports/esg/1/evidence-bundle"
-            className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5"
+          <button
+            type="button"
+            onClick={() => void downloadReport('bundle', `/api/reports/esg/${currentOrg?.id}/evidence-bundle`, 'zip')}
+            disabled={!currentOrg || downloading !== null}
+            className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
           >
-            <Archive className="w-3.5 h-3.5" /> {t('reports.signedBundle')}
-          </a>
-          <a
-            href="/api/reports/esg/1/export/html"
-            target="_blank"
-            rel="noreferrer"
-            className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
+            <Archive className="w-3.5 h-3.5" /> {downloading === 'bundle' ? t('reports.downloading') : t('reports.signedBundle')}
+          </button>
+          <button
+            type="button"
+            onClick={() => void downloadReport('html', `/api/reports/esg/${currentOrg?.id}/export/html`, 'html')}
+            disabled={!currentOrg || downloading !== null}
+            className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5 text-emerald-600" /> {t('reports.htmlReport')}
-          </a>
-          <a
-            href="/api/reports/esg/1/csv"
-            className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
+          </button>
+          <button
+            type="button"
+            onClick={() => void downloadReport('csv', `/api/reports/esg/${currentOrg?.id}/csv`, 'csv')}
+            disabled={!currentOrg || downloading !== null}
+            className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" /> {t('reports.csv')}
-          </a>
-          <a
-            href="/api/reports/esg/1"
-            target="_blank"
-            rel="noreferrer"
-            className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
+          </button>
+          <button
+            type="button"
+            onClick={() => void downloadReport('json', `/api/reports/esg/${currentOrg?.id}`, 'json')}
+            disabled={!currentOrg || downloading !== null}
+            className="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
           >
             <ExternalLink className="w-3.5 h-3.5" /> {t('reports.json')}
-          </a>
+          </button>
         </div>
       </div>
+
+      {(loadError || actionError) && (
+        <div role="alert" className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {loadError && <p>{loadError}</p>}
+          {actionError && <p>{actionError}</p>}
+        </div>
+      )}
 
       {/* Cryptographic Ledger Assurance Card */}
         <div className="bg-slate-900 border border-slate-800 text-white rounded-xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -142,7 +213,7 @@ export default function Reports() {
           )}
           <button
             onClick={verifyAuditLedger}
-            disabled={verifying}
+            disabled={verifying || !currentOrg}
             className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium px-4 py-2 rounded-lg text-sm transition-colors"
           >
             {verifying ? t('reports.verifying') : t('reports.verifyChain')}
@@ -156,12 +227,12 @@ export default function Reports() {
             <div>
               <h2 className="font-semibold text-slate-900 dark:text-slate-100">{t('reports.emissionsInventory')}</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {t('reports.organization')}: <strong>{esgData?.organization_name || 'Organization-1'}</strong> &middot; {t('reports.provenance')}: <span className="font-mono">{esgData?.data_provenance || 'calibrated_instance_model'}</span>
+                {t('reports.organization')}: <strong>{esgData?.organization_name || currentOrg?.name || t('actions.notReported')}</strong> &middot; {t('reports.provenance')}: <span className="font-mono">{displayValue(esgData?.data_provenance)}</span>
               </p>
           </div>
           {esgData?.reporting_period && (
             <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full">
-              {t('reports.period', { period: esgData.reporting_period, status: esgData?.assurance_verdict?.status || 'MODELED' })}
+              {t('reports.period', { period: esgData.reporting_period, status: esgData?.assurance_verdict?.status || t('actions.notReported') })}
             </span>
           )}
         </div>
@@ -179,15 +250,15 @@ export default function Reports() {
               <td className="px-5 py-4 font-semibold text-slate-900 dark:text-slate-100">{t('reports.scope2')}</td>
               <td className="px-5 py-4 text-slate-600 dark:text-slate-400">{t('reports.ghgProtocol')}</td>
               <td className="px-5 py-4 font-medium font-mono text-slate-900 dark:text-slate-200">
-                {scope2Tonnes} tCO2e ({totalKwh} kWh)
+                {displayValue(scope2Tonnes)} tCO2e ({displayValue(totalKwh)} kWh)
               </td>
-              <td className="px-5 py-4 font-mono text-slate-600 dark:text-slate-400">${operationalCostUsd} USD</td>
+              <td className="px-5 py-4 font-mono text-slate-600 dark:text-slate-400">{t('actions.notReported')}</td>
             </tr>
             <tr>
               <td className="px-5 py-4 font-semibold text-slate-900 dark:text-slate-100">{t('reports.scope3')}</td>
               <td className="px-5 py-4 text-slate-600 dark:text-slate-400">{t('reports.sciHardware')}</td>
               <td className="px-5 py-4 font-medium font-mono text-slate-900 dark:text-slate-200">
-                {scope3Tonnes} tCO2e
+                {displayValue(scope3Tonnes)} tCO2e
               </td>
               <td className="px-5 py-4 text-slate-600 dark:text-slate-400">{t('reports.amortizedInfra')}</td>
             </tr>
@@ -195,10 +266,10 @@ export default function Reports() {
               <td className="px-5 py-4 font-bold text-emerald-800 dark:text-emerald-300">{t('reports.avoidedEmissions')}</td>
               <td className="px-5 py-4 text-emerald-700 dark:text-emerald-300 font-medium">{t('reports.astVerified')}</td>
               <td className="px-5 py-4 font-bold font-mono text-emerald-700 dark:text-emerald-300">
-                -{avoidedTonnes} tCO2e
+                {avoidedTonnes === null || avoidedTonnes === undefined ? t('actions.notReported') : `-${avoidedTonnes}`} tCO2e
               </td>
               <td className="px-5 py-4 font-bold font-mono text-emerald-700 dark:text-emerald-300">
-                -${savingsUsd} {t('reports.savedPerMo')}
+                {savingsUsd === null || savingsUsd === undefined ? t('actions.notReported') : `-$${savingsUsd}`} {savingsUsd === null || savingsUsd === undefined ? '' : t('reports.savedPerMo')}
               </td>
             </tr>
           </tbody>
@@ -284,6 +355,3 @@ export default function Reports() {
     </div>
   );
 }
-
-
-

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { gridService, githubService, authService } from '../services/greencodeApi';
 import { useAuth } from '../context/AuthContext';
@@ -14,7 +15,8 @@ import {
   AlertCircle, Key, Leaf,
 } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
-import { authHeaders } from '../services/api';
+import { authHeaders, GITHUB_CONNECT_STATE_KEY } from '../services/api';
+import { useTenant } from '../context/TenantContext';
 
 function getThresholdGrade(val: number) {
   if (val >= 90) return 'A+';
@@ -26,7 +28,15 @@ function getThresholdGrade(val: number) {
 
 export default function Settings() {
   const t = useT();
-  const { user, refreshUser } = useAuth();
+  const {
+    user,
+    refreshUser,
+    isGitHubConnected,
+    setGitHubAccessToken,
+    disconnectGitHub,
+  } = useAuth();
+  const { currentOrg, isLoading: tenantLoading } = useTenant();
+  const location = useLocation();
 
   const [selectedZone, setSelectedZone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
   const [qualityThreshold, setQualityThreshold] = useLocalStorage('greencode_threshold', 75);
@@ -38,6 +48,8 @@ export default function Settings() {
   const [ghUser, setGhUser] = useState<{ login: string; avatar_url: string } | null>(null);
   const [ghTesting, setGhTesting] = useState(false);
   const [ghError, setGhError] = useState<string | null>(null);
+  const [ghConnecting, setGhConnecting] = useState(false);
+  const [ghConnectMessage, setGhConnectMessage] = useState<string | null>(null);
 
   const [rotating, setRotating] = useState(false);
   const [newToken, setNewToken] = useState('');
@@ -45,24 +57,36 @@ export default function Settings() {
   const [rotateError, setRotateError] = useState<string | null>(null);
 
   const [usageData, setUsageData] = useState<any | null>(null);
+  const [usageError, setUsageError] = useState<string | null>(null);
   const [licenseKey, setLicenseKey] = useState('');
   const [activatingLicense, setActivatingLicense] = useState(false);
   const [licenseMsg, setLicenseMsg] = useState<string | null>(null);
   const [licenseError, setLicenseError] = useState<string | null>(null);
 
   const loadBillingUsage = async () => {
+    if (!currentOrg) {
+      setUsageData(null);
+      return;
+    }
+    setUsageError(null);
+    setUsageData(null);
     try {
       const headers = authHeaders();
-      const res = await fetch('/api/billing/usage?org_id=1', { headers });
-      if (res.ok) {
-        setUsageData(await res.json());
+      const res = await fetch(`/api/billing/usage?org_id=${currentOrg.id}`, { headers });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.detail || `HTTP ${res.status}`);
       }
-    } catch {
-      // Non-blocking
+      setUsageData(data);
+    } catch (error) {
+      setUsageData(null);
+      setUsageError(error instanceof Error ? error.message : t('settings.license.usageError'));
     }
   };
 
-  useEffect(() => { loadBillingUsage(); }, []);
+  useEffect(() => {
+    if (!tenantLoading && currentOrg) void loadBillingUsage();
+  }, [currentOrg?.id, tenantLoading]);
 
   const handleActivateLicense = async () => {
     const trimmed = licenseKey.trim();
@@ -73,19 +97,28 @@ export default function Settings() {
     setActivatingLicense(true);
     setLicenseError(null);
     setLicenseMsg(null);
+    if (!currentOrg) {
+      setLicenseError(t('settings.license.organizationRequired'));
+      setActivatingLicense(false);
+      return;
+    }
     try {
       const headers = authHeaders({ 'Content-Type': 'application/json' });
       const res = await fetch('/api/billing/license/activate', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ org_id: 1, license_key: trimmed }),
+        body: JSON.stringify({ org_id: currentOrg.id, license_key: trimmed }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         setLicenseError(body?.detail || t('settings.license.verificationFailed'));
       } else {
+        const license = body?.license;
+        if (!license || typeof license.tier !== 'string' || typeof license.seats !== 'number') {
+          throw new Error(t('settings.license.invalidActivationResponse'));
+        }
         setLicenseKey('');
-        setLicenseMsg(t('settings.license.activated', { tier: String(body?.license?.tier || 'pro').toUpperCase(), seats: body?.license?.seats || 1 }));
+        setLicenseMsg(t('settings.license.activated', { tier: license.tier.toUpperCase(), seats: license.seats }));
         await loadBillingUsage();
       }
     } catch (err: any) {
@@ -126,7 +159,53 @@ export default function Settings() {
     }
   };
 
-  useEffect(() => { testGitHub(); }, []);
+  const connectGitHub = async () => {
+    setGhConnecting(true);
+    setGhError(null);
+    setGhConnectMessage(null);
+    const state = crypto.randomUUID();
+    sessionStorage.setItem(GITHUB_CONNECT_STATE_KEY, state);
+    try {
+      const redirectUri = `${window.location.origin}/login`;
+      const response = await authService.getGitHubAuthorize(redirectUri, state);
+      if (!response.data.configured || !response.data.auth_url) {
+        sessionStorage.removeItem(GITHUB_CONNECT_STATE_KEY);
+        throw new Error(response.data.message || t('settings.github.oauthNotConfigured'));
+      }
+      window.location.assign(response.data.auth_url);
+    } catch (error) {
+      sessionStorage.removeItem(GITHUB_CONNECT_STATE_KEY);
+      setGhError(error instanceof Error ? error.message : t('settings.github.connectFailed'));
+      setGhConnecting(false);
+    }
+  };
+
+  const handleDisconnectGitHub = () => {
+    disconnectGitHub();
+    setGhUser(null);
+    setGhError(null);
+    setGhConnectMessage(t('settings.github.disconnected'));
+  };
+
+  useEffect(() => {
+    if (isGitHubConnected) {
+      void testGitHub();
+    } else {
+      setGhUser(null);
+      setGhError(null);
+      setGhTesting(false);
+    }
+  }, [isGitHubConnected]);
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('github') !== 'connected') return;
+    setGhConnectMessage(t('settings.github.connected'));
+  }, [location.search, t]);
+
+  useEffect(() => {
+    const message = new URLSearchParams(location.search).get('github_error');
+    if (message) setGhError(message);
+  }, [location.search]);
 
   const handleRotateToken = async () => {
     const trimmed = newToken.trim();
@@ -138,8 +217,9 @@ export default function Settings() {
     setRotateError(null);
     setRotateMsg(null);
     try {
-      // The API verifies the token with GitHub before persisting it.
+      // The API verifies the token but the browser keeps it for this session only.
       await authService.updateProfile(user!.id, { github_token: trimmed });
+      setGitHubAccessToken(trimmed);
       await refreshUser();
       setNewToken('');
       setRotateMsg(t('settings.github.tokenUpdated'));
@@ -186,16 +266,39 @@ export default function Settings() {
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('settings.github.subtitle')}</p>
                 </div>
               </div>
-              <Button onClick={testGitHub} disabled={ghTesting} variant="secondary" size="sm" className="text-xs">
-                {ghTesting ? <Loader2 size={11} className="animate-spin text-emerald-600" /> : <RefreshCw size={11} />}
-                {t('settings.github.testButton')}
-              </Button>
+              {isGitHubConnected ? (
+                <div className="flex items-center gap-2">
+                  <Button onClick={testGitHub} disabled={ghTesting} variant="secondary" size="sm" className="text-xs">
+                    {ghTesting ? <Loader2 size={11} className="animate-spin text-emerald-600" /> : <RefreshCw size={11} />}
+                    {t('settings.github.testButton')}
+                  </Button>
+                  <Button onClick={handleDisconnectGitHub} variant="secondary" size="sm" className="text-xs">
+                    {t('settings.github.disconnectButton')}
+                  </Button>
+                </div>
+              ) : (
+                <Button onClick={connectGitHub} disabled={ghConnecting} variant="primary" size="sm" className="text-xs">
+                  {ghConnecting ? <Loader2 size={11} className="animate-spin" /> : <Github size={13} />}
+                  {t('settings.github.connectButton')}
+                </Button>
+              )}
             </div>
+
+            {!isGitHubConnected && (
+              <p className="text-xs leading-relaxed text-[var(--gc-text-secondary)]">
+                {t('settings.github.connectHint')}
+              </p>
+            )}
 
             {ghError && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 dark:border-red-800">
                 <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed font-medium">{ghError}</p>
+              </div>
+            )}
+            {ghConnectMessage && (
+              <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                {ghConnectMessage}
               </div>
             )}
 
@@ -210,7 +313,7 @@ export default function Settings() {
                   <p className="text-[11px] text-emerald-800 dark:text-emerald-300 mt-0.5">{t('settings.github.verifiedVia')}</p>
                 </div>
               </div>
-            ) : !ghError ? (
+            ) : isGitHubConnected && !ghError ? (
               <div className="flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500 py-2">
                 <Loader2 size={13} className="animate-spin text-emerald-600" /> {t('settings.github.validating')}
               </div>
@@ -360,25 +463,26 @@ export default function Settings() {
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('settings.license.subtitle')}</p>
                 </div>
               </div>
-              {usageData?.tier && (
+              {usageData?.subscription?.tier && (
                 <Badge variant="olive" className="uppercase">
-                  {usageData.tier}
+                  {usageData.subscription.tier}
                 </Badge>
               )}
             </div>
 
+            {usageError && <p role="alert" className="text-xs text-red-700">{usageError}</p>}
             {usageData && (
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200">
                   <div className="text-[10px] text-zinc-500 uppercase font-semibold">Monthly API Usage</div>
                   <div className="font-mono font-bold text-zinc-900 text-sm mt-0.5">
-                    {usageData.used_calls ?? 0} / {usageData.included_calls ?? 100}
+                    {usageData.quota?.usage ?? t('settings.license.notReported')} / {usageData.quota?.limit ?? t('settings.license.notReported')}
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200">
                   <div className="text-[10px] text-zinc-500 uppercase font-semibold">Remaining Calls</div>
                   <div className="font-mono font-bold text-emerald-700 text-sm mt-0.5">
-                    {usageData.remaining_included_calls ?? 100}
+                    {usageData.quota?.remaining ?? t('settings.license.notReported')}
                   </div>
                 </div>
               </div>

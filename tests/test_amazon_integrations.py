@@ -28,6 +28,7 @@ CREDENTIAL_KEYS = (
     "AWS_WEB_IDENTITY_TOKEN_FILE",
     "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
     "BEDROCK_MODEL_ID",
+    "GEMINI_API_KEY",
 )
 
 
@@ -352,7 +353,19 @@ class TestProviderSelection(unittest.TestCase):
         self.assertEqual(self._provider(), "aws_bedrock")
 
     def test_auto_falls_back_to_huggingface_without_aws(self):
-        self.assertEqual(self._provider(), "huggingface")
+        with mock.patch(
+            "app.gemini_client.get_client",
+            return_value=mock.Mock(configured=False),
+        ):
+            self.assertEqual(self._provider(), "huggingface")
+
+    def test_auto_uses_gemini_before_huggingface(self):
+        os.environ["GEMINI_API_KEY"] = "test-key"
+        with mock.patch(
+            "app.gemini_client.get_client",
+            return_value=mock.Mock(configured=True),
+        ):
+            self.assertEqual(self._provider(), "google_gemini")
 
     def test_explicit_choice_is_honoured(self):
         os.environ["GREENCODE_LLM_PROVIDER"] = "huggingface"
@@ -363,8 +376,10 @@ class TestProviderSelection(unittest.TestCase):
         os.environ["GREENCODE_LLM_PROVIDER"] = "bedrock"
         self.assertEqual(self._provider(), "aws_bedrock")
 
+    def test_explicit_gemini_is_honoured(self):
+        os.environ["GREENCODE_LLM_PROVIDER"] = "gemini"
+        self.assertEqual(self._provider(), "google_gemini")
+
 
 if __name__ == "__main__":
     unittest.main()
-
-

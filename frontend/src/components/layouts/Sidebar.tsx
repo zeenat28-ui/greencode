@@ -27,7 +27,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: 'nav.analyze',
     items: [
-      { nameKey: 'nav.dashboard', path: '/dashboard', icon: LayoutDashboard },
+      { nameKey: 'nav.scan', path: '/scan', icon: GitBranch },
       { nameKey: 'nav.issues', path: '/issues', icon: AlertCircle, badgeKey: 'issues' },
       { nameKey: 'nav.deployments', path: '/deployments', icon: Gauge },
     ],

@@ -1,59 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Sliders, Save, CheckCircle2, FileCode, Terminal, Play, AlertTriangle } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
-import { authHeaders, getAccessToken } from '../services/api';
-
-const SAMPLE_TF = `resource "aws_instance" "api_node" {
-  ami           = "ami-0c55b159cbfafe1f0"
-  instance_type = "c5.2xlarge"
-}
-
-resource "aws_ebs_volume" "app_storage" {
-  type = "gp2"
-  size = 250
-}`;
-
-const SAMPLE_K8S = `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: billing-worker
-spec:
-  template:
-    spec:
-      containers:
-        - name: worker
-          image: greencode/worker:latest`;
-
-const SAMPLE_DOCKER = `FROM python:3.11
-RUN apt-get update && apt-get install -y build-essential`;
+import { authHeaders } from '../services/api';
+import { useTenant } from '../context/TenantContext';
 
 export default function Policies() {
   const t = useT();
+  const { currentOrg, isLoading: tenantLoading } = useTenant();
   const [maxRegression, setMaxRegression] = useState(25.0);
   const [minGreenScore, setMinGreenScore] = useState(80.0);
   const [autoBlock, setAutoBlock] = useState(true);
   const [autoRollback, setAutoRollback] = useState(true);
   const [dirtyGridLimit, setDirtyGridLimit] = useState(450.0);
+  const [policyLoading, setPolicyLoading] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [customRules, setCustomRules] = useState<any[]>([]);
-  const [customTestCode, setCustomTestCode] = useState(
-    'import time\ndef wait_loop(tasks):\n    for t in tasks:\n        time.sleep(0.2)\n'
-  );
+  const [customTestCode, setCustomTestCode] = useState('');
   const [customEvalResult, setCustomEvalResult] = useState<any>(null);
   const [evaluatingCustom, setEvaluatingCustom] = useState(false);
+  const [customEvalError, setCustomEvalError] = useState<string | null>(null);
 
-  const [iacContent, setIacContent] = useState(SAMPLE_TF);
-  const [iacFilePath, setIacFilePath] = useState('infra/main.tf');
+  const [iacContent, setIacContent] = useState('');
+  const [iacFilePath, setIacFilePath] = useState('');
   const [iacResult, setIacResult] = useState<any>(null);
   const [auditingIac, setAuditingIac] = useState(false);
+  const [iacError, setIacError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!currentOrg?.id) {
+      setPolicyLoading(tenantLoading);
+      if (!tenantLoading) setLoadError(t('policies.organizationRequired'));
+      return;
+    }
+
+    let cancelled = false;
+    setPolicyLoading(true);
+    setLoadError(null);
     const headers = authHeaders();
-    fetch('/api/policies/1', { headers })
-      .then((r) => (r.ok ? r.json() : null))
+    const loadPolicy = fetch(`/api/policies/${currentOrg.id}`, { headers })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data?.detail || `Policy load failed (HTTP ${r.status}).`);
+        return data;
+      })
       .then((data) => {
+        if (cancelled) return;
         const p = data?.policy || data;
         if (p && typeof p === 'object') {
           if (p.max_regression_pct !== undefined) setMaxRegression(Number(p.max_regression_pct));
@@ -63,28 +57,45 @@ export default function Policies() {
           if (p.dirty_grid_threshold_gco2e !== undefined) setDirtyGridLimit(Number(p.dirty_grid_threshold_gco2e));
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (!cancelled) setLoadError(err?.message || t('policies.loadError'));
+      });
 
-    fetch('/api/policies/custom-rules', { headers: authHeaders() })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data && Array.isArray(data.rules)) {
-          setCustomRules(data.rules);
-        }
+    const loadRules = fetch('/api/policies/custom-rules', { headers: authHeaders() })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data?.detail || `Rule load failed (HTTP ${r.status}).`);
+        return data;
       })
-      .catch(() => {});
-  }, []);
+      .then((data) => {
+        if (!cancelled && Array.isArray(data.rules)) setCustomRules(data.rules);
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError((previous) => previous ? `${previous} ${err.message}` : err.message);
+      });
+
+    Promise.all([loadPolicy, loadRules]).finally(() => {
+      if (!cancelled) setPolicyLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentOrg?.id, tenantLoading, t]);
 
   const handleSave = async () => {
     setSaveError(null);
     setSavedSuccess(false);
+    if (!currentOrg?.id) {
+      setSaveError(t('policies.organizationRequired'));
+      return;
+    }
     try {
       const headers = authHeaders({ 'Content-Type': 'application/json' });
       const res = await fetch('/api/policies', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          org_id: 1,
+          org_id: currentOrg.id,
           name: t('policies.policyName'),
           max_regression_pct: maxRegression,
           max_sci_score: minGreenScore,
@@ -106,6 +117,11 @@ export default function Policies() {
   };
 
   const handleEvaluateCustomRules = async () => {
+    setCustomEvalError(null);
+    if (!customTestCode.trim()) {
+      setCustomEvalError(t('policies.customYaml.codeRequired'));
+      return;
+    }
     setEvaluatingCustom(true);
     try {
       const res = await fetch('/api/policies/custom-rules/evaluate', {
@@ -117,20 +133,25 @@ export default function Policies() {
           file_path: 'worker_poll.py',
         }),
       });
-      if (res.ok) {
-        setCustomEvalResult(await res.json());
-      }
-    } catch {
-      // Non-blocking
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.detail || `Rule evaluation failed (HTTP ${res.status}).`);
+      setCustomEvalResult(body);
+    } catch (err: any) {
+      setCustomEvalError(err?.message || t('policies.customYaml.evaluateError'));
     } finally {
       setEvaluatingCustom(false);
     }
   };
 
   const handleRunIacAudit = async (overrideContent?: string, overridePath?: string) => {
-    setAuditingIac(true);
     const targetContent = overrideContent ?? iacContent;
     const targetPath = overridePath ?? iacFilePath;
+    setIacError(null);
+    if (!targetContent.trim() || !targetPath.trim()) {
+      setIacError(t('policies.iacLinter.inputRequired'));
+      return;
+    }
+    setAuditingIac(true);
     try {
       const res = await fetch('/api/kubernetes/iac-audit', {
         method: 'POST',
@@ -140,11 +161,11 @@ export default function Policies() {
           file_path: targetPath,
         }),
       });
-      if (res.ok) {
-        setIacResult(await res.json());
-      }
-    } catch {
-      // Non-blocking
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.detail || `IaC audit failed (HTTP ${res.status}).`);
+      setIacResult(body);
+    } catch (err: any) {
+      setIacError(err?.message || t('policies.iacLinter.auditError'));
     } finally {
       setAuditingIac(false);
     }
@@ -165,11 +186,18 @@ export default function Policies() {
         </div>
         <button 
           onClick={handleSave}
-          className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5"
+          disabled={policyLoading || !currentOrg?.id}
+          className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5 disabled:opacity-50"
         >
-          <Save className="w-3.5 h-3.5" /> {t('policies.saveButton')}
+          <Save className="w-3.5 h-3.5" /> {policyLoading ? t('policies.loading') : t('policies.saveButton')}
         </button>
       </div>
+
+      {loadError && (
+        <div role="alert" className="bg-red-50 border border-red-200 text-red-800 text-sm p-4 rounded-xl">
+          {loadError}
+        </div>
+      )}
 
       {savedSuccess && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm p-4 rounded-xl flex items-center gap-2">
@@ -325,8 +353,12 @@ export default function Policies() {
                 rows={5}
                 value={customTestCode}
                 onChange={(e) => setCustomTestCode(e.target.value)}
+                placeholder={t('policies.customYaml.codePlaceholder')}
                 className="w-full font-mono text-xs bg-slate-900 text-emerald-300 border border-slate-800 rounded-lg p-3 outline-none"
               />
+              {customEvalError && (
+                <p role="alert" className="text-xs text-red-700">{customEvalError}</p>
+              )}
               {customEvalResult && (
                 <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
                   <div className="flex justify-between font-semibold text-slate-900 dark:text-slate-200">
@@ -357,39 +389,9 @@ export default function Policies() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => {
-                setIacContent(SAMPLE_TF);
-                setIacFilePath('infra/main.tf');
-                handleRunIacAudit(SAMPLE_TF, 'infra/main.tf');
-              }}
-                className="text-xs px-2.5 py-1.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium"
-            >
-              {t('policies.iacLinter.sampleTf')}
-            </button>
-            <button
-              onClick={() => {
-                setIacContent(SAMPLE_K8S);
-                setIacFilePath('k8s/deployment.yaml');
-                handleRunIacAudit(SAMPLE_K8S, 'k8s/deployment.yaml');
-              }}
-                className="text-xs px-2.5 py-1.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium"
-            >
-              {t('policies.iacLinter.sampleK8s')}
-            </button>
-            <button
-              onClick={() => {
-                setIacContent(SAMPLE_DOCKER);
-                setIacFilePath('Dockerfile');
-                handleRunIacAudit(SAMPLE_DOCKER, 'Dockerfile');
-              }}
-                className="text-xs px-2.5 py-1.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium"
-            >
-              {t('policies.iacLinter.sampleDocker')}
-            </button>
-            <button
               onClick={() => handleRunIacAudit()}
               disabled={auditingIac}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3.5 py-1.5 rounded-lg"
+              className="btn-primary text-xs font-medium px-3.5 py-1.5 rounded-lg disabled:opacity-50"
             >
               {auditingIac ? t('policies.iacLinter.auditing') : t('policies.iacLinter.auditButton')}
             </button>
@@ -397,12 +399,27 @@ export default function Policies() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <textarea
-            rows={7}
-            value={iacContent}
-            onChange={(e) => setIacContent(e.target.value)}
-            className="w-full font-mono text-xs bg-slate-900 text-slate-100 border border-slate-800 rounded-lg p-3 outline-none"
-          />
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={iacFilePath}
+              onChange={(e) => setIacFilePath(e.target.value)}
+              placeholder={t('policies.iacLinter.pathPlaceholder')}
+              aria-label={t('policies.iacLinter.filePath')}
+              className="input font-mono"
+            />
+            <textarea
+              rows={7}
+              value={iacContent}
+              onChange={(e) => setIacContent(e.target.value)}
+              placeholder={t('policies.iacLinter.contentPlaceholder')}
+              aria-label={t('policies.iacLinter.fileContent')}
+              className="w-full font-mono text-xs bg-slate-900 text-slate-100 border border-slate-800 rounded-lg p-3 outline-none"
+            />
+            {iacError && (
+              <p role="alert" className="text-xs text-red-700">{iacError}</p>
+            )}
+          </div>
 
           <div className="space-y-2">
             {iacResult ? (
@@ -447,5 +464,3 @@ export default function Policies() {
     </div>
   );
 }
-
-

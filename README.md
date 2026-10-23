@@ -2,19 +2,19 @@
 
 <div align="center">
 
-[![Production Live](https://img.shields.io/badge/🚀_Live_Demo-greencode--teal.vercel.app-059669?style=for-the-badge)](https://greencode-teal.vercel.app)
+![Local-first](https://img.shields.io/badge/run-locally-166534?style=for-the-badge)
 [![Amazon Hackathon](https://img.shields.io/badge/Amazon_Developer-Hackathon_2026-FF9900?style=for-the-badge&logo=amazon&logoColor=white)](https://amazonappdev2026.devpost.com)
 
-[![Release](https://img.shields.io/badge/release-v2.1.0-0ea5e9?style=flat-square)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-541_passing-22c55e?style=flat-square)]()
+[![Release](https://img.shields.io/badge/release-v2.0.0-0ea5e9?style=flat-square)](pyproject.toml)
+[![Tests](https://img.shields.io/badge/tests-automated-22c55e?style=flat-square)]()
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
 [![ISO/IEC 21031](https://img.shields.io/badge/ISO%2FIEC%2021031-GSF_SCI-10b981?style=flat-square)](https://greensoftware.foundation)
 
-**Voice-Operated Software Carbon Intelligence Platform**
+**Software Carbon Intelligence Platform**
 
-*Powered by Amazon Alexa+, Amazon Bedrock, and AWS*
+*Featuring a self-hosted MCP server and Alexa+-style browser simulator*
 
-[🎥 Watch Demo](#) • [📖 Documentation](docs/) • [🚀 Quick Start](#quick-start) • [🏆 Hackathon Submission](DEVPOST_SUBMISSION.md)
+[🧩 Local MCP Demo](#run-the-alexa-style-hackathon-web-demo-no-account-or-payment-required) • [📖 Documentation](docs/) • [🚀 Quick Start](#quick-start) • [🏆 Hackathon Submission](DEVPOST_SUBMISSION.md)
 
 </div>
 
@@ -24,9 +24,9 @@
 
 **GreenCode Auditor** is a software carbon intelligence platform that helps developers and cloud architects:
 
-- 🗣️ **Talk to your code** using Amazon Alexa+ voice commands
+- 🗣️ **Try the Alexa+-style web simulator** backed by GreenCode's self-hosted MCP server
 - ⚡ **Measure real hardware energy** consumption (CPU, GPU, memory)
-- 🤖 **Auto-fix energy waste** with Amazon Bedrock AI (Nova & Claude)
+- 🤖 **Generate and verify refactor proposals** with a configured AI provider (Amazon Bedrock is optional)
 - 📊 **Track carbon emissions** per line of code (ISO/IEC 21031 SCI standard)
 - 💰 **Save cloud costs** with AWS Graviton4 ARM64 migration recommendations
 - 🌍 **Live grid intelligence** from 150+ global regions
@@ -34,7 +34,6 @@
 
 ### 🏆 Built for Amazon Developer Hackathon 2026
 - **Primary Track:** Alexa+ Track (Agent Skills & MCP Servers)
-- **Mini Challenge:** AWS Builder Challenge (Amazon Bedrock & Cloud Services)
 
 ---
 
@@ -46,23 +45,28 @@ See `docs/screenshots/README.md` for screenshot guide.
 
 ## ✨ Key Features
 
-### 🎙️ Alexa+ Voice Operations
-Control everything hands-free:
+### 🧩 Alexa+-Style MCP Web Simulator
+Try real MCP tool calls in the local Alexa+ style browser simulator:
 ```
-👤 "Alexa, which AWS region is cleanest tonight?"
-🤖 "Sweden (eu-north-1) has the lowest carbon intensity at 45 gCO₂/kWh"
-
-👤 "Alexa, audit my Python code for energy waste"
-🤖 "Found 3 nested loops consuming 2.4 Wh. Shall I optimize them?"
-
-👤 "Alexa, measure hardware power"
-🤖 "Current CPU draw: 18.3 watts via Intel RAPL sensors"
+Open http://localhost:5173/alexa-demo
+Choose a preset or enter a supported grid, audit, SCI, or refactor request.
 ```
+The simulator initializes an MCP session, lists tools, and calls the local
+GreenCode MCP server; displayed results come from those tool responses. It is
+not an Amazon-hosted Alexa+ session, Developer Console test, or Echo
+interaction. See [the judge demo instructions](alexa/README.md#no-cost-hackathon-web-demo).
 
-### 🧠 Amazon Bedrock AI Refactoring
-- Uses `amazon.nova-pro-v1:0`, `amazon.nova-lite-v1:0`, and `anthropic.claude-3-5-sonnet`
-- **4-stage behavior verification** ensures refactored code is functionally identical
-- **Significant energy reduction** on algorithmic hotspots (measured up to 68% in benchmarks)
+### 🧠 Refactor Proposals
+
+When configured, AI refactoring tries providers in this order: Amazon Bedrock,
+Google Gemini Pro (`gemini-3.1-pro-preview`), then HuggingFace. Gemini is pinned to the
+Pro model; Flash models are not used. Set `GEMINI_API_KEY` in the backend
+`.env` file to enable the second provider. The same compile, similarity, and
+behavior-probe checks are applied to LLM proposals. Recognized patterns also
+have deterministic local suggestions when providers are unavailable; these
+are explicitly labeled as not behavior-tested. Unsupported patterns require
+manual review.
+- Supports Amazon Bedrock models such as `amazon.nova-pro-v1:0` when configured
 
 ### 📈 Real Hardware Energy Measurement
 - **Intel/AMD RAPL** counters (CPU package, DRAM, GPU)
@@ -83,7 +87,7 @@ Control everything hands-free:
 - Estimates annual CO₂e reductions and cost savings
 
 ### 🔒 Security & Compliance
-- **OAuth 2.1 PKCE (S256)** for GitHub/Google login
+- **OAuth 2.0 authorization-code flow with state validation** for GitHub login
 - **Zero-knowledge architecture** — GitHub tokens never hit the database
 - **Secrets encrypted at rest** with Fernet (AES-256-CBC)
 - **Pre-commit hooks** block secrets and API keys
@@ -91,71 +95,151 @@ Control everything hands-free:
 ---
 
 ## 🚀 Quick Start
-### Option 1: One-Click Docker Demo (Easiest - 2 minutes)
-👉 **No configuration required!**
-
-```bash
-# Linux/Mac
-bash quick-demo.sh
-
-# Windows
-quick-demo.bat
-```
-
-Then open: http://localhost:5173
-
-### Option 2: Try Live Production Demo
-
-### Option 2: Try the Live Demo (Fastest)
-👉 **[https://greencode-teal.vercel.app](https://greencode-teal.vercel.app)**
-
-**Quick Demo Access:**
-- Click **"Demo Login"** button (instant access, no signup)
-- Or use credentials: `demo@greencode.dev` / `DemoPassword123!`
-
-1. Click **"Demo Login"** (no signup required)
-2. Paste code or enter a GitHub repo URL
-3. Click **"Run Scan"**
-4. Review energy anti-patterns and carbon score
-5. Click **"Generate Fix"** for AI-powered refactoring
-
-### Option 3: Run Locally (Advanced) (5 minutes)
+### Run the real application locally
 
 #### Prerequisites
 - Python 3.11+
 - Node.js 20+
 - Git
+- A GitHub OAuth App with callback URL `http://localhost:5173/login`
 
 #### Installation
-```bash
+```powershell
 # 1. Clone the repository
 git clone https://github.com/zeenat28-ui/greencode.git
-cd greencode
+Set-Location greencode
 
-# 2. Install backend dependencies
-pip install -e .
+# 2. Create a Python environment and install backend dependencies
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[mcp]"
 
-# 3. Set up environment variables
-cp .env.example .env
-# Edit .env and add your API keys (see Configuration section)
+# 3. Create local settings if they do not already exist.
+# Set GitHub OAuth credentials in .env; never commit .env or share its secrets.
+if (-not (Test-Path .env)) {
+  Copy-Item .env.example .env
+}
+# Never commit .env or share GITHUB_CLIENT_SECRET.
 
 # 4. Install frontend dependencies
-cd frontend
+Set-Location frontend
 npm install
+```
 
-# 5. Start the backend (Terminal 1)
-cd ..
-python -m uvicorn app.main:app --reload --port 8000
+Start the API and UI in **separate terminals** from the repository root:
 
-# 6. Start the frontend (Terminal 2)
-cd frontend
-npm run dev
+```powershell
+# Terminal 1 - FastAPI backend
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+```powershell
+# Terminal 2 - React/Vite frontend
+Set-Location frontend
+npm run dev -- --host 127.0.0.1
+```
+
+```powershell
+# Terminal 3 - GreenCode MCP Streamable HTTP server for the browser demo
+$env:GREENCODE_MCP_PORT = "8766"
+python -m app.mcp_server
 ```
 
 #### Open in browser
 - **Frontend:** http://localhost:5173
 - **Backend API:** http://localhost:8000/docs
-- **Alexa+ MCP:** http://localhost:8000/mcp
+- **Health check:** http://localhost:8000/api/health
+- **MCP endpoint:** http://127.0.0.1:8766/mcp (proxied to the dashboard at `/mcp`)
+
+#### Run the Alexa-style hackathon web demo (no account or payment required)
+
+For the Alexa+ hackathon demonstration, use the browser simulator at
+`http://localhost:5173/alexa-demo`. It needs the MCP server and frontend from
+the local setup above, but does not require GitHub login, an Echo, a tunnel,
+Alexa Developer Console access, or a paid cloud deployment. The page uses the
+same self-hosted MCP tools and reports errors if the local MCP server is
+unavailable.
+
+```powershell
+# Terminal 1 - MCP server
+$env:GREENCODE_MCP_PORT = "8766"
+python -m app.mcp_server
+
+# Terminal 2 - frontend
+Set-Location frontend
+npm run dev -- --host 127.0.0.1
+```
+
+Open `http://localhost:5173/alexa-demo` and choose a preset. The page is an
+Alexa+-style web simulator, not a connection to Amazon's Alexa service.
+
+#### Optional: run the ASK custom skill on an Echo
+
+The Alexa cloud service cannot reach `localhost`. A free ngrok account
+provides a stable development hostname without buying a domain. Configure it
+once, then use the launcher to start the backend, Alexa-only webhook bridge,
+tunnel, and frontend together:
+
+```powershell
+winget install --id Ngrok.Ngrok -e
+.\scripts\setup-alexa-tunnel.ps1
+.\scripts\start-alexa-local.ps1
+```
+
+Create a free ngrok account and enter its agent token only in the launcher's
+hidden local prompt. Save the endpoint printed by the launcher in the Alexa
+Developer Console once; the assigned ngrok hostname stays stable across local
+restarts. The bridge exposes only the ASK webhook path. See [Alexa local
+setup](alexa/README.md#deploying) for details.
+
+#### Connect Alexa+ to the MCP server
+Alexa+ uses the separate `alexa/addon.json` manifest and the self-hosted
+Streamable HTTP endpoint ending in `/mcp`. It must not be pointed at the ASK
+webhook in `alexa/skill.json`. For a local MCP demo exposed over HTTPS, set a
+bearer token and run:
+
+```powershell
+$env:GREENCODE_MCP_PORT = "8766"
+$env:GREENCODE_MCP_TOKEN = "<set a local secret in this shell>"
+.\scripts\start_mcp_remote.ps1
+```
+
+The script configures the Alexa+ MCP manifest (`/mcp`) and the separate ASK
+Custom Skill webhook (`/api/alexa/skill`) for its HTTPS tunnel URL. For a
+deployed MCP host, run
+`.\scripts\configure-alexa-addon.ps1 -BaseUrl "https://mcp.example.com" -ConfigureAskSkill`
+before `alexa-ai deploy`. Enter the printed `/api/alexa/skill` URL in the ASK
+Developer Console while the tunnel is running. The previous Vercel URL is not
+an MCP deployment; the Vercel function omits the MCP SDK and does not expose
+`/mcp`.
+See [Alexa integration setup](alexa/README.md#configure-the-alexa-mcp-add-on)
+for the distinction between Alexa+ MCP and the ASK Custom Skill.
+
+#### Use the real GitHub audit workflow
+1. Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in the backend `.env` file.
+2. Restart the backend, open `http://localhost:5173/login`, and choose **Continue with GitHub**. Authorize repository access when GitHub prompts you.
+3. GitHub redirects back to the same browser tab. After sign-in, choose an accessible repository in **Scan Repository**, select its branch, and run the audit.
+4. Review the returned findings in **Issues**, generate a refactor for a finding, inspect its code diff, and create a pull request.
+
+The GitHub OAuth flow uses the `repo`, `read:user`, and `user:email` scopes so private repositories can be audited and the app can create a branch and PR. OAuth credentials are exchanged by the backend; no PAT entry is required.
+
+### Do I need Docker?
+
+No. The frontend, FastAPI backend, GitHub OAuth/repository workflow, static
+audits, and browser-based Alexa assistant all run locally without Docker.
+GreenCode uses Docker only for **dynamic analysis**, where it executes code
+from a repository to measure runtime behavior. The container is a security
+boundary; running untrusted repository code directly on the host is not a safe
+substitute.
+
+On Windows, Docker Desktop with its WSL 2 backend is the supported local option
+for that feature. A separately provisioned, disposable VM can be an alternative
+in principle, but GreenCode's current dynamic-analysis adapter expects Docker;
+another sandbox needs its own isolated adapter and must not fall back to host
+execution. Without a sandbox, dynamic analysis is explicitly unavailable while
+static scans and the rest of the local app remain usable.
 
 ---
 
@@ -182,17 +266,21 @@ greencode --path . --sarif greencode.sarif
 3. **Generate Fixes:** Click "Generate Fix" for AI-powered optimizations
 4. **Create PR:** Auto-create GitHub pull requests with refactored code
 
-### Alexa+ Voice Commands
-**Using Alexa Voice:**
-- **Option 1:** Use web microphone in dashboard (click 🎤 icon)
-- **Option 2:** Install Alexa skill (see `alexa/README.md` for setup)
-- **Option 3:** Direct MCP endpoint at `https://greencode-teal.vercel.app/mcp`
+### Browser Voice Assistant
+The separate browser voice assistant is not an Amazon Alexa connection:
+- Use the microphone button in the signed-in app. The browser captures speech,
+  sends it to the local FastAPI voice endpoint, and speaks the backend response.
+- The in-browser microphone works on `localhost` in a supported browser after
+  permission is granted. An Amazon Echo cannot reach a loopback address; device
+  testing needs a public HTTPS endpoint or a secure tunnel to the local server.
+- See [the Alexa integration guide](alexa/README.md) for the distinction
+  between the browser simulator, MCP add-on, and ASK Custom Skill.
 
 **Example voice commands:**
-- *"Alexa, audit my code"*
-- *"Alexa, compare Ireland and Virginia"*
-- *"Alexa, what's the grid intensity in Sweden?"*
-- *"Alexa, measure hardware energy"*
+- *"Audit my code"*
+- *"Compare Ireland and Virginia"*
+- *"What's the grid intensity in Sweden?"*
+- *"Measure hardware energy"*
 
 ---
 
@@ -222,7 +310,7 @@ greencode/
 │   │   ├── context/AuthContext.tsx
 │   │   └── hooks/useAlexaVoice.ts
 │   └── package.json
-├── 🧪 tests/                    # 541 passing tests
+├── 🧪 tests/                    # Automated unit and integration tests
 │   ├── test_alexa_pipeline_fix.py
 │   ├── test_bedrock.py
 │   ├── test_sci.py
@@ -273,7 +361,8 @@ GOOGLE_CLIENT_SECRET=your_google_oauth_secret
 AWS_ACCESS_KEY_ID=your_aws_access_key
 AWS_SECRET_ACCESS_KEY=your_aws_secret_key
 AWS_REGION=us-east-1
-GREENCODE_LLM_PROVIDER=bedrock
+GEMINI_API_KEY=
+GREENCODE_LLM_PROVIDER=auto
 
 # Alexa+ (optional)
 GREENCODE_ALEXA_SKILL_ID=amzn1.ask.skill.your-skill-id
@@ -281,8 +370,6 @@ GREENCODE_ALEXA_SKILL_ID=amzn1.ask.skill.your-skill-id
 # Frontend
 VITE_API_URL=http://localhost:8000
 
-# Production (Vercel)
-APP_URL=https://greencode-teal.vercel.app
 ```
 
 ### API Keys Guide
@@ -330,7 +417,7 @@ python tools/verification/verify_alexa_pipeline.py
 - ✅ **Amazon Bedrock AI:** Multi-model refactoring with verification
 - ✅ **Real Hardware Measurement:** RAPL, NVML, Apple Silicon
 - ✅ **541 Passing Tests:** Comprehensive quality assurance
-- ✅ **Production-Ready:** Live at [greencode-teal.vercel.app](https://greencode-teal.vercel.app)
+- ✅ **Local workflow:** FastAPI backend and Vite frontend run independently on the developer machine
 
 ### Environmental Impact
 - 🌍 **68% energy reduction** on algorithmic hotspots (measured)
@@ -415,7 +502,7 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 
 - **GitHub:** [@zeenat28-ui](https://github.com/zeenat28-ui)
 - **Project:** [github.com/zeenat28-ui/greencode](https://github.com/zeenat28-ui/greencode)
-- **Live Demo:** [greencode-teal.vercel.app](https://greencode-teal.vercel.app)
+- **Local UI:** http://localhost:5173 (after starting the frontend and backend)
 - **Hackathon:** [Amazon Developer Hackathon 2026](https://amazonappdev2026.devpost.com)
 
 ---
@@ -429,5 +516,3 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 [![Star on GitHub](https://img.shields.io/github/stars/zeenat28-ui/greencode?style=social)](https://github.com/zeenat28-ui/greencode)
 
 </div>
-
-

@@ -82,6 +82,24 @@
           ]
         },
         {
+          "name": "AboutGreenCodeIntent",
+          "slots": [],
+          "samples": [
+            "what is greencode",
+            "what does greencode do"
+          ]
+        },
+        {
+          "name": "GetCurrentRepositoryIntent",
+          "slots": [],
+          "samples": [
+            "which github repository are you currently working on",
+            "what repository is currently selected",
+            "what repository am I working on",
+            "which repository is connected to greencode"
+          ]
+        },
+        {
           "name": "AuditRepositoryIntent",
           "slots": [],
           "samples": [

@@ -24,6 +24,10 @@ from app.database import (
 logger = logging.getLogger("greencode.services.budget")
 
 
+class BudgetNotConfiguredError(ValueError):
+    """Raised when a caller requests status for a team without an allocation."""
+
+
 class BudgetService:
     """Manages carbon allocations, consumption velocity, and breach gatekeeping."""
 
@@ -95,11 +99,8 @@ class BudgetService:
         period = period or cls._current_period()
         budget = get_team_carbon_budget(org_id, team_id, period)
         if not budget:
-            budget = set_team_carbon_budget(
-                org_id=org_id,
-                team_id=team_id,
-                monthly_budget_kg=500.0,
-                period=period,
+            raise BudgetNotConfiguredError(
+                f"No carbon budget is configured for team '{team_id}' in period '{period}'."
             )
 
         now = datetime.now(timezone.utc)
@@ -173,8 +174,6 @@ class BudgetService:
         finally:
             db.close()
 
-        if not team_ids:
-            team_ids = ["core-infra"]
         return [cls.get_team_status(org_id=org_id, team_id=tid, period=period) for tid in team_ids]
 
     @classmethod
@@ -208,4 +207,3 @@ class BudgetService:
                 else "PR within monthly team carbon quota"
             ),
         }
-

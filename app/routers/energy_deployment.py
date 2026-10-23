@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from app.services.energy_policy_service import EnergyPolicyService
 from app.services.rollback_service import RollbackService
-from app.services.budget_service import BudgetService
+from app.services.budget_service import BudgetNotConfiguredError, BudgetService
 from app.auth.dependencies import (
     enforce_tenant_scope,
     get_current_actor,
@@ -212,14 +212,14 @@ async def get_energy_budgets(
 ):
     """Query active organizational energy & carbon budget statuses."""
     effective_org_id = _resolve_org_id(actor, org_id)
-    team_status = BudgetService.get_team_status(
-        org_id=effective_org_id,
-        team_id=team_id,
-        period=period,
-    )
     all_budgets = BudgetService.list_org_budgets(org_id=effective_org_id, period=period)
+    team_status = next((budget for budget in all_budgets if budget["team_id"] == team_id), None)
     return {
-        **team_status,
+        "org_id": effective_org_id,
+        "team_id": team_id,
+        "period": period,
+        **(team_status or {}),
+        "team_status": team_status,
         "budgets": all_budgets,
     }
 
@@ -252,11 +252,12 @@ async def evaluate_pr_budget_gate(
 ):
     """Evaluate whether an incoming pull request exceeds a team's monthly carbon quota."""
     org_id = _resolve_org_id(actor, payload.org_id)
-    return BudgetService.evaluate_pr_impact(
-        org_id=org_id,
-        team_id=payload.team_id,
-        additional_projected_kg_co2e=payload.additional_projected_kg_co2e,
-        period=payload.period,
-    )
-
-
+    try:
+        return BudgetService.evaluate_pr_impact(
+            org_id=org_id,
+            team_id=payload.team_id,
+            additional_projected_kg_co2e=payload.additional_projected_kg_co2e,
+            period=payload.period,
+        )
+    except BudgetNotConfiguredError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

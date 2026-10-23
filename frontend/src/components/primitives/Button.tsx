@@ -23,7 +23,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'text-white bg-emerald-600 hover:bg-emerald-700',
+    'text-white bg-[#0e482f] hover:bg-[#0b3824]',
   'primary-outline':
     'text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950',
   secondary:

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.energy.monitor import EnergyMonitor
-from app.services.budget_service import BudgetService
+from app.services.budget_service import BudgetNotConfiguredError, BudgetService
 from app.auth.dependencies import enforce_tenant_scope, require_permission
 from app.auth.roles import Permission
 
@@ -57,5 +57,7 @@ async def get_team_budget_status(
 ):
     """Retrieve team carbon quota consumption, burn rate, and alerts."""
     enforce_tenant_scope(actor, int(org_id))
-    return BudgetService.get_team_status(org_id=org_id, team_id=team_id, period=period)
-
+    try:
+        return BudgetService.get_team_status(org_id=org_id, team_id=team_id, period=period)
+    except BudgetNotConfiguredError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

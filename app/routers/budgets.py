@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from app.services.budget_service import BudgetService
+from app.services.budget_service import BudgetNotConfiguredError, BudgetService
 from app.auth.dependencies import get_current_actor, require_permission
 from app.auth.roles import Permission, Role, normalize_role
 
@@ -69,11 +69,14 @@ async def get_team_budget_status(
 ):
     """Fetch current consumption, burn rate, and alert level for a team."""
     _enforce_tenant(actor, org_id)
-    return BudgetService.get_team_status(
-        org_id=org_id,
-        team_id=team_id,
-        period=period,
-    )
+    try:
+        return BudgetService.get_team_status(
+            org_id=org_id,
+            team_id=team_id,
+            period=period,
+        )
+    except BudgetNotConfiguredError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/consume")
@@ -98,10 +101,12 @@ async def evaluate_pr_carbon_impact(
 ):
     """Evaluate whether an incoming pull request exceeds monthly team carbon budget."""
     _enforce_tenant(actor, payload.org_id)
-    return BudgetService.evaluate_pr_impact(
-        org_id=payload.org_id,
-        team_id=payload.team_id,
-        additional_projected_kg_co2e=payload.additional_projected_kg_co2e,
-        period=payload.period,
-    )
-
+    try:
+        return BudgetService.evaluate_pr_impact(
+            org_id=payload.org_id,
+            team_id=payload.team_id,
+            additional_projected_kg_co2e=payload.additional_projected_kg_co2e,
+            period=payload.period,
+        )
+    except BudgetNotConfiguredError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

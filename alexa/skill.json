@@ -20,7 +20,7 @@
     "apis": {
       "custom": {
         "endpoint": {
-          "uri": "https://greencode-teal.vercel.app/api/alexa/skill"
+          "uri": "https://YOUR_PUBLIC_HTTPS_HOST/api/alexa/skill"
         },
         "interfaces": []
       }

@@ -33,49 +33,55 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.huggingface_client import LLMError, get_client
 
+logger = logging.getLogger("greencode.llm.refactor")
 
-def _select_client():
-    """Choose the model backend once, so the engine stays provider-agnostic.
 
-    Selection is made here, in one place, rather than by branching on a
-    provider name throughout the refactoring logic. That keeps the behaviour
-    of the verification gate below identical whichever backend produced the
-    candidate rewrite - a Claude proposal is checked exactly as strictly as a
-    Qwen one.
+def _client_for(provider: str):
+    if provider == "bedrock":
+        from app.bedrock_client import get_client as get_bedrock_client
 
-    ``GREENCODE_LLM_PROVIDER`` overrides the choice and accepts ``bedrock``,
-    ``huggingface`` or ``auto``. An explicit request for a provider that is not
-    configured is honoured, so its classified error surfaces to the user
-    instead of being silently swapped for a different vendor.
+        return get_bedrock_client(), "aws_bedrock"
+    if provider == "gemini":
+        from app.gemini_client import get_client as get_gemini_client
 
-    The HuggingFace branch resolves ``get_client`` through the module global
-    rather than binding it locally. That keeps this module-level name the
-    single injection seam, which is what the existing test suite patches - a
-    second local alias would quietly bypass every test that fakes the model.
-    """
-    choice = (os.environ.get("GREENCODE_LLM_PROVIDER") or "auto").strip().lower()
-
-    if choice == "huggingface":
-        return get_client(), "huggingface"
-
-    if choice == "bedrock":
-        from app.bedrock_client import get_client as _bedrock_client
-
-        return _bedrock_client(), "aws_bedrock"
-
-    # auto: prefer Bedrock when it is configured, otherwise HuggingFace.
-    try:
-        from app.bedrock_client import get_client as _bedrock_client
-
-        bedrock = _bedrock_client()
-        if bedrock.configured:
-            return bedrock, "aws_bedrock"
-    except Exception:  # noqa: BLE001 - a missing optional backend is not fatal
-        logger.debug("Bedrock backend unavailable; falling back to HuggingFace")
-
+        return get_gemini_client(), "google_gemini"
     return get_client(), "huggingface"
 
-logger = logging.getLogger("greencode.llm.refactor")
+
+def _select_clients():
+    """Return configured refactoring backends in Bedrock → Gemini → HF order.
+
+    Bedrock is the default preference; configured Gemini and HuggingFace
+    backends remain failovers. Selecting Gemini prefers it, then HuggingFace;
+    selecting HuggingFace keeps the legacy single-provider behavior. ``auto``
+    also uses the standard Bedrock → Gemini → HuggingFace order.
+    """
+    choice = (os.environ.get("GREENCODE_LLM_PROVIDER") or "bedrock").strip().lower()
+
+    if choice == "huggingface":
+        return [_client_for(choice)]
+
+    order = (
+        ("gemini", "huggingface")
+        if choice == "gemini"
+        else ("bedrock", "gemini", "huggingface")
+    )
+    clients = []
+    for provider_name in order:
+        try:
+            client, provider = _client_for(provider_name)
+            if provider_name == choice or client.configured or (
+                provider_name == "huggingface" and not clients
+            ):
+                clients.append((client, provider))
+        except Exception:  # noqa: BLE001 - a missing optional backend is not fatal
+            logger.debug("%s backend unavailable; continuing through provider chain", provider_name)
+    return clients
+
+
+def _select_client():
+    """Return the preferred provider while preserving the legacy test seam."""
+    return _select_clients()[0]
 
 SYSTEM_PROMPT = (
     "You are a Green Computing optimization agent. You refactor source code to "
@@ -405,13 +411,22 @@ def refactor(
     ]
 
     try:
-        client, provider = _select_client()
+        providers = _select_clients()
     except Exception as exc:
         return RefactorOutcome(
             original=code,
             refactored=(fallback if fallback else code),
             accepted=fallback is not None,
             reason=f"unexpected error: {type(exc).__name__}: {exc}",
+            source="fallback" if fallback else "none",
+            language=language,
+        )
+    if not providers:
+        return RefactorOutcome(
+            original=code,
+            refactored=(fallback if fallback else code),
+            accepted=fallback is not None,
+            reason="no LLM providers are available",
             source="fallback" if fallback else "none",
             language=language,
         )
@@ -423,87 +438,82 @@ def refactor(
     last_behaviour: Optional[bool] = None
     last_model: Optional[str] = None
     attempts_made = 0
+    provider_failures: List[str] = []
+    provider = providers[0][1]
 
-    for attempt in range(1, max_attempts + 1):
-        try:
-            content, usage, model = client.chat(
-                messages,
-                max_tokens=max_tokens,
-                temperature=0.0,
-            )
-        except LLMError as exc:
-            if attempt == 1:
+    for client, provider in providers:
+        provider_messages = [dict(message) for message in messages]
+        provider_reason = "not attempted"
+        for attempt in range(1, max_attempts + 1):
+            try:
+                content, usage, model = client.chat(
+                    provider_messages,
+                    max_tokens=max_tokens,
+                    temperature=0.0,
+                )
+            except LLMError as exc:
+                provider_reason = f"model unavailable ({exc.kind}): {exc.message}"
+                break
+            except Exception as exc:  # defensive: never let the API path 500 the request
+                provider_reason = f"unexpected error: {type(exc).__name__}: {exc}"
+                break
+
+            attempts_made += 1
+            last_model = model
+            total_prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+            total_completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
+
+            candidate = _strip_fences(content)
+            passed, reason, sim, behaviour = _verify_candidate(code, candidate, language)
+            if passed:
                 return RefactorOutcome(
                     original=code,
-                    refactored=(fallback if fallback else code),
-                    accepted=fallback is not None,
-                    reason=f"model unavailable ({exc.kind}): {exc.message}",
-                    source="fallback" if fallback else "none",
+                    refactored=candidate,
+                    accepted=True,
+                    reason=reason if attempt == 1 else f"{reason} (self-healed on attempt {attempt})",
+                    source="llm",
+                    model=model,
                     provider=provider,
                     language=language,
+                    usage={
+                        "prompt_tokens": total_prompt_tokens,
+                        "completion_tokens": total_completion_tokens,
+                    },
+                    similarity=sim,
+                    behaviour_verified=behaviour,
+                    attempts=attempts_made,
                 )
-            break
-        except Exception as exc:  # defensive: never let the API path 500 the request
-            if attempt == 1:
-                return RefactorOutcome(
-                    original=code,
-                    refactored=(fallback if fallback else code),
-                    accepted=fallback is not None,
-                    reason=f"unexpected error: {type(exc).__name__}: {exc}",
-                    source="fallback" if fallback else "none",
-                    provider=provider,
-                    language=language,
+
+            provider_reason = reason
+            last_reason = reason
+            last_sim = sim
+            last_behaviour = behaviour
+
+            if attempt < max_attempts:
+                provider_messages.append({"role": "assistant", "content": candidate or content})
+                provider_messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Your previous refactored code was rejected by our verification gate ({reason}). "
+                            f"Please fix this issue and output ONLY the corrected, behaviour-preserving {language} code "
+                            "with the exact same function signature and return values."
+                        ),
+                    }
                 )
-            break
 
-        attempts_made = attempt
-        last_model = model
-        total_prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
-        total_completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
-
-        candidate = _strip_fences(content)
-        passed, reason, sim, behaviour = _verify_candidate(code, candidate, language)
-        if passed:
-            return RefactorOutcome(
-                original=code,
-                refactored=candidate,
-                accepted=True,
-                reason=reason if attempt == 1 else f"{reason} (self-healed on attempt {attempt})",
-                source="llm",
-                model=model,
-                provider=provider,
-                language=language,
-                usage={
-                    "prompt_tokens": total_prompt_tokens,
-                    "completion_tokens": total_completion_tokens,
-                },
-                similarity=sim,
-                behaviour_verified=behaviour,
-                attempts=attempts_made,
-            )
-
-        last_reason = reason
-        last_sim = sim
-        last_behaviour = behaviour
-
-        if attempt < max_attempts:
-            messages.append({"role": "assistant", "content": candidate or content})
-            messages.append(
-                {
-                    "role": "user",
-                    "content": (
-                        f"Your previous refactored code was rejected by our verification gate ({reason}). "
-                        f"Please fix this issue and output ONLY the corrected, behaviour-preserving {language} code "
-                        "with the exact same function signature and return values."
-                    ),
-                }
-            )
+        last_reason = provider_reason
+        provider_failures.append(f"{provider}: {provider_reason}")
+        logger.warning("Refactor provider %s failed verification or generation: %s", provider, provider_reason)
 
     return RefactorOutcome(
         original=code,
         refactored=(fallback if fallback else code),
         accepted=fallback is not None,
-        reason=last_reason,
+        reason=(
+            last_reason if len(provider_failures) == 1
+            else "All configured LLM providers failed: " + "; ".join(provider_failures)
+        ),
         source="fallback" if fallback else "none",
         model=last_model,
         provider=provider,
@@ -516,6 +526,3 @@ def refactor(
         behaviour_verified=last_behaviour,
         attempts=attempts_made,
     )
-
-
-

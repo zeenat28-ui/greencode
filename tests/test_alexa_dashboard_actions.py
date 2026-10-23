@@ -80,11 +80,14 @@ class TestDashboardActionRouting(unittest.TestCase):
     def test_sla_check_with_the_words_the_other_way_round(self):
         cmd = alexa_nlp.MAPPER.map("does this deployment meet the sla")
         self.assertEqual(cmd.tool, "evaluate_sla")
+        self.assertIsNone(cmd.payload["total_joules"])
+        self.assertIsNone(cmd.payload["green_score"])
 
     def test_scope_inventory_routes_and_resolves_the_zone(self):
         cmd = alexa_nlp.MAPPER.map("scope 1 2 3 inventory for ireland")
         self.assertEqual(cmd.tool, "scope_inventory")
         self.assertEqual(cmd.payload["grid_zone"], "IE")
+        self.assertNotIn("grid_intensity_gco2_per_kwh", cmd.payload)
 
     def test_audit_history_routes(self):
         for phrase in ("show my audit history", "my recent audits"):
@@ -95,6 +98,8 @@ class TestDashboardActionRouting(unittest.TestCase):
         cmd = alexa_nlp.MAPPER.map("run owner/repo dynamically")
         self.assertEqual(cmd.tool, "dynamic_analyze")
         self.assertEqual(cmd.payload["repo"], "owner/repo")
+        self.assertIsNone(cmd.payload["grid_intensity"])
+        self.assertIsNone(cmd.payload["functional_unit"])
 
     def test_generic_repository_audit_still_works(self):
         cmd = alexa_nlp.MAPPER.map("audit my repository")
@@ -192,6 +197,9 @@ class TestDashboardActionSpeech(unittest.TestCase):
         ssml = resp["response"]["outputSpeech"]["ssml"]
         self.assertIn("Diff audit complete", ssml)
         self.assertIn("Diff green score", ssml)
+        self.assertIn("highest-priority finding", ssml)
+        self.assertIn("Synchronous Logging / Print Inside Iteration", ssml)
+        self.assertIn("app.py at line 4", ssml)
 
     def test_sla_speech_states_the_verdict(self):
         result = alexa_actions.evaluate_sla(total_joules=1200, green_score=80)
@@ -250,11 +258,21 @@ class TestDashboardActionWebhook(unittest.TestCase):
 
     def test_scope_inventory_is_spoken_by_the_webhook(self):
         speech = _ask("scope one two three inventory")
-        self.assertIn("Scope 1, 2 and 3 inventory ready", speech)
+        self.assertIn("actual workload", speech)
+        self.assertNotIn("inventory ready", speech)
 
     def test_sla_check_is_spoken_by_the_webhook(self):
         speech = _ask("check my energy sla")
-        self.assertIn("energy SLA", speech)
+        self.assertIn("needs actual", speech)
+        self.assertNotIn("passes the energy SLA", speech)
+
+    def test_dynamic_analysis_without_real_measurement_inputs_is_rejected(self):
+        speech = _ask("run owner/repo dynamically")
+        self.assertIn("explicit repository, grid intensity, and functional unit", speech)
+
+    def test_public_audit_history_does_not_return_unscoped_user_data(self):
+        speech = _ask("show my audit history")
+        self.assertIn("authenticated GreenCode dashboard", speech)
 
     def test_region_query_still_uses_the_region_heuristics(self):
         # The new actions must not swallow the free-form region questions.

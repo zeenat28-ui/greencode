@@ -18,70 +18,15 @@ import {
 } from 'lucide-react';
 import { useT } from '../i18n/I18nContext';
 
-function getFallbackSnippet(violationType: string, language: string = 'python'): string {
-  const lang = (language || 'python').toLowerCase();
-  const fallbacks: Record<string, Record<string, string>> = {
-    'NESTED_LOOPS_DEPTH_3+': {
-      python: `for i in range(len(matrix)):
-    for j in range(len(matrix[i])):
-        for k in range(len(matrix[i][j])):
-            process(matrix[i][j][k])`,
-      javascript: `for (let i = 0; i < matrix.length; i++) {
-  for (let j = 0; j < matrix[i].length; j++) {
-    for (let k = 0; k < matrix[i][j].length; k++) {
-      process(matrix[i][j][k]);
-    }
-  }
-}`,
-    },
-    'RAW_DB_CURSOR_NO_CONTEXT': {
-      python: `cursor = connection.cursor()
-cursor.execute("SELECT * FROM telemetry WHERE status = 'active'")
-records = cursor.fetchall()
-cursor.close()`,
-      javascript: `const client = await pool.connect();
-const result = await client.query("SELECT * FROM telemetry WHERE status = 'active'");
-client.release();`,
-    },
-    'UNCACHED_NETWORK_IN_LOOP': {
-      python: `for item_id in items:
-    response = requests.get(f"https://api.example.com/items/{item_id}")
-    results.append(response.json())`,
-      javascript: `for (const item of items) {
-  const res = await fetch(\`https://api.example.com/items/\${item.id}\`);
-  results.push(await res.json());
-}`,
-    },
-    'QUADRATIC_STRING_CONCAT_IN_LOOP': {
-      python: `result = ""
-for chunk in large_dataset:
-    result += str(chunk)`,
-      javascript: `let result = "";
-for (const chunk of largeDataset) {
-  result += chunk;
-}`,
-    },
-    'HIDDEN_ITERATIVE_COMPUTATION': {
-      python: `for idx, row in df.iterrows():
-    total += row['value'] * 1.5`,
-      javascript: `items.map(item => {
-  total += item.value * 1.5;
-});`,
-    },
-  };
-
-  return fallbacks[violationType]?.[lang] || fallbacks[violationType]?.python || 'for item in items:\n    process(item)';
-}
-
 export default function Issues() {
   const t = useT();
   const [scanData]        = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
-  const [ghToken]        = useLocalStorage<string>('greencode_gh_token', '');
   const [searchQuery, setSearchQuery]       = useState('');
   const [severityFilter, setSeverityFilter] = useState('All');
   const [sortOrder, setSortOrder]           = useState('highest_penalty');
   const [selectedViolation, setSelectedViolation] = useState<Violation | null>(null);
   const [refactorResults, setRefactorResults] = useState<Record<string, any>>({});
+  const [refactorErrors, setRefactorErrors] = useState<Record<string, string>>({});
   const [refactoring, setRefactoring]       = useState<Set<string>>(new Set());
   const [batchRefactoring, setBatchRefactoring] = useState(false);
   const [batchProgress, setBatchProgress]   = useState<{ done: number; total: number } | null>(null);
@@ -92,8 +37,8 @@ export default function Issues() {
   // PR Modal state for entering or confirming GitHub details
   const [prModalViolation, setPrModalViolation] = useState<{ violation: Violation; key: string } | null>(null);
   const [prModalRepo, setPrModalRepo]       = useState('');
-  const [prModalToken, setPrModalToken]     = useState('');
   const [prModalError, setPrModalError]     = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   const violations: Violation[] = scanData?.violations || [];
 
@@ -121,6 +66,12 @@ export default function Issues() {
      return a.file_path.localeCompare(b.file_path);
    });
 
+   const activeViolation =
+     sortedViolations.find((violation) =>
+       violation.file_path === selectedViolation?.file_path &&
+       violation.line_number === selectedViolation?.line_number
+     ) || sortedViolations[0] || null;
+
   const getViolationKey = (v: Violation, idx: number) => {
     return `${v.file_path}-${v.line_number}-${v.violation_type}-${idx}`;
   };
@@ -140,13 +91,19 @@ export default function Issues() {
     return '';
   };
 
-  // Bug fix #2: handleRefactor ensures snippet is never empty via fallback synthesis
   const handleRefactor = async (violation: Violation, key: string) => {
     if (refactorResults[key]) return;
 
-    const rawSnippet = (violation.snippet || violation.context_code || '').trim();
-    const snippet = rawSnippet || getFallbackSnippet(violation.violation_type, violation.language);
+    const snippet = (violation.snippet || '').trim();
+    if (!snippet) {
+      setRefactorErrors((previous) => ({
+        ...previous,
+        [key]: 'The audit did not return source code for this finding, so it cannot be safely refactored.',
+      }));
+      return;
+    }
 
+    setRefactorErrors((previous) => ({ ...previous, [key]: '' }));
     setRefactoring(p => new Set(p).add(key));
     try {
       const resp = await refactorService.refactor(
@@ -155,15 +112,26 @@ export default function Issues() {
         violation.language || 'python',
         violation.context_code || undefined
       );
+      if (
+        typeof resp.data.original_code !== 'string' ||
+        !resp.data.original_code.trim() ||
+        typeof resp.data.refactored_code !== 'string' ||
+        !resp.data.refactored_code.trim()
+      ) {
+        throw new Error('The refactoring service returned an incomplete code diff.');
+      }
       setRefactorResults(p => ({ ...p, [key]: resp.data }));
-    } catch {
-      // Handled gracefully
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.detail ||
+        err?.message ||
+        'The refactoring request failed. Check the API configuration and try again.';
+      setRefactorErrors((previous) => ({ ...previous, [key]: message }));
     } finally {
       setRefactoring(p => { const s = new Set(p); s.delete(key); return s; });
     }
   };
 
-  // Bug fix #3: handleBatchRefactor with progress and non-empty snippet fallback
   const handleBatchRefactor = async () => {
     const unrefactored = sortedViolations
       .map((v, i) => ({ v, key: getViolationKey(v, i) }))
@@ -184,12 +152,17 @@ export default function Issues() {
     setBatchProgress(null);
   };
 
-  // Bug fix #1: Real GitHub Pull Request creation via githubService
   const initiatePR = (violation: Violation, key: string) => {
     const detectedSlug = getDetectedGitHubSlug();
+    if (!detectedSlug) {
+      setPrResults((previous) => ({
+        ...previous,
+        [key]: { error: 'Pull requests can only be created for a completed GitHub repository audit.' },
+      }));
+      return;
+    }
     setPrModalViolation({ violation, key });
     setPrModalRepo(detectedSlug);
-    setPrModalToken(ghToken || '');
     setPrModalError(null);
   };
 
@@ -209,6 +182,10 @@ export default function Issues() {
       setPrModalError('Please enter a valid GitHub repository in "owner/repo" format.');
       return;
     }
+    if (cleanRepo !== getDetectedGitHubSlug()) {
+      setPrModalError('Pull requests must target the repository that was audited.');
+      return;
+    }
 
     setPrLoading(p => new Set(p).add(key));
     setPrModalError(null);
@@ -221,16 +198,17 @@ export default function Issues() {
         violation.title,
         result.energy_reduction_pct,
         result.carbon_saved_gco2_10k_runs,
-        violation.snippet || violation.context_code || undefined
+        result.original_code || violation.snippet || undefined
       );
 
       const prUrl = resp.data?.pr_url;
+      if (!resp.data?.success || typeof prUrl !== 'string' || !prUrl) {
+        throw new Error('GitHub did not confirm pull request creation.');
+      }
       setPrResults(p => ({ ...p, [key]: { url: prUrl } }));
       setPrModalViolation(null);
 
-      if (prUrl) {
-        window.open(prUrl, '_blank');
-      }
+      window.open(prUrl, '_blank');
     } catch (err: any) {
       const msg =
         err?.response?.data?.detail ||
@@ -243,10 +221,15 @@ export default function Issues() {
     }
   };
 
-  const handleCopy = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 1500);
+  const handleCopy = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyError(null);
+      setCopiedKey(key);
+      window.setTimeout(() => setCopiedKey(null), 1500);
+    } catch {
+      setCopyError(t('issues.copyFailed'));
+    }
   };
 
   if (!scanData) {
@@ -269,10 +252,45 @@ export default function Issues() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="gc-issues-page space-y-4">
+
+      <section className="gc-audit-metrics" aria-label="Audit summary">
+        <article className="gc-metric-card gc-metric-score">
+          <span className="gc-metric-label">{t('issues.metrics.greenScore')}</span>
+          <strong>{Math.round(scanData.green_score)}<small>/100</small></strong>
+          <span className="gc-metric-note">{t('issues.metrics.efficiencyRating')}</span>
+        </article>
+        <article className="gc-metric-card">
+          <span className="gc-metric-label">{t('issues.metrics.findings')}</span>
+          <strong>{violations.length.toLocaleString()}</strong>
+          <span className="gc-metric-note">
+            {t('issues.metrics.highPriority', {
+              count: violations.filter((violation) => violation.severity === 'CRITICAL' || violation.severity === 'HIGH').length.toLocaleString(),
+            })}
+          </span>
+        </article>
+        <article className="gc-metric-card">
+          <span className="gc-metric-label">{t('issues.metrics.filesAnalyzed')}</span>
+          <strong>{scanData.total_files.toLocaleString()}</strong>
+          <span className="gc-metric-note">{t('issues.metrics.sourceLines', { count: scanData.total_lines.toLocaleString() })}</span>
+        </article>
+        <article className="gc-metric-card">
+          <span className="gc-metric-label">{t('issues.metrics.carbonImpact')}</span>
+          <strong className="gc-metric-value">
+            {typeof scanData.carbon_g === 'number' && Number.isFinite(scanData.carbon_g)
+              ? `${scanData.carbon_g.toFixed(3)} g`
+              : t('issues.metrics.notMeasured')}
+          </strong>
+          <span className="gc-metric-note">
+            {typeof scanData.energy_wh === 'number' && Number.isFinite(scanData.energy_wh)
+              ? t('issues.metrics.energyEstimate', { amount: scanData.energy_wh.toFixed(3) })
+              : t('issues.metrics.noEstimate')}
+          </span>
+        </article>
+      </section>
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-zinc-200/80 pb-3">
+      <div className="gc-issues-heading flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-zinc-200/80 pb-3">
         <div>
           <div className="flex items-center gap-2">
              <h1 className="text-lg font-semibold text-zinc-950 dark:text-zinc-100 tracking-tight">{t('issues.pageTitle')}</h1>
@@ -309,6 +327,8 @@ export default function Issues() {
           </Button>
         )}
       </div>
+
+      {copyError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{copyError}</p>}
 
        {/* Filters Toolbar */}
        <div className="flex flex-col sm:flex-row gap-3">
@@ -363,20 +383,41 @@ export default function Issues() {
             <p className="text-xs text-slate-500 dark:text-zinc-400">{t('issues.noMatchBody')}</p>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="gc-issues-workbench">
+          <aside className="gc-issues-list" aria-label={t('issues.findingsList')}>
+            {sortedViolations.map((v, idx) => {
+              const key = getViolationKey(v, idx);
+              const isSelected =
+                activeViolation?.file_path === v.file_path &&
+                activeViolation?.line_number === v.line_number;
+              return (
+                <IssueCard
+                  key={key}
+                  violation={{ ...v, rule_code: VIOLATION_RULE_MAP[v.violation_type] || 'GSF-S999' }}
+                  onClick={() => setSelectedViolation(v)}
+                  isSelected={isSelected}
+                />
+              );
+            })}
+          </aside>
+
+          <section className="gc-issue-detail" aria-label={t('issues.selectedFinding')}>
           {sortedViolations.map((v, idx) => {
             const key = getViolationKey(v, idx);
             const isRefactoring    = refactoring.has(key);
             const refactorResult   = refactorResults[key];
             const isPrLoading      = prLoading.has(key);
             const prResult         = prResults[key];
-            const isSelected       = selectedViolation?.file_path === v.file_path && selectedViolation?.line_number === v.line_number;
+            const isSelected       =
+              activeViolation?.file_path === v.file_path &&
+              activeViolation?.line_number === v.line_number;
 
+            if (!isSelected) return null;
             return (
               <div key={key} className="space-y-3">
                 <IssueCard
                   violation={{ ...v, rule_code: VIOLATION_RULE_MAP[v.violation_type] || 'GSF-S999' }}
-                  onClick={() => setSelectedViolation(isSelected ? null : v)}
+                  onClick={() => setSelectedViolation(v)}
                   isSelected={isSelected}
                 />
 
@@ -388,8 +429,13 @@ export default function Issues() {
                         <h3 className="font-bold text-xs uppercase tracking-wider text-slate-800 dark:text-zinc-200">
                             {t('issues.ecoRefactoring')}
                           </h3>
-                          <Badge variant="outline" size="sm" className="text-[10px] bg-slate-900 text-emerald-400 border-slate-800 font-mono">
-                            {t('issues.bedrockConverse')}
+                           <Badge
+                            variant="outline"
+                            size="sm"
+                            title={refactorResult.model_used || undefined}
+                            className="max-w-[16rem] truncate text-[10px] bg-slate-900 text-emerald-400 border-slate-800 font-mono"
+                          >
+                            {refactorResult.model_used || t('issues.providerUnreported')}
                          </Badge>
                        </div>
                        <Button
@@ -548,11 +594,20 @@ export default function Issues() {
                    <Card variant="default" padding="md" className="ml-2 sm:ml-4 bg-slate-50 border-emerald-200 shadow-xs">
                      <div className="flex items-center gap-2.5 text-xs text-slate-700 font-medium">
                        <Loader2 size={15} className="animate-spin text-emerald-600" />
-                        <span>{t('issues.synthesizingPatch', { file: v.title })}...</span>
+                       <span>{t('issues.synthesizingPatch', { file: v.title })}...</span>
+                       <Badge variant="outline" size="sm" className="text-[10px] bg-slate-900 text-emerald-400 border-slate-800 font-mono">
+                         {t('issues.bedrockPreferred')}
+                       </Badge>
                      </div>
                    </Card>
                  ) : (
                    <div className="ml-2 sm:ml-4">
+                     {refactorErrors[key] && (
+                       <div role="alert" className="mb-2 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                         <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                         <span>{refactorErrors[key]}</span>
+                       </div>
+                     )}
                      <Button
                        variant="secondary"
                        size="sm"
@@ -566,6 +621,7 @@ export default function Issues() {
               </div>
             );
           })}
+          </section>
         </div>
       )}
 
@@ -635,37 +691,12 @@ export default function Issues() {
             </label>
             <Input
               type="text"
-              placeholder={t('issues.targetRepoPlaceholder')}
-              className="text-xs font-mono"
+              className="text-xs font-mono opacity-70"
               value={prModalRepo}
-              onChange={e => setPrModalRepo(e.target.value)}
+              readOnly
             />
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
               {t('issues.targetRepoHelp')}
-            </p>
-          </div>
-
-          <div>
-            <label className="block font-bold text-slate-700 dark:text-zinc-300 mb-1 uppercase tracking-wider">
-              {t('issues.githubToken')}
-            </label>
-            <Input
-              type="password"
-              placeholder={t('issues.githubTokenPlaceholder')}
-              className="text-xs font-mono"
-              value={prModalToken}
-              onChange={e => setPrModalToken(e.target.value)}
-            />
-            <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
-              {t('issues.githubTokenHelp')}{' '}
-              <a
-                href="https://github.com/settings/tokens"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-emerald-700 underline font-semibold"
-              >
-                {t('issues.generateToken')}
-              </a>
             </p>
           </div>
 
@@ -684,4 +715,3 @@ export default function Issues() {
     </div>
   );
 }
-

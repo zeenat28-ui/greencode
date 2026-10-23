@@ -1,13 +1,11 @@
-"""Tests for the Alexa+ compliance surface of the GreenCode MCP server.
+"""Tests for the GreenCode MCP transport and its local bearer-token guard.
 
 Every requirement here is quoted from Amazon's Alexa+ MCP documentation:
 
-* Quickstart, Authentication checklist / Discovery: "Your MCP server returns
-  401 Unauthorized (without a WWW-Authenticate header) for unauthenticated
-  requests." / "Your server hosts a Protected Resource Metadata (PRM)
-  document at the well-known URI according to RFC 9728." / "Your auth server
-  metadata is available at /.well-known/oauth-authorization-server.
-  code_challenge_methods_supported must be present and must include S256."
+* MCP transport behavior: unauthenticated requests receive 401 without a
+  WWW-Authenticate header when the optional local bearer token is enabled;
+  Protected Resource Metadata (PRM) describes the protected resource without
+  claiming an OAuth authorization server that GreenCode does not implement.
 * Choose the Proper Integration Approach, MCP Toolkit considerations: "Your
   MCP server must meet a round-trip query response latency of less than
   500 ms."
@@ -20,8 +18,10 @@ pipeline itself - the same code a real round trip executes. The real network
 round trip, end to end over a socket, is measured by check_mcp_alexa.py.
 """
 
+import html
 import json
 import os
+import re
 import time
 import unittest
 from pathlib import Path
@@ -29,15 +29,22 @@ from unittest import mock
 
 from starlette.testclient import TestClient
 
-from app import energy_sensors, mcp_server
+from app import alexa_knowledge, energy_sensors, mcp_server
 
 TOKEN = "unit-test-token"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LATENCY_BUDGET_SECONDS = 0.5
 
 
+def _spoken_text(response):
+    speech = response["response"]["outputSpeech"]
+    if speech["type"] == "PlainText":
+        return speech["text"]
+    return html.unescape(re.sub(r"<[^>]+>", "", speech["ssml"]))
+
+
 class TestDiscoveryDocuments(unittest.TestCase):
-    """RFC 9728 / RFC 8414 discovery must be public and self-describing."""
+    """RFC 9728 metadata is public and does not claim nonexistent OAuth."""
 
     @classmethod
     def setUpClass(cls):
@@ -77,12 +84,11 @@ class TestDiscoveryDocuments(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
-    def test_authorization_server_metadata_advertises_pkce_s256(self):
+    def test_prm_does_not_claim_an_unimplemented_authorization_server(self):
         resp = self.client.get("/.well-known/oauth-authorization-server")
-        self.assertEqual(resp.status_code, 200)
-        doc = resp.json()
-        self.assertIn("S256", doc["code_challenge_methods_supported"])
-        self.assertTrue(doc["issuer"].startswith("http"))
+        self.assertEqual(resp.status_code, 404)
+        prm = self.client.get("/.well-known/oauth-protected-resource")
+        self.assertEqual(prm.json()["authorization_servers"], [])
 
     def test_forwarded_proto_is_used_behind_a_tunnel(self):
         # cloudflared terminates TLS and forwards to loopback over HTTP; the
@@ -291,7 +297,7 @@ class TestAddOnAssetsResolve(unittest.TestCase):
 
 
 class TestLatencyCaches(unittest.TestCase):
-    """The two caches that make the <500 ms budget reachable."""
+    """Startup warm-up and TTL caches keep first user calls within the SLO."""
 
     def setUp(self):
         mcp_server.clear_intensity_cache()
@@ -390,6 +396,23 @@ class TestLatencyCaches(unittest.TestCase):
             first["carbon_intensity"] = 999.0
             second = mcp_server._resolve_intensity("FR")
         self.assertEqual(second["carbon_intensity"], 50.0)
+
+    def test_startup_warmup_primes_energy_audit_and_grid_tools(self):
+        with (
+            mock.patch.object(energy_sensors, "probe_capabilities", return_value={}) as probe,
+            mock.patch.object(mcp_server, "measure_energy") as measure,
+            mock.patch.object(mcp_server, "audit_code", return_value={"status": "ok"}) as audit,
+            mock.patch.object(mcp_server, "_resolve_intensity") as intensity,
+        ):
+            mcp_server.warm_mcp_caches(zones=["IE", "SE"])
+
+        probe.assert_called_once_with()
+        measure.assert_called_once_with()
+        audit.assert_called_once()
+        self.assertEqual(
+            [call.args[0] for call in intensity.call_args_list],
+            ["IE", "SE"],
+        )
 
 
 class TestLatencyBudget(unittest.TestCase):
@@ -563,13 +586,50 @@ class TestAddonManifest(unittest.TestCase):
         endpoint = integration["config"]["endpoints"]["default"]
         self.assertEqual(endpoint["type"], "HTTPS")
         self.assertTrue(endpoint["uri"].startswith("https://"))
+        self.assertTrue(
+            endpoint["uri"].endswith("/mcp"),
+            "Alexa+ must be pointed at the MCP transport, not the ASK webhook",
+        )
+        self.assertNotIn(
+            "/api/alexa/skill",
+            endpoint["uri"],
+            "The Alexa Custom Skill webhook is configured in skill.json, not addon.json",
+        )
 
 
 class TestAlexaCustomSkillWebhook(unittest.TestCase):
     """Verify the Amazon Alexa Skills Kit (ASK) v1.0 Custom Skill webhook and interaction model."""
 
-    def test_interaction_model_has_all_11_custom_intents_and_slots(self):
-        path = REPO_ROOT / "alexa" / "interaction_model_en_US.json"
+    def test_main_api_webhook_requires_a_verified_signed_request(self):
+        from fastapi.testclient import TestClient as FastAPITestClient
+
+        from app.main import app as main_app
+
+        skill_id = "amzn1.ask.skill.test"
+        payload = {
+            "version": "1.0",
+            "session": {"application": {"applicationId": skill_id}},
+            "request": {
+                "type": "LaunchRequest",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            },
+        }
+        with mock.patch.dict(os.environ, {"GREENCODE_ALEXA_SKILL_ID": skill_id}):
+            with FastAPITestClient(main_app) as client:
+                unsigned = client.post("/api/alexa/skill", json=payload)
+                self.assertEqual(unsigned.status_code, 400)
+                self.assertEqual(unsigned.json()["error"], "missing_signature")
+
+                headers = {
+                    "SignatureCertChainUrl": "https://s3.amazonaws.com/echo.api/test.pem",
+                    "Signature-256": "dGVzdA==",
+                }
+                with mock.patch("app.mcp_server._verify_ask_cert_chain", return_value=None):
+                    signed = client.post("/api/alexa/skill", json=payload, headers=headers)
+                self.assertEqual(signed.status_code, 200)
+
+    def test_interaction_model_has_required_custom_intents_and_slots(self):
+        path = REPO_ROOT / "alexa" / "interactionModels" / "custom" / "en-US.json"
         model = json.loads(path.read_text(encoding="utf-8"))
         lang_model = model["interactionModel"]["languageModel"]
         self.assertEqual(lang_model["invocationName"], "green code auditor")
@@ -578,6 +638,8 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
             "CompareRegionsIntent",
             "GetGridIntensityIntent",
             "AuditCodeIntent",
+            "GetCurrentRepositoryIntent",
+            "AboutGreenCodeIntent",
             "AuditRepositoryIntent",
             "CalculateSciIntent",
             "MeasureEnergyIntent",
@@ -596,7 +658,7 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
         """Amazon ASK rejects sample utterances and slot synonyms that contain raw digits (0-9) or symbols like '+'."""
         import re
 
-        path = REPO_ROOT / "alexa" / "interaction_model_en_US.json"
+        path = REPO_ROOT / "alexa" / "interactionModels" / "custom" / "en-US.json"
         model = json.loads(path.read_text(encoding="utf-8"))
         lang_model = model["interactionModel"]["languageModel"]
         utterance_pattern = re.compile(r"^[a-zA-Z\s\.\_'\{\}\-]+$")
@@ -629,9 +691,112 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
             {"version": "1.0", "request": {"type": "LaunchRequest"}}
         )
         self.assertEqual(resp["version"], "1.0")
-        speech = resp["response"]["outputSpeech"]["text"]
+        self.assertEqual(
+            set(resp["response"]["outputSpeech"]),
+            {"type", "ssml"},
+        )
+        self.assertEqual(
+            set(resp["response"]["reprompt"]["outputSpeech"]),
+            {"type", "ssml"},
+        )
+        speech = _spoken_text(resp)
         self.assertIn("Welcome to GreenCode Auditor", speech)
         self.assertFalse(resp["response"]["shouldEndSession"])
+
+    def test_gemini_fallback_is_pinned_to_the_current_pro_model(self):
+        from app.gemini_client import MODEL
+
+        self.assertEqual(MODEL, "gemini-3.1-pro-preview")
+        self.assertNotIn("flash", MODEL.lower())
+
+    def test_about_greencode_intent_answers_from_project_knowledge(self):
+        with mock.patch(
+            "app.alexa_knowledge.answer_product_question",
+            return_value="GreenCode audits software for energy and carbon issues.",
+        ) as answer_question:
+            resp = mcp_server.handle_alexa_skill_request(
+                {
+                    "version": "1.0",
+                    "request": {
+                        "type": "IntentRequest",
+                        "intent": {"name": "AboutGreenCodeIntent", "slots": {}},
+                    },
+                }
+            )
+
+        answer_question.assert_called_once_with("What is GreenCode?")
+        self.assertIn("audits software for energy and carbon issues", _spoken_text(resp))
+        self.assertEqual(
+            resp["response"]["card"]["content"],
+            "GreenCode audits software for energy and carbon issues.",
+        )
+
+    def test_generic_greencode_question_uses_architecture_overview_without_provider(self):
+        with mock.patch("app.llm_refactor._select_clients", return_value=[]):
+            answer = alexa_knowledge.answer_product_question("What is GreenCode?")
+
+        self.assertIn(
+            "self-hosted software energy and carbon analysis platform",
+            answer,
+        )
+        self.assertNotIn("Do I need Docker", answer)
+
+    def test_project_question_uses_documentation_when_all_answer_providers_fail(self):
+        client = mock.Mock()
+        client.chat.side_effect = RuntimeError("provider unavailable")
+        with mock.patch(
+            "app.alexa_knowledge._documentation_sections",
+            return_value=[
+                (
+                    "README.md — Overview",
+                    "GreenCode scans source code for energy and carbon issues.",
+                )
+            ],
+        ):
+            with mock.patch(
+                "app.llm_refactor._select_clients",
+                return_value=[(client, "offline-provider")],
+            ):
+                answer = alexa_knowledge.answer_product_question(
+                    "What is GreenCode?"
+                )
+
+        client.chat.assert_called_once()
+        self.assertIn("Answer providers are unavailable", answer)
+        self.assertIn(
+            "GreenCode scans source code for energy and carbon issues",
+            answer,
+        )
+
+    def test_repository_audit_does_not_audit_green_code_itself(self):
+        resp = mcp_server.handle_alexa_skill_request(
+            {
+                "version": "1.0",
+                "request": {
+                    "type": "IntentRequest",
+                    "intent": {"name": "AuditRepositoryIntent", "slots": {}},
+                },
+            }
+        )
+        speech = _spoken_text(resp)
+        self.assertIn("Alexa account linking is not configured", speech)
+        self.assertNotIn("repository audit completed", speech.lower())
+        self.assertNotIn("100.0 out of 100", speech)
+
+    def test_current_repository_intent_does_not_guess_user_state(self):
+        resp = mcp_server.handle_alexa_skill_request(
+            {
+                "version": "1.0",
+                "request": {
+                    "type": "IntentRequest",
+                    "intent": {"name": "GetCurrentRepositoryIntent", "slots": {}},
+                },
+            }
+        )
+        self.assertIn(
+            "cannot determine which GitHub repository",
+            _spoken_text(resp),
+        )
 
     def test_compare_regions_intent_with_slots(self):
         payload = {
@@ -648,10 +813,64 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
             },
         }
         resp = mcp_server.handle_alexa_skill_request(payload)
-        speech = resp["response"]["outputSpeech"]["text"]
+        speech = _spoken_text(resp)
         self.assertIn("IE", speech)
         self.assertIn("US-MIDA-PJM", speech)
         self.assertIn("percent", speech)
+
+    def test_compare_regions_without_two_slots_asks_instead_of_guessing(self):
+        resp = mcp_server.handle_alexa_skill_request(
+            {
+                "version": "1.0",
+                "request": {
+                    "type": "IntentRequest",
+                    "intent": {"name": "CompareRegionsIntent", "slots": {}},
+                },
+            }
+        )
+        speech = _spoken_text(resp)
+        self.assertIn("Name two regions to compare", speech)
+        self.assertNotIn("cleanest region is", speech)
+
+    def test_sci_intent_does_not_infer_measurements(self):
+        resp = mcp_server.handle_alexa_skill_request(
+            {
+                "version": "1.0",
+                "session": {"attributes": {"last_energy_joules": 15.0}},
+                "request": {
+                    "type": "IntentRequest",
+                    "intent": {
+                        "name": "CalculateSciIntent",
+                        "slots": {"region": {"name": "region", "value": "Ireland"}},
+                    },
+                },
+            }
+        )
+        speech = _spoken_text(resp)
+        self.assertIn("no measured workload energy, duration, or functional unit", speech)
+        self.assertNotIn("Software Carbon Intensity is", speech)
+
+    def test_freeform_region_comparison_does_not_guess_missing_region(self):
+        resp = mcp_server.handle_alexa_skill_request(
+            {
+                "version": "1.0",
+                "request": {
+                    "type": "IntentRequest",
+                    "intent": {
+                        "name": "FreeformGreenCodeQueryIntent",
+                        "slots": {
+                            "query": {
+                                "name": "query",
+                                "value": "which region is cleanest",
+                            }
+                        },
+                    },
+                },
+            }
+        )
+        speech = _spoken_text(resp)
+        self.assertIn("Name at least two regions to compare", speech)
+        self.assertNotIn("Based on GreenCode telemetry", speech)
 
     def test_all_other_intents_and_freeform_query(self):
         intents_to_test = [
@@ -681,56 +900,69 @@ class TestAlexaCustomSkillWebhook(unittest.TestCase):
                     }
                 )
                 self.assertEqual(resp["version"], "1.0")
-                self.assertEqual(resp["response"]["outputSpeech"]["type"], "PlainText")
-                self.assertTrue(len(resp["response"]["outputSpeech"]["text"]) > 20)
+                speech = resp["response"]["outputSpeech"]
+                self.assertIn(speech["type"], ("PlainText", "SSML"))
+                text = speech.get("text") or speech.get("ssml", "")
+                self.assertTrue(len(text) > 20)
 
     def test_http_post_alexa_skill_endpoint_and_skill_id_guard(self):
         client = TestClient(mcp_server.create_app())
-        r = client.post(
-            "/alexa/skill",
-            json={
-                "version": "1.0",
-                "request": {
-                    "type": "IntentRequest",
-                    "intent": {
-                        "name": "MeasureEnergyIntent",
-                        "slots": {},
-                    },
-                },
+        skill_id = "amzn1.ask.skill.fd2a8106-e7fb-4f05-83b9-74590f7df6b8"
+        headers = {
+            "SignatureCertChainUrl": "https://s3.amazonaws.com/echo.api/test.pem",
+            "Signature-256": "dGVzdA==",
+        }
+        payload = {
+            "version": "1.0",
+            "session": {"application": {"applicationId": skill_id}},
+            "request": {
+                "type": "IntentRequest",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "intent": {"name": "MeasureEnergyIntent", "slots": {}},
             },
-        )
+        }
+        with mock.patch.dict(os.environ, {"GREENCODE_ALEXA_SKILL_ID": skill_id}):
+            with mock.patch("app.mcp_server._verify_ask_cert_chain", return_value=None):
+                r = client.post("/alexa/skill", json=payload, headers=headers)
         self.assertEqual(r.status_code, 200)
         body = r.json()
         self.assertEqual(body["version"], "1.0")
-        self.assertIn("measurement_is_hardware", body["response"]["outputSpeech"]["text"])
+        speech = _spoken_text(body)
+        self.assertIn("hardware measurement is false", speech)
+        self.assertIn("did not run or select a workload", speech)
 
         with mock.patch.dict(
             os.environ,
-            {"GREENCODE_ALEXA_SKILL_ID": "amzn1.ask.skill.fd2a8106-e7fb-4f05-83b9-74590f7df6b8"},
+            {"GREENCODE_ALEXA_SKILL_ID": skill_id},
         ):
-            r_denied = client.post(
-                "/alexa/skill",
-                json={
-                    "version": "1.0",
-                    "session": {"application": {"applicationId": "amzn1.ask.skill.wrong"}},
-                    "request": {"type": "LaunchRequest"},
-                },
-            )
-            self.assertEqual(r_denied.status_code, 403)
-
-            r_allowed = client.post(
-                "/alexa/skill",
-                json={
-                    "version": "1.0",
-                    "session": {
-                        "application": {
-                            "applicationId": "amzn1.ask.skill.fd2a8106-e7fb-4f05-83b9-74590f7df6b8"
+            with mock.patch("app.mcp_server._verify_ask_cert_chain", return_value=None):
+                r_denied = client.post(
+                    "/alexa/skill",
+                    json={
+                        "version": "1.0",
+                        "session": {"application": {"applicationId": "amzn1.ask.skill.wrong"}},
+                        "request": {
+                            "type": "LaunchRequest",
+                            "timestamp": payload["request"]["timestamp"],
                         }
                     },
-                    "request": {"type": "LaunchRequest"},
-                },
-            )
-            self.assertEqual(r_allowed.status_code, 200)
+                    headers=headers,
+                )
+                self.assertEqual(r_denied.status_code, 403)
+
+                r_allowed = client.post(
+                    "/alexa/skill",
+                    json={
+                        "version": "1.0",
+                        "session": {"application": {"applicationId": skill_id}},
+                        "request": {
+                            "type": "LaunchRequest",
+                            "timestamp": payload["request"]["timestamp"],
+                        },
+                    },
+                    headers=headers,
+                )
+                self.assertEqual(r_allowed.status_code, 200)
 
 
 class TestAlexaWebhookNeverSilent(unittest.TestCase):
@@ -754,11 +986,12 @@ class TestAlexaWebhookNeverSilent(unittest.TestCase):
             "app.mcp_server.handle_alexa_skill_request",
             side_effect=RuntimeError("boom"),
         ):
+          with mock.patch("app.mcp_server.alexa_request_guard", return_value=None):
             r = client.post("/api/alexa/skill", json=self.LAUNCH)
         self.assertEqual(r.status_code, 200)
         body = r.json()
         self.assertEqual(body["version"], "1.0")
-        speech = body["response"]["outputSpeech"]["text"]
+        speech = _spoken_text(body)
         self.assertIn("internal error", speech.lower())
         self.assertIn("shouldEndSession", body["response"])
 
@@ -768,12 +1001,41 @@ class TestAlexaWebhookNeverSilent(unittest.TestCase):
             "app.mcp_server.handle_alexa_skill_request",
             side_effect=RuntimeError("boom"),
         ):
+          with mock.patch("app.mcp_server.alexa_request_guard", return_value=None):
             r = client.post("/alexa/skill", json=self.LAUNCH)
         self.assertEqual(r.status_code, 200)
         body = r.json()
         self.assertEqual(body["version"], "1.0")
-        speech = body["response"]["outputSpeech"]["text"]
+        speech = _spoken_text(body)
         self.assertIn("internal error", speech.lower())
+
+
+class TestMcpRefactorTool(unittest.TestCase):
+    def test_known_violation_uses_a_scoped_local_fallback_without_llm(self):
+        source = (
+            "def build_report(items):\n"
+            "    result = \"\"\n"
+            "    for item in items:\n"
+            "        result += str(item)\n"
+            "    return result\n"
+        )
+        with mock.patch.dict(os.environ, {"GREENCODE_LLM_PROVIDER": "none"}):
+            result = mcp_server.refactor_code(
+                source,
+                violation_type="quadratic_string_concatenation",
+            )
+
+        data = result["data"]
+        self.assertTrue(data["accepted"])
+        self.assertEqual(data["source"], "deterministic")
+        self.assertIsNone(data["behaviour_verified"])
+        namespace = {}
+        exec(data["refactored"], namespace)
+        self.assertEqual(namespace["build_report"](["green", 42]), "green42")
+        self.assertEqual(namespace["build_report"]([]), "")
+        self.assertTrue(
+            any("not been executed" in warning for warning in result["warnings"])
+        )
 
 
 class TestMcpTransportIsOptional(unittest.TestCase):
@@ -795,7 +1057,9 @@ class TestMcpTransportIsOptional(unittest.TestCase):
         "resp = handle_alexa_skill_request(\n"
         "    {'version': '1.0', 'request': {'type': 'LaunchRequest'}}\n"
         ")\n"
-        "text = resp['response']['outputSpeech']['text']\n"
+        "import html, re\n"
+        "speech = resp['response']['outputSpeech']\n"
+        "text = html.unescape(re.sub(r'<[^>]+>', '', speech['ssml']))\n"
         "assert 'Welcome to GreenCode Auditor' in text, text\n"
         "try:\n"
         "    create_app()\n"
@@ -823,5 +1087,3 @@ class TestMcpTransportIsOptional(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-

@@ -1,4 +1,4 @@
-"""Tests for the HuggingFace refactoring pipeline and its verification gate.
+"""Tests for the multi-provider refactoring pipeline and its verification gate.
 
 The model is never called. These tests inject a fake client so that what is
 under test is the *verification logic* - the part that decides whether a rewrite
@@ -239,6 +239,86 @@ class TestRefactorGate(unittest.TestCase):
         # Verify feedback turn was appended to messages on the second call
         second_call_messages = client.chat.call_args_list[1][0][0]
         self.assertTrue(any("rejected by our verification gate" in m["content"] for m in second_call_messages))
+
+    def test_auto_falls_back_from_bedrock_to_gemini(self):
+        bedrock = mock.Mock(configured=True)
+        bedrock.chat.side_effect = LLMError("bedrock down", kind="unavailable", retryable=True)
+        gemini = _client_returning(CORRECT_O_N, model="gemini-2.5-pro")
+        gemini.configured = True
+        huggingface = _client_returning(CORRECT_O_N)
+        huggingface.configured = True
+        with (
+            mock.patch.dict(os.environ, {"GREENCODE_LLM_PROVIDER": "auto", "GEMINI_API_KEY": "test-key"}),
+            mock.patch("app.bedrock_client.get_client", return_value=bedrock),
+            mock.patch("app.gemini_client.get_client", return_value=gemini),
+            mock.patch("app.llm_refactor.get_client", return_value=huggingface),
+        ):
+            result = refactor(QUADRATIC, language="python")
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.provider, "google_gemini")
+        self.assertEqual(result.model, "gemini-2.5-pro")
+        bedrock.chat.assert_called_once()
+        gemini.chat.assert_called_once()
+        huggingface.chat.assert_not_called()
+
+    def test_explicit_bedrock_still_fails_over_to_gemini(self):
+        bedrock = mock.Mock(configured=True)
+        bedrock.chat.side_effect = LLMError("bedrock down", kind="unavailable", retryable=True)
+        gemini = _client_returning(CORRECT_O_N, model="gemini-2.5-pro")
+        gemini.configured = True
+        with (
+            mock.patch.dict(os.environ, {"GREENCODE_LLM_PROVIDER": "bedrock", "GEMINI_API_KEY": "test-key"}),
+            mock.patch("app.bedrock_client.get_client", return_value=bedrock),
+            mock.patch("app.gemini_client.get_client", return_value=gemini),
+        ):
+            result = refactor(QUADRATIC, language="python")
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.provider, "google_gemini")
+        bedrock.chat.assert_called_once()
+        gemini.chat.assert_called_once()
+
+    def test_auto_falls_back_to_huggingface_when_gemini_fails(self):
+        bedrock = mock.Mock(configured=True)
+        bedrock.chat.side_effect = LLMError("bedrock down", kind="unavailable", retryable=True)
+        gemini = mock.Mock(configured=True)
+        gemini.chat.side_effect = LLMError("gemini down", kind="unavailable", retryable=True)
+        huggingface = _client_returning(CORRECT_O_N)
+        huggingface.configured = True
+        with (
+            mock.patch.dict(os.environ, {"GREENCODE_LLM_PROVIDER": "auto", "GEMINI_API_KEY": "test-key"}),
+            mock.patch("app.bedrock_client.get_client", return_value=bedrock),
+            mock.patch("app.gemini_client.get_client", return_value=gemini),
+            mock.patch("app.llm_refactor.get_client", return_value=huggingface),
+        ):
+            result = refactor(QUADRATIC, language="python")
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.provider, "huggingface")
+        bedrock.chat.assert_called_once()
+        gemini.chat.assert_called_once()
+        huggingface.chat.assert_called_once()
+
+    def test_default_provider_preference_is_bedrock_first(self):
+        bedrock = mock.Mock(configured=True)
+        gemini = mock.Mock(configured=True)
+        huggingface = mock.Mock(configured=True)
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch("app.bedrock_client.get_client", return_value=bedrock),
+            mock.patch("app.gemini_client.get_client", return_value=gemini),
+            mock.patch("app.llm_refactor.get_client", return_value=huggingface),
+        ):
+            from app.llm_refactor import _select_clients
+
+            clients = _select_clients()
+
+        self.assertEqual([provider for _, provider in clients], [
+            "aws_bedrock",
+            "google_gemini",
+            "huggingface",
+        ])
 
 
 class TestClientErrorClassification(unittest.TestCase):

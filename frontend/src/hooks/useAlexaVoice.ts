@@ -14,7 +14,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getAccessToken } from '../services/api';
+import { getAccessToken, getGitHubToken } from '../services/api';
+import { useT } from '../i18n/I18nContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,8 @@ export interface VoiceLogEntry {
 
 export interface UseAlexaVoiceReturn {
   isListening: boolean;
+  isProcessing: boolean;
+  isHandsFree: boolean;
   isReady: boolean;
   speechSupported: boolean;  // false when browser lacks SpeechRecognition
   lastUtterance: string;
@@ -37,19 +40,7 @@ export interface UseAlexaVoiceReturn {
   clearReply: () => void;
 }
 
-// ─── Resolve API base once at module level (B3) ───────────────────────────────
-//
-// On Vercel the frontend is served from the same origin as the API rewrites,
-// so an empty string is correct.  In local dev VITE_API_URL should be set to
-// http://127.0.0.1:8000 so the vite dev server proxy-passes correctly.
-//
-const _isVercel =
-  typeof window !== 'undefined' &&
-  window.location.hostname.includes('vercel.app');
-
-const API_BASE: string =
-  (import.meta as { env: Record<string, string> }).env?.VITE_API_URL ??
-  (_isVercel ? '' : 'http://127.0.0.1:8000');
+const API_BASE: string = import.meta.env.VITE_API_URL ?? '';
 
 // ─── ASK Payload Builder (B6: no app_id_stripped in browser payloads) ───────────
 
@@ -57,6 +48,23 @@ function buildAskPayload(
   utterance: string,
   sessionAttributes: Record<string, unknown> = {},
 ) {
+  let activeRepo = '';
+  try {
+    const storedScan = window.localStorage.getItem('greencode_scan_data');
+    const scan = storedScan ? JSON.parse(storedScan) as { repo_path?: unknown } : null;
+    if (typeof scan?.repo_path === 'string') {
+      const slug = scan.repo_path
+        .replace(/^https?:\/\/github\.com\//i, '')
+        .replace(/\.git$/i, '')
+        .replace(/\/$/, '')
+        .trim();
+      if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(slug)) activeRepo = slug;
+    }
+  } catch (error: unknown) {
+    console.warn('[useAlexaVoice] could not read the latest repository scan context', error);
+    activeRepo = '';
+  }
+
   return {
     version: '1.0',
     session: {
@@ -66,7 +74,9 @@ function buildAskPayload(
       // reject direct browser POSTs (the guard only checks when an id IS present
       // and mismatches — absence is treated as a non-Alexa-device caller).
       application: {},
-      attributes: sessionAttributes,
+      attributes: activeRepo
+        ? { ...sessionAttributes, active_repo: activeRepo }
+        : sessionAttributes,
       user: { userId: 'web-dashboard-user' },
     },
     context: {
@@ -121,12 +131,15 @@ function extractSpeech(body: Record<string, unknown>): string {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
+  const t = useT();
   // Detect SpeechRecognition support once at module init (not per-render)
   const _speechSupported =
     typeof window !== 'undefined' &&
     !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
   const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isHandsFree, setIsHandsFree] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [lastUtterance, setLastUtterance] = useState('');
   const [lastReply, setLastReply] = useState('');
@@ -136,21 +149,38 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
   >({});
 
   const recognitionRef = useRef<any>(null);
-  const autoRestartRef = useRef(false); // only true while user has mic active
   const processingRef = useRef(false);
+  const handsFreeRef = useRef(false);
+  const speakingRef = useRef(false);
+  const restartTimerRef = useRef<number | null>(null);
+  const startListeningRef = useRef<() => void>(() => undefined);
 
   // ── Speak ──────────────────────────────────────────────────────────────────
   const speak = useCallback((text: string) => {
-    if (!('speechSynthesis' in window)) return;
+    const resumeListening = () => {
+      speakingRef.current = false;
+      if (handsFreeRef.current) {
+        restartTimerRef.current = window.setTimeout(() => {
+          if (handsFreeRef.current) startListeningRef.current();
+        }, 350);
+      }
+    };
+    if (!('speechSynthesis' in window)) {
+      resumeListening();
+      return;
+    }
     window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(text);
     utt.rate = 1.05;
     utt.pitch = 1.0;
     utt.lang = 'en-US';
+    speakingRef.current = true;
+    utt.onend = resumeListening;
+    utt.onerror = resumeListening;
     window.speechSynthesis.speak(utt);
   }, []);
 
-  // ── Call the Vercel serverless backend (B1, B2) ────────────────────────────
+  // ── Call the local ASK-compatible backend ─────────────────────────────────
   const callBackend = useCallback(
     async (utterance: string): Promise<string> => {
       try {
@@ -161,15 +191,14 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
         };
+        const githubToken = getGitHubToken();
+        if (githubToken) headers['X-GitHub-Token'] = githubToken;
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        // B1: no credentials:'include' — avoids wildcard-CORS conflict
-        const res = await fetch(`${API_BASE}/api/alexa/skill`, {
+        const res = await fetch(`${API_BASE}/api/voice/alexa/ask`, {
           method: 'POST',
           headers,
           body: JSON.stringify(payload),
-          // credentials omitted → defaults to 'same-origin' which is correct
-          // on Vercel (same domain) and correct in dev with the vite proxy.
         });
 
         if (!res.ok) {
@@ -200,6 +229,7 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
     async (raw: string) => {
       if (processingRef.current || !raw.trim()) return;
       processingRef.current = true;
+      setIsProcessing(true);
 
       const now = new Date().toLocaleTimeString();
       setLastUtterance(raw);
@@ -208,20 +238,23 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
           ...prev].slice(0, 100),
       );
 
-      const reply = await callBackend(raw);
+      try {
+        const reply = await callBackend(raw);
 
-      setLastReply(reply);
-      speak(reply);
-      setLogs(prev =>
-        [{
-          time: new Date().toLocaleTimeString(),
-          speaker: 'Alexa' as const,
-          text: reply,
-          action: 'voice_reply',
-        }, ...prev].slice(0, 100),
-      );
-
-      processingRef.current = false;
+        setLastReply(reply);
+        speak(reply);
+        setLogs(prev =>
+          [{
+            time: new Date().toLocaleTimeString(),
+            speaker: 'Alexa' as const,
+            text: reply,
+            action: 'voice_reply',
+          }, ...prev].slice(0, 100),
+        );
+      } finally {
+        processingRef.current = false;
+        setIsProcessing(false);
+      }
     },
     [callBackend, speak],
   );
@@ -232,12 +265,17 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
     const SpeechRec = win.SpeechRecognition || win.webkitSpeechRecognition;
 
     if (!SpeechRec) {
-      // Browser lacks speech recognition — set a visible error via lastReply.
       console.warn('[useAlexaVoice] SpeechRecognition not available in this browser');
-      setLastReply('Voice recognition is not available in this browser. Use the text input to type your command.');
+      setLastReply(t('voice.unsupported'));
       return;
     }
 
+    handsFreeRef.current = true;
+    setIsHandsFree(true);
+    if (restartTimerRef.current !== null) {
+      window.clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch { /* ignore */ }
     }
@@ -254,24 +292,40 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
     };
 
     rec.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      processUtterance(transcript);
+      const result = event.results[event.resultIndex];
+      if (result?.isFinal) {
+        const transcript = result[0]?.transcript?.trim();
+        if (transcript) void processUtterance(transcript);
+      }
     };
 
     rec.onerror = (event: any) => {
-      if (event.error !== 'no-speech') {
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
         console.warn('[useAlexaVoice] recognition error:', event.error);
+      }
+      const messages: Record<string, string> = {
+        'not-allowed': t('voice.permissionDenied'),
+        'service-not-allowed': t('voice.serviceUnavailable'),
+        network: t('voice.networkError'),
+        'audio-capture': t('voice.noMicrophone'),
+      };
+      if (messages[event.error]) setLastReply(messages[event.error]);
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        handsFreeRef.current = false;
+        setIsHandsFree(false);
       }
       setIsListening(false);
     };
 
     rec.onend = () => {
       setIsListening(false);
-      // Auto-restart only when user has explicitly left the mic on
-      if (autoRestartRef.current) {
-        setTimeout(() => {
-          if (autoRestartRef.current) startListening();
-        }, 400);
+      if (recognitionRef.current !== rec) return;
+      if (handsFreeRef.current && !processingRef.current && !speakingRef.current) {
+        restartTimerRef.current = window.setTimeout(() => {
+          if (handsFreeRef.current && !processingRef.current && !speakingRef.current) {
+            startListeningRef.current();
+          }
+        }, 500);
       }
     };
 
@@ -281,11 +335,23 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
     } catch (err) {
       console.warn('[useAlexaVoice] could not start recognition:', err);
       setIsListening(false);
+      if (handsFreeRef.current) {
+        restartTimerRef.current = window.setTimeout(() => {
+          if (handsFreeRef.current) startListeningRef.current();
+        }, 1000);
+      }
     }
-  }, [processUtterance]);
+  }, [processUtterance, t]);
+
+  startListeningRef.current = startListening;
 
   const stopListening = useCallback(() => {
-    autoRestartRef.current = false;
+    handsFreeRef.current = false;
+    setIsHandsFree(false);
+    if (restartTimerRef.current !== null) {
+      window.clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch { /* ignore */ }
     }
@@ -294,13 +360,12 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
 
   // ── Toggle on user click (this IS a user gesture) ─────────────────────────
   const toggleMic = useCallback(() => {
-    if (autoRestartRef.current || isListening) {
+    if (isHandsFree) {
       stopListening();
     } else {
-      autoRestartRef.current = true;
       startListening();
     }
-  }, [isListening, startListening, stopListening]);
+  }, [isHandsFree, startListening, stopListening]);
 
   // ── Typed command fallback ─────────────────────────────────────────────────
   const sendText = useCallback(
@@ -315,16 +380,21 @@ export function useAlexaVoice(_autoStart = true): UseAlexaVoiceReturn {
   // ── Cleanup on unmount ─────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      autoRestartRef.current = false;
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch { /* ignore */ }
       }
+      if (restartTimerRef.current !== null) {
+        window.clearTimeout(restartTimerRef.current);
+      }
       window.speechSynthesis?.cancel();
+      handsFreeRef.current = false;
     };
   }, []);
 
   return {
     isListening,
+    isProcessing,
+    isHandsFree,
     isReady,
     speechSupported: _speechSupported,
     lastUtterance,

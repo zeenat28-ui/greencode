@@ -1,67 +1,35 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, AlertCircle, Check, Github, KeyRound, X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/greencodeApi';
+import { GITHUB_CONNECT_STATE_KEY } from '../services/api';
 import LegalModal from '../components/LegalModal';
 
-// ---------------------------------------------------------------------------
-// Google GSI type shim – the real accounts.google.com/gsi/client injects this
-// ---------------------------------------------------------------------------
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (config: {
-            client_id: string;
-            callback: (response: { credential: string; select_by: string }) => void;
-            auto_select?: boolean;
-            cancel_on_tap_outside?: boolean;
-            use_fedcm_for_prompt?: boolean;
-          }) => void;
-          prompt: (notification?: (n: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean; getDismissedReason: () => string }) => void) => void;
-          renderButton: (
-            parent: HTMLElement,
-            options: {
-              type?: string;
-              theme?: string;
-              size?: string;
-              width?: number;
-              shape?: string;
-              text?: string;
-            }
-          ) => void;
-          cancel: () => void;
-          disableAutoSelect: () => void;
-        };
-      };
-    };
-  }
+const GITHUB_STATE_KEY = 'greencode_github_oauth_state';
+const GOOGLE_STATE_KEY = 'greencode_google_oauth_state';
+
+function createOAuthState(): string {
+  return crypto.randomUUID();
 }
 
-// ---------------------------------------------------------------------------
-// GitHub OAuth popup helper
-// ---------------------------------------------------------------------------
-const GITHUB_POPUP_NAME = 'github_oauth_popup';
-const POPUP_W = 600;
-const POPUP_H = 700;
-
-function openGitHubPopup(authUrl: string): Window | null {
-  const left = window.screenX + (window.outerWidth - POPUP_W) / 2;
-  const top = window.screenY + (window.outerHeight - POPUP_H) / 2;
-  return window.open(
-    authUrl,
-    GITHUB_POPUP_NAME,
-    `width=${POPUP_W},height=${POPUP_H},left=${left},top=${top},toolbar=0,menubar=0,scrollbars=1`
-  );
+function consumeOAuthState(key: string, state: string | null): boolean {
+  const expected = sessionStorage.getItem(key);
+  sessionStorage.removeItem(key);
+  return Boolean(state && expected && state === expected);
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export default function Login() {
-  const { loginWithEmail, loginDemo, registerWithEmail, loginWithGoogleToken, loginWithGoogleCode, loginWithGitHubCode, connectGitHub, logout } = useAuth();
+  const {
+    loginWithEmail,
+    registerWithEmail,
+    loginWithGoogleCode,
+    loginWithGitHubCode,
+    connectGitHubOAuth,
+  } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from || '/dashboard';
@@ -75,7 +43,6 @@ export default function Login() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(false);
 
   // Legal Modal
   const [legalModalOpen, setLegalModalOpen] = useState(false);
@@ -90,15 +57,7 @@ export default function Login() {
   const [newPasswordVal, setNewPasswordVal] = useState('');
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
 
-  // GitHub PAT Fallback Modal State
-  const [githubPatModalOpen, setGithubPatModalOpen] = useState(false);
-  const [githubPatVal, setGithubPatVal] = useState('');
-  const [githubPatLoading, setGithubPatLoading] = useState(false);
-  const [githubPatError, setGithubPatError] = useState<string | null>(null);
-
-  const githubPopupRef = useRef<Window | null>(null);
-  const githubPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const googleButtonRef = useRef<HTMLButtonElement | null>(null);
+  const oauthCallbackStarted = useRef(false);
 
   // -------------------------------------------------------------------------
   // Handle OAuth callback: ?code=xxx&provider=github  (popup or redirect)
@@ -106,19 +65,39 @@ export default function Login() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const code = params.get('code');
-    const provider = params.get('provider') || params.get('state')?.split(':')[0];
+    const state = params.get('state');
+    const oauthError = params.get('error_description') || params.get('error');
+    const provider = params.get('provider') || 'github';
 
-    if (!code) return;
-
-    // If we are inside a popup, send the code to the opener and close
-    if (window.opener && window.name === GITHUB_POPUP_NAME) {
-      window.opener.postMessage({ type: 'github_oauth', code }, window.location.origin);
-      window.close();
+    if (oauthError) {
+      const callbackState = params.get('state');
+      const connectState = sessionStorage.getItem(GITHUB_CONNECT_STATE_KEY);
+      if (callbackState && callbackState === connectState) {
+        sessionStorage.removeItem(GITHUB_CONNECT_STATE_KEY);
+        navigate(`/settings?github_error=${encodeURIComponent(oauthError)}`, { replace: true });
+        return;
+      }
+      sessionStorage.removeItem(GITHUB_CONNECT_STATE_KEY);
+      if (provider === 'google') {
+        setError(
+          consumeOAuthState(GOOGLE_STATE_KEY, callbackState)
+            ? `Google authorization failed: ${oauthError}`
+            : 'Google sign-in could not be verified. Please start the sign-in flow again.',
+        );
+      } else {
+        setError(`GitHub authorization failed: ${oauthError}`);
+      }
       return;
     }
+    if (!code || oauthCallbackStarted.current) return;
+    oauthCallbackStarted.current = true;
 
     // Full-page redirect flow fallback (no popup)
     if (provider === 'google') {
+      if (!consumeOAuthState(GOOGLE_STATE_KEY, state)) {
+        setError('Google sign-in could not be verified. Please start the sign-in flow again.');
+        return;
+      }
       (async () => {
         setGoogleLoading(true);
         setError(null);
@@ -138,6 +117,16 @@ export default function Login() {
         setGithubLoading(true);
         setError(null);
         try {
+          const connectState = sessionStorage.getItem(GITHUB_CONNECT_STATE_KEY);
+          if (state && connectState && state === connectState) {
+            sessionStorage.removeItem(GITHUB_CONNECT_STATE_KEY);
+            await connectGitHubOAuth(code, `${window.location.origin}/login`);
+            navigate('/settings?github=connected', { replace: true });
+            return;
+          }
+          if (!consumeOAuthState(GITHUB_STATE_KEY, state)) {
+            throw new Error('GitHub sign-in could not be verified. Please start the sign-in flow again.');
+          }
           const redirectUri = `${window.location.origin}/login`;
           await loginWithGitHubCode(code, redirectUri);
           navigate(from, { replace: true });
@@ -149,43 +138,7 @@ export default function Login() {
         }
       })();
     }
-  }, [location.search]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // -------------------------------------------------------------------------
-  // Listen for GitHub popup postMessage
-  // -------------------------------------------------------------------------
-  useEffect(() => {
-    const handler = async (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'github_oauth') return;
-
-      const code: string = event.data.code;
-      setGithubLoading(true);
-      setError(null);
-      try {
-        const redirectUri = `${window.location.origin}/login`;
-        await loginWithGitHubCode(code, redirectUri);
-        navigate(from, { replace: true });
-      } catch (err: unknown) {
-        const e = err as { response?: { data?: { detail?: string } }; message?: string };
-        setError(e?.response?.data?.detail || e?.message || 'GitHub authentication failed.');
-      } finally {
-        setGithubLoading(false);
-      }
-    };
-
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, [from, loginWithGitHubCode, navigate]);
-
-  // -------------------------------------------------------------------------
-  // Cleanup popup poll on unmount
-  // -------------------------------------------------------------------------
-  useEffect(() => {
-    return () => {
-      if (githubPollRef.current) clearInterval(githubPollRef.current);
-    };
-  }, []);
+  }, [location.search]);
 
   // -------------------------------------------------------------------------
   // GitHub OAuth button
@@ -194,161 +147,55 @@ export default function Login() {
     if (githubLoading) return;
     setError(null);
     setGithubLoading(true);
+    const state = createOAuthState();
+    sessionStorage.setItem(GITHUB_STATE_KEY, state);
 
     try {
       const redirectUri = `${window.location.origin}/login`;
-      const res = await authService.getGitHubAuthorize(redirectUri);
+      const res = await authService.getGitHubAuthorize(redirectUri, state);
 
       if (res.data.configured && res.data.auth_url) {
-        // Real OAuth: open a popup window pointing to GitHub
-        const popup = openGitHubPopup(res.data.auth_url);
-        githubPopupRef.current = popup;
-
-        if (!popup) {
-          // Popup was blocked – fall back to redirect
-          window.location.href = res.data.auth_url;
-          return;
-        }
-
-        // Poll until the popup closes (handles user who manually closes it)
-        if (githubPollRef.current) clearInterval(githubPollRef.current);
-        githubPollRef.current = setInterval(() => {
-          if (popup.closed) {
-            clearInterval(githubPollRef.current!);
-            githubPollRef.current = null;
-            setGithubLoading(false);
-          }
-        }, 500);
+        window.location.assign(res.data.auth_url);
       } else {
-        // GitHub OAuth not configured in .env — open the GitHub PAT / setup dialog
-        setGithubLoading(false);
-        setGithubPatModalOpen(true);
-      }
-    } catch {
-      // 100% resilient fallback: seamless entrance as verified GitHub developer
-      try {
-        await connectGitHub('ghp_demo_verified_developer');
-        navigate(from, { replace: true });
-      } catch {
-        setGithubPatModalOpen(true);
-      } finally {
+        sessionStorage.removeItem(GITHUB_STATE_KEY);
+        setError(res.data.message || 'GitHub OAuth is not configured on the backend.');
         setGithubLoading(false);
       }
-    }
-  };
-
-  const handleGitHubPatSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const token = githubPatVal.trim() || 'ghp_demo_verified_developer';
-    setGithubPatLoading(true);
-    setGithubPatError(null);
-    try {
-      await connectGitHub(token);
-      setGithubPatModalOpen(false);
-      navigate(from, { replace: true });
-    } catch {
-      navigate(from, { replace: true });
+    } catch (err: unknown) {
+      sessionStorage.removeItem(GITHUB_STATE_KEY);
+      const e = err as { response?: { data?: { detail?: string } }; message?: string };
+      setError(e?.response?.data?.detail || e?.message || 'Unable to start GitHub sign-in.');
+      setGithubLoading(false);
     } finally {
-      setGithubPatLoading(false);
+      setGithubLoading(false);
     }
   };
 
   // -------------------------------------------------------------------------
-  // Google OAuth button — uses Google Identity Services (GSI) real popup
+  // Google OAuth authorization-code redirect flow
   // -------------------------------------------------------------------------
   const handleGoogleQuick = async () => {
     if (googleLoading) return;
     setError(null);
-
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
-
-    if (!clientId) {
-      // Seamlessly sign in with Google Verified Developer mode without any 405 error!
-      setGoogleLoading(true);
-      try {
-        await loginWithGoogleToken('demo-google-verified-token');
-        navigate(from, { replace: true });
-      } finally {
-        setGoogleLoading(false);
-      }
-      return;
-    }
-
-    if (!window.google?.accounts?.id) {
-      setError('Google Identity Services library is still loading. Please try again in a moment.');
-      return;
-    }
-
     setGoogleLoading(true);
+    const state = createOAuthState();
+    sessionStorage.setItem(GOOGLE_STATE_KEY, state);
 
-    window.google.accounts.id.initialize({
-      client_id: clientId,
-      callback: async (response) => {
-        // response.credential is a real Google ID token (JWT)
-        if (!response.credential) {
-          setError('Google sign-in was cancelled or failed. Please try again.');
-          setGoogleLoading(false);
-          return;
-        }
-        try {
-          await loginWithGoogleToken(response.credential);
-          navigate(from, { replace: true });
-        } catch (err: unknown) {
-          const e = err as { response?: { data?: { detail?: string } }; message?: string };
-          setError(e?.response?.data?.detail || e?.message || 'Google authentication failed.');
-        } finally {
-          setGoogleLoading(false);
-        }
-      },
-      auto_select: false,
-      cancel_on_tap_outside: true,
-    });
-
-    // Show the One Tap UI
-    window.google.accounts.id.prompt(async (notification) => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        // One Tap was suppressed or dismissed — fallback seamlessly to Google OAuth redirect
-        try {
-          const redirectUri = `${window.location.origin}/login?provider=google`;
-          const res = await authService.getGoogleAuthorize(redirectUri);
-          if (res.data?.auth_url) {
-            window.location.href = res.data.auth_url;
-            return;
-          }
-        } catch {
-          // fallback failed, try in-place button render
-        }
-        if (googleButtonRef.current) {
-          googleButtonRef.current.innerHTML = '';
-          window.google!.accounts.id.renderButton(googleButtonRef.current, {
-            type: 'standard',
-            theme: 'outline',
-            size: 'large',
-            width: googleButtonRef.current.offsetWidth,
-            shape: 'pill',
-            text: isSignUp ? 'signup_with' : 'signin_with',
-          });
-        }
-        setGoogleLoading(false);
-      }
-    });
-  };
-
-  // -------------------------------------------------------------------------
-  // 1-Click Instant Demo Developer Login
-  // -------------------------------------------------------------------------
-  const handleDemoQuick = async () => {
-    if (demoLoading || loading || githubLoading || googleLoading) return;
-    setError(null);
-    setDemoLoading(true);
     try {
-      await loginDemo();
-      const target = from && from !== '/login' ? from : '/dashboard';
-      navigate(target, { replace: true });
-    } catch {
-      navigate('/dashboard', { replace: true });
+      const redirectUri = `${window.location.origin}/login?provider=google`;
+      const res = await authService.getGoogleAuthorize(redirectUri, state);
+      if (res.data.configured && res.data.auth_url) {
+        window.location.assign(res.data.auth_url);
+        return;
+      }
+      sessionStorage.removeItem(GOOGLE_STATE_KEY);
+      setError(res.data.message || 'Google OAuth is not configured on the backend.');
+    } catch (err: unknown) {
+      sessionStorage.removeItem(GOOGLE_STATE_KEY);
+      const e = err as { response?: { data?: { detail?: string } }; message?: string };
+      setError(e?.response?.data?.detail || e?.message || 'Unable to start Google sign-in.');
     } finally {
-      setDemoLoading(false);
+      setGoogleLoading(false);
     }
   };
 
@@ -377,7 +224,7 @@ export default function Login() {
       } else {
         await loginWithEmail(cleanEmail, cleanPassword);
       }
-      const target = from && from !== '/login' ? from : '/dashboard';
+      const target = from && from !== '/login' ? from : '/scan';
       navigate(target, { replace: true });
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } }; message?: string };
@@ -503,25 +350,19 @@ export default function Login() {
             <div className="grid grid-cols-2 gap-4 sm:gap-5 w-full">
               <div className="bg-[linear-gradient(145deg,#ffffff_0%,#f8fcf9_50%,#edf6f0_100%)] rounded-2xl p-4 sm:p-5 border border-white/90 shadow-[0_4px_16px_rgba(14,72,47,0.06),inset_0_1px_1px_rgba(255,255,255,0.95)] flex items-center justify-between hover:border-emerald-500/40 transition">
                 <div>
-                  <div className="text-2xl sm:text-[28px] font-black text-[#0a291c] font-sans tracking-tight leading-none">14.2</div>
-                  <div className="text-xs font-semibold text-slate-800 mt-1.5">Carbon Score</div>
-                  <div className="text-[11px] text-[#467059]">gCO₂e / 1k requests</div>
+                  <div className="text-base sm:text-lg font-bold text-[#0a291c] font-sans tracking-tight leading-tight">Repository scan</div>
+                  <div className="text-xs font-semibold text-slate-800 mt-1.5">Live source findings</div>
+                  <div className="text-[11px] text-[#467059]">Choose a GitHub repository</div>
                 </div>
-                <svg className="w-14 sm:w-16 h-8 text-emerald-500 shrink-0" viewBox="0 0 80 40" fill="none">
-                  <path d="M2 15 Q 15 25, 28 10 T 55 18 T 78 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M2 15 Q 15 25, 28 10 T 55 18 T 78 5 L 78 40 L 2 40 Z" fill="currentColor" fillOpacity="0.08" />
-                </svg>
+                <Github size={22} className="text-[#0e482f] shrink-0" />
               </div>
               <div className="bg-[linear-gradient(145deg,#ffffff_0%,#f8fcf9_50%,#edf6f0_100%)] rounded-2xl p-4 sm:p-5 border border-white/90 shadow-[0_4px_16px_rgba(14,72,47,0.06),inset_0_1px_1px_rgba(255,255,255,0.95)] flex items-center justify-between hover:border-emerald-500/40 transition">
                 <div>
-                  <div className="text-2xl sm:text-[28px] font-black text-[#0a291c] font-sans tracking-tight leading-none">-$340</div>
-                  <div className="text-xs font-semibold text-slate-800 mt-1.5">Cloud Bill</div>
-                  <div className="text-[11px] text-[#467059]">Monthly average saved</div>
+                  <div className="text-base sm:text-lg font-bold text-[#0a291c] font-sans tracking-tight leading-tight">Patch review</div>
+                  <div className="text-xs font-semibold text-slate-800 mt-1.5">Inspect generated diffs</div>
+                  <div className="text-[11px] text-[#467059]">Create a real GitHub pull request</div>
                 </div>
-                <svg className="w-14 sm:w-16 h-8 text-emerald-500 shrink-0" viewBox="0 0 80 40" fill="none">
-                  <path d="M2 22 Q 20 8, 38 18 T 60 12 T 78 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M2 22 Q 20 8, 38 18 T 60 12 T 78 4 L 78 40 L 2 40 Z" fill="currentColor" fillOpacity="0.08" />
-                </svg>
+                <CheckCircle2 size={22} className="text-[#0e482f] shrink-0" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 sm:gap-5 w-full">
@@ -579,40 +420,8 @@ export default function Login() {
             {/* Provider Buttons */}
             <div className="space-y-2 mb-3">
 
-              {/* 1-Click Instant Demo Developer Access */}
+              {/* Google OAuth redirect button */}
               <button
-                type="button"
-                onClick={handleDemoQuick}
-                disabled={loading || githubLoading || googleLoading || demoLoading}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-full border-2 border-[#003d20] text-xs font-bold !text-white bg-[#003d20] hover:bg-[#064e2e] active:scale-98 transition-all shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                {demoLoading ? (
-                  <Loader2 size={15} className="animate-spin text-white" />
-                ) : (
-                  <CheckCircle2 size={15} className="text-emerald-300" />
-                )}
-                <span>1-Click Instant Demo (Explore Dashboard)</span>
-              </button>
-
-              {/* GitHub OAuth Button */}
-              <button
-                type="button"
-                onClick={handleGitHubQuick}
-                disabled={loading || githubLoading || googleLoading}
-                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-full border border-slate-300 text-xs font-semibold !text-slate-700 !bg-white hover:!bg-slate-50 transition shadow-2xs cursor-pointer disabled:opacity-50"
-                style={{ backgroundColor: '#ffffff', color: '#334155' }}
-              >
-                {githubLoading ? (
-                  <Loader2 size={14} className="animate-spin text-slate-700" />
-                ) : (
-                  <Github size={14} className="text-slate-900" />
-                )}
-                <span>{isSignUp ? 'Sign up with GitHub' : 'Continue with GitHub'}</span>
-              </button>
-
-              {/* Google GSI Button */}
-              <button
-                ref={googleButtonRef}
                 type="button"
                 onClick={handleGoogleQuick}
                 disabled={loading || githubLoading || googleLoading}
@@ -630,6 +439,22 @@ export default function Login() {
                   </svg>
                 )}
                 <span>{isSignUp ? 'Sign up with Google' : 'Continue with Google'}</span>
+              </button>
+
+              {/* GitHub OAuth remains available for users who prefer GitHub identity sign-in. */}
+              <button
+                type="button"
+                onClick={handleGitHubQuick}
+                disabled={loading || githubLoading || googleLoading}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-full border border-slate-300 text-xs font-semibold !text-slate-700 !bg-white hover:!bg-slate-50 transition shadow-2xs cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: '#ffffff', color: '#334155' }}
+              >
+                {githubLoading ? (
+                  <Loader2 size={14} className="animate-spin text-slate-700" />
+                ) : (
+                  <Github size={14} className="text-slate-900" />
+                )}
+                <span>{isSignUp ? 'Sign up with GitHub' : 'Continue with GitHub'}</span>
               </button>
 
             </div>
@@ -835,83 +660,6 @@ export default function Login() {
                 </button>
               </form>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ════════════════════════ GITHUB PAT MODAL ════════════════════════ */}
-      {githubPatModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 text-slate-800 relative">
-            <button
-              type="button"
-              onClick={() => {
-                setGithubPatModalOpen(false);
-                setGithubPatError(null);
-              }}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 cursor-pointer"
-            >
-              <X size={18} />
-            </button>
-
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center">
-                <Github size={18} />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">GitHub Sign In</h3>
-                <p className="text-[11px] text-slate-500">Personal Access Token (PAT)</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-500 mb-3 leading-relaxed">
-              Enter your GitHub Personal Access Token (<code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-[11px]">ghp_...</code>) to authenticate directly with your GitHub account.
-            </p>
-
-            {githubPatError && (
-              <div className="mb-3 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">
-                {githubPatError}
-              </div>
-            )}
-
-            <form onSubmit={handleGitHubPatSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  GitHub Token
-                </label>
-                <input
-                  type="password"
-                  value={githubPatVal}
-                  onChange={(e) => setGithubPatVal(e.target.value)}
-                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx or demo"
-                  required
-                  autoFocus
-                  className="w-full px-3 py-2 font-mono text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={githubPatLoading}
-                className="w-full py-2 px-3 rounded-lg bg-[#0e482f] hover:bg-[#0b3824] text-white text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {githubPatLoading ? <Loader2 size={14} className="animate-spin" /> : 'Connect GitHub'}
-              </button>
-            </form>
-
-            <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 space-y-1">
-              <p>
-                Want real OAuth 1-click popup instead? Add <code className="bg-slate-100 px-1 py-0.5 rounded">GITHUB_CLIENT_ID</code> to your <code className="bg-slate-100 px-1 py-0.5 rounded">.env</code>.
-              </p>
-              <a
-                href="https://github.com/settings/developers"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-block text-emerald-800 hover:underline font-medium"
-              >
-                Create GitHub OAuth App &rarr;
-              </a>
-            </div>
           </div>
         </div>
       )}

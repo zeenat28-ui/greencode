@@ -1,106 +1,52 @@
-﻿# GitHub OAuth Setup - Production Deployment
+# GitHub OAuth Setup
 
-## Problem Summary
-Your production deployment at `https://greencode-teal.vercel.app` was using a minimal API handler that didn't expose the full FastAPI application with OAuth routes. Additionally, the GitHub OAuth credentials were missing from Vercel environment variables.
+GreenCode uses the local FastAPI backend for GitHub OAuth, repository access,
+scans, refactoring, and pull request creation. The local Vite frontend proxies
+API requests to FastAPI; this workflow does not require Vercel.
 
-## What Was Fixed
-✅ **Updated `api/index.py`** to properly use the full FastAPI app (`app.main`)
-✅ **Pushed changes to GitHub** - Vercel is auto-deploying now
-✅ **All OAuth routes now exposed**:
-- `/api/auth/github/authorize`
-- `/api/auth/github/oauth`
-- `/api/auth/google/authorize`
-- `/api/auth/google/oauth`
-- `/api/auth/login`
-- `/api/auth/register`
-- `/api/auth/demo`
+## Local development
 
-## What You Need To Do
+1. Create or configure a GitHub OAuth App.
+2. Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in the backend environment
+   (for example, the repository-root `.env` file).
+3. Set the OAuth App callback URL to `http://localhost:5173/login`.
+4. Start the FastAPI backend on port 8000 and the Vite frontend on port 5173.
+   The frontend proxies API and GitHub requests to the backend.
+5. Open `http://localhost:5173/login` (use `localhost` consistently rather
+   than switching between `localhost` and `127.0.0.1`) and sign in with Google
+   or another GreenCode account provider.
+6. In **Settings → GitHub Integration**, choose **Connect GitHub** and approve
+   repository access. Google authenticates the GreenCode account; GitHub OAuth
+   separately grants access to repositories. GitHub access tokens stay in the
+   current browser session and are not saved by the backend.
 
-### Step 1: Add Environment Variables to Vercel
+## Google sign-in
 
-Go to your Vercel project settings:
-https://vercel.com/zeenatriaz468-4881s-projects/greencode/settings/environment-variables
+1. Create a Google OAuth client with application type **Web application**.
+2. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the backend environment.
+   Do not put the client secret in the frontend.
+3. Add this exact value under **Authorized redirect URIs**:
+   `http://localhost:5173/login?provider=google`
+4. Start GreenCode and open it using `http://localhost:5173` (not
+   `127.0.0.1`). The sign-in uses a server-side authorization-code redirect;
+   it does not need a Google Identity Services JavaScript origin.
 
-Add these **TWO** environment variables:
+Google may still require you to add your account as a test user while the
+OAuth consent screen is in testing. The app no longer forces a consent prompt
+on every sign-in. GreenCode keeps its session with rotating refresh tokens. The refresh
+credential survives reloads and transient network/server errors; if an outage
+interrupts startup restoration, reload after the backend is available. An
+explicit **Log out** revokes it. For security, a refresh token that is revoked
+or expires after 30 days without rotation requires signing in again.
 
-| Variable Name | Value | Environment |
-|---------------|-------|-------------|
-| `GITHUB_CLIENT_ID` | `Ov23liuZ38iXiMFskDVq` | Production ✓ |
-| `GITHUB_CLIENT_SECRET` | `8a7ece446ca4a564f3b4b59b5f308d5bed38f8b2` | Production ✓ |
+Never commit OAuth secrets or copy them into documentation. If a credential was
+previously committed or otherwise exposed, revoke it in GitHub and replace it
+in every deployment environment.
 
-**Important:** Make sure to check "Production" environment for both variables!
+## Operational limitations
 
-### Step 2: Wait for Vercel Deployment
-
-1. Go to: https://vercel.com/zeenatriaz468-4881s-projects/greencode/deployments
-2. Wait for the latest deployment to complete (2-3 minutes)
-3. Or click "Redeploy" to force a fresh build with the new env vars
-
-### Step 3: Verify GitHub OAuth App Settings
-
-Go to: https://github.com/settings/developers
-
-Find your OAuth App and verify these settings:
-
-- **Homepage URL:** `https://greencode-teal.vercel.app`
-- **Authorization callback URL:** `https://greencode-teal.vercel.app/login`
-
-(Note: NO trailing slash on `/login`)
-
-### Step 4: Test GitHub Login
-
-Run the test script:
-```powershell
-.\test-github-oauth-production.ps1
-```
-
-Or manually test:
-1. Visit https://greencode-teal.vercel.app
-2. Click "Continue with GitHub"
-3. Authorize the app on GitHub
-4. You should be redirected to the dashboard
-5. Try scanning a real repository!
-
-## Verification Checklist
-
-- [ ] Added `GITHUB_CLIENT_ID` to Vercel
-- [ ] Added `GITHUB_CLIENT_SECRET` to Vercel
-- [ ] Waited for Vercel deployment to complete
-- [ ] Verified GitHub OAuth app callback URL
-- [ ] Tested login flow
-- [ ] Successfully scanned a repository
-
-## Troubleshooting
-
-### "GitHub OAuth not configured" error
-- Check that you added BOTH environment variables to Vercel
-- Make sure you selected "Production" environment
-- Click "Redeploy" after adding the variables
-
-### Redirect issues
-- Verify the GitHub OAuth app callback URL is exactly: `https://greencode-teal.vercel.app/login`
-- No trailing slash
-- Must match exactly
-
-### Still having issues?
-Run the diagnostic:
-```powershell
-.\test-github-oauth-production.ps1
-```
-
-The script will tell you exactly what's wrong.
-
-## Ready for Hackathon Demo!
-
-Once GitHub OAuth works, you can:
-1. ✅ Login with real GitHub account
-2. ✅ Scan your actual repositories
-3. ✅ Show real carbon intelligence data
-4. ✅ Record impressive demo video
-5. ✅ Submit to Amazon Developer Hackathon 2026
-
----
-
-**Created:** 2026-01-19  
-**Status:** Waiting for environment variables to be added to Vercel
+The API health endpoint reports which optional capabilities are active. Dynamic
+analysis requires Docker and remains unavailable on deployments without a
+supported isolated execution environment. Energy values are estimates unless
+the API reports a real hardware measurement source. Missing external provider
+credentials should be configured for the integrations you intend to use.

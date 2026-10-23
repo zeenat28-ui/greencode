@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User } from '../types';
+import axios from 'axios';
+import { GitHubUser, User } from '../types';
 import { authService } from '../services/greencodeApi';
 import { getRefreshToken, setRefreshToken, setAccessToken, clearSession, setGitHubToken, getGitHubToken } from '../services/api';
 
@@ -10,24 +11,34 @@ interface AuthContextType {
   isLoading: boolean;
   isGitHubConnected: boolean;
   disconnectGitHub: () => void;
-  /** Legacy: PAT-based GitHub sign-in (still works for direct PAT entry) */
-  connectGitHub: (githubToken: string) => Promise<User>;
   /** Real GitHub OAuth2 code exchange (popup/redirect flow) */
   loginWithGitHubCode: (code: string, redirectUri?: string) => Promise<User>;
+  /** Link GitHub repository access to the currently authenticated GreenCode user. */
+  connectGitHubOAuth: (code: string, redirectUri?: string) => Promise<GitHubUser>;
+  setGitHubAccessToken: (token: string) => void;
   /** Email + password login */
   loginWithEmail: (emailOrUsername: string, password: string) => Promise<User>;
-  /** 1-Click Instant Demo Developer Login */
-  loginDemo: () => Promise<User>;
   /** Email + password registration */
   registerWithEmail: (email: string, password: string, fullName?: string) => Promise<User>;
-  /** Google Identity Services ID token verification */
-  loginWithGoogleToken: (idToken: string) => Promise<User>;
   /** Google OAuth2 code exchange */
   loginWithGoogleCode: (code: string, redirectUri?: string) => Promise<User>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message: string; reset_token?: string }>;
   resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+}
+
+type RefreshResponse = ReturnType<typeof authService.refresh>;
+let pendingSessionRestore: { token: string; request: RefreshResponse } | null = null;
+
+function restoreSession(refreshToken: string): RefreshResponse {
+  if (pendingSessionRestore?.token === refreshToken) return pendingSessionRestore.request;
+
+  const request = authService.refresh(refreshToken).finally(() => {
+    if (pendingSessionRestore?.request === request) pendingSessionRestore = null;
+  });
+  pendingSessionRestore = { token: refreshToken, request };
+  return request;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -55,24 +66,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
 
     const restore = async () => {
-      // 1. Check if a client-side user session exists so demo/logins survive reloads
-      try {
-        const storedUser = localStorage.getItem('greencode_demo_user');
-        if (storedUser && storedUser !== 'undefined' && storedUser !== 'null') {
-          const parsed = JSON.parse(storedUser);
-          if (parsed && typeof parsed === 'object') {
-            if (!cancelled) {
-              setUser(parsed);
-              if (getGitHubToken()) setHasGhToken(true);
-              setIsLoading(false);
-            }
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn('[AuthContext] restore cache parse error:', e);
-      }
-
       const refreshToken = getRefreshToken();
       if (!refreshToken) {
         if (!cancelled) {
@@ -82,17 +75,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       try {
-        const res = await authService.refresh(refreshToken);
+        const res = await restoreSession(refreshToken);
         if (!cancelled && res.data?.user) {
           setUser(res.data.user);
-          try { localStorage.setItem('greencode_demo_user', JSON.stringify(res.data.user)); } catch {}
           if (getGitHubToken()) setHasGhToken(true);
         }
-      } catch {
-        // Expired or revoked refresh token — start from a clean slate.
-        if (!cancelled) {
+      } catch (error: unknown) {
+        // Only discard the persisted session when the backend definitively rejects it.
+        if (!cancelled && axios.isAxiosError(error) && error.response?.status === 401) {
           clearSession();
-          try { localStorage.removeItem('greencode_demo_user'); } catch {}
           setHasGhToken(false);
           setUser(null);
         }
@@ -106,7 +97,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // The axios interceptor fires this when a refresh cannot recover the session.
     const handleForcedLogout = () => {
       clearSession();
-      try { localStorage.removeItem('greencode_demo_user'); } catch {}
       setHasGhToken(false);
       setUser(null);
       setIsLoading(false);
@@ -123,67 +113,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Auth actions
   // ---------------------------------------------------------------------------
 
-  /** Legacy PAT-based GitHub sign-in */
-  const connectGitHub = useCallback(async (githubToken: string) => {
-    try {
-      const res = await authService.signInWithGitHub(githubToken);
-      setGitHubToken(githubToken);
-      setHasGhToken(true);
-      setUser(res.data.user);
-      return res.data.user;
-    } catch {
-      // 100% resilient fallback: never throw 405 or block access
-      setGitHubToken(githubToken);
-      setHasGhToken(true);
-      const ghUser: User = {
-        id: 101,
-        email: 'github.dev@greencode.dev',
-        username: 'github_developer',
-        github_username: 'github_developer',
-        full_name: 'GitHub Verified Developer',
-        role: 'developer',
-        is_verified: true,
-        has_github_token: true,
-        created_at: new Date().toISOString(),
-      };
-      setAccessToken('');
-      setRefreshToken('');
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(ghUser)); } catch {}
-      setUser(ghUser);
-      return ghUser;
-    }
-  }, []);
-
   /** Real GitHub OAuth2 code exchange (popup/redirect callback) */
   const loginWithGitHubCode = useCallback(async (code: string, redirectUri?: string) => {
-    try {
-      const res = await authService.exchangeGitHubOAuth(code, redirectUri);
-      if (res.data.github_token) {
-        setGitHubToken(res.data.github_token);
-        setHasGhToken(true);
-      }
-      if (res.data.access_token) setAccessToken(res.data.access_token);
-      if (res.data.refresh_token) setRefreshToken(res.data.refresh_token);
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(res.data.user)); } catch {}
-      setUser(res.data.user);
-      return res.data.user;
-    } catch {
-      const ghUser: User = {
-        id: 102,
-        email: 'github.oauth@greencode.dev',
-        username: 'github_developer',
-        github_username: 'github_developer',
-        full_name: 'GitHub OAuth Developer',
-        role: 'developer',
-        is_verified: true,
-        created_at: new Date().toISOString(),
-      };
-      setAccessToken('');
-      setRefreshToken('');
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(ghUser)); } catch {}
-      setUser(ghUser);
-      return ghUser;
+    const res = await authService.exchangeGitHubOAuth(code, redirectUri);
+    if (!res.data.github_token || !res.data.access_token || !res.data.refresh_token || !res.data.user) {
+      throw new Error('GitHub sign-in did not return a complete authenticated session.');
     }
+    setGitHubToken(res.data.github_token);
+    setHasGhToken(true);
+    setAccessToken(res.data.access_token);
+    setRefreshToken(res.data.refresh_token);
+    setUser(res.data.user);
+    return res.data.user;
+  }, []);
+
+  const connectGitHubOAuth = useCallback(async (code: string, redirectUri?: string) => {
+    const res = await authService.connectGitHubOAuth(code, redirectUri);
+    if (!res.data.github_token || !res.data.github_user) {
+      throw new Error('GitHub connection did not return repository access.');
+    }
+    setGitHubToken(res.data.github_token);
+    setHasGhToken(true);
+    return res.data.github_user;
+  }, []);
+
+  const setGitHubAccessToken = useCallback((token: string) => {
+    const value = token.trim();
+    if (!value) throw new Error('A GitHub access token is required.');
+    setGitHubToken(value);
+    setHasGhToken(true);
   }, []);
 
   const disconnectGitHub = useCallback(() => {
@@ -193,132 +151,43 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   /** Email + password login */
   const loginWithEmail = useCallback(async (emailOrUsername: string, password: string) => {
-    try {
-      const res = await authService.login(emailOrUsername, password);
-      const cleanEmail = emailOrUsername.includes('@') ? emailOrUsername : `${emailOrUsername}@greencode.dev`;
-      const fallbackUser: User = {
-        id: 1,
-        email: cleanEmail,
-        username: emailOrUsername.split('@')[0],
-        full_name: emailOrUsername.split('@')[0].toUpperCase(),
-        role: 'developer',
-        is_verified: true,
-        created_at: new Date().toISOString(),
-      };
-      const u = res.data?.user || fallbackUser;
-      if (res.data?.access_token) setAccessToken(res.data.access_token);
-      if (res.data?.refresh_token) setRefreshToken(res.data.refresh_token);
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(u)); } catch {}
-      setUser(u);
-      return u;
-    } catch (err: unknown) {
-      throw err;
+    const res = await authService.login(emailOrUsername, password);
+    if (!res.data.user || !res.data.access_token || !res.data.refresh_token) {
+      throw new Error('Sign-in did not return an authenticated session.');
     }
-  }, []);
-
-  /** 1-Click Instant Demo Developer Login */
-  const loginDemo = useCallback(async () => {
-    const demoUser: User = {
-      id: 999,
-      email: 'developer@greencode.dev',
-      username: 'green_auditor',
-      full_name: 'GreenCode Enterprise Auditor',
-      role: 'admin',
-      is_verified: true,
-      created_at: new Date().toISOString(),
-    };
-    try {
-      const res = await authService.demoLogin();
-      const u = res.data?.user || demoUser;
-      if (res.data?.access_token) setAccessToken(res.data.access_token);
-      if (res.data?.refresh_token) setRefreshToken(res.data.refresh_token);
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(u)); } catch {}
-      setUser(u);
-      return u;
-    } catch {
-      // 100% resilient fallback: instant access to GreenCode Auditor dashboard
-      setAccessToken('greencode-demo-jwt-token');
-      setRefreshToken('greencode-demo-refresh-token');
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(demoUser)); } catch {}
-      setUser(demoUser);
-      return demoUser;
-    }
+    setAccessToken(res.data.access_token);
+    setRefreshToken(res.data.refresh_token);
+    setGitHubToken(null);
+    setHasGhToken(false);
+    setUser(res.data.user);
+    return res.data.user;
   }, []);
 
   /** Email + password registration */
   const registerWithEmail = useCallback(async (email: string, password: string, fullName?: string) => {
-    const cleanName = fullName?.trim() || email.split('@')[0] || 'Developer';
-    const fallbackUser: User = {
-      id: 2,
-      email: email.includes('@') ? email : `${email}@greencode.dev`,
-      username: email.split('@')[0],
-      full_name: cleanName,
-      role: 'developer',
-      is_verified: true,
-      created_at: new Date().toISOString(),
-    };
-    try {
-      const res = await authService.register({ email, password, full_name: fullName });
-      const u = res.data?.user || fallbackUser;
-      if (res.data?.access_token) setAccessToken(res.data.access_token);
-      if (res.data?.refresh_token) setRefreshToken(res.data.refresh_token);
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(u)); } catch {}
-      setUser(u);
-      return u;
-    } catch {
-      setAccessToken('greencode-demo-jwt-token');
-      setRefreshToken('greencode-demo-refresh-token');
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(fallbackUser)); } catch {}
-      setUser(fallbackUser);
-      return fallbackUser;
+    const res = await authService.register({ email, password, full_name: fullName });
+    if (!res.data.user || !res.data.access_token || !res.data.refresh_token) {
+      throw new Error('Registration did not return an authenticated session.');
     }
-  }, []);
-
-  /** Google Identity Services real flow */
-  const loginWithGoogleToken = useCallback(async (idToken: string) => {
-    try {
-      const res = await authService.exchangeGoogleOAuth(undefined, idToken);
-      setUser(res.data.user);
-      return res.data.user;
-    } catch {
-      const googleUser: User = {
-        id: 103,
-        email: 'developer.google@greencode.dev',
-        username: 'google_developer',
-        full_name: 'Google Verified Developer',
-        role: 'developer',
-        is_verified: true,
-        created_at: new Date().toISOString(),
-      };
-      setAccessToken('');
-      setRefreshToken('');
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(googleUser)); } catch {}
-      setUser(googleUser);
-      return googleUser;
-    }
+    setAccessToken(res.data.access_token);
+    setRefreshToken(res.data.refresh_token);
+    setGitHubToken(null);
+    setHasGhToken(false);
+    setUser(res.data.user);
+    return res.data.user;
   }, []);
 
   const loginWithGoogleCode = useCallback(async (code: string, redirectUri?: string) => {
-    try {
-      const res = await authService.exchangeGoogleOAuth(code, undefined, redirectUri);
-      setUser(res.data.user);
-      return res.data.user;
-    } catch {
-      const googleUser: User = {
-        id: 104,
-        email: 'developer.google@greencode.dev',
-        username: 'google_developer',
-        full_name: 'Google Verified Developer',
-        role: 'developer',
-        is_verified: true,
-        created_at: new Date().toISOString(),
-      };
-      setAccessToken('');
-      setRefreshToken('');
-      try { localStorage.setItem('greencode_demo_user', JSON.stringify(googleUser)); } catch {}
-      setUser(googleUser);
-      return googleUser;
+    const res = await authService.exchangeGoogleOAuth(code, undefined, redirectUri);
+    if (!res.data.user || !res.data.access_token || !res.data.refresh_token) {
+      throw new Error('Google sign-in did not return an authenticated session.');
     }
+    setAccessToken(res.data.access_token);
+    setRefreshToken(res.data.refresh_token);
+    setGitHubToken(null);
+    setHasGhToken(false);
+    setUser(res.data.user);
+    return res.data.user;
   }, []);
 
   const forgotPassword = useCallback(async (email: string) => {
@@ -349,7 +218,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(res.data);
   }, [user?.id]);
 
-  const isGitHubConnected = hasGhToken || !!(user && (user.github_username || (user as any).github_login));
+  const isGitHubConnected = hasGhToken;
 
   return (
     <AuthContext.Provider
@@ -359,12 +228,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isLoading,
         isGitHubConnected,
         disconnectGitHub,
-        connectGitHub,
         loginWithGitHubCode,
+        connectGitHubOAuth,
+        setGitHubAccessToken,
         loginWithEmail,
-        loginDemo,
         registerWithEmail,
-        loginWithGoogleToken,
         loginWithGoogleCode,
         forgotPassword,
         resetPassword,

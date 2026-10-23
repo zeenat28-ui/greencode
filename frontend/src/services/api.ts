@@ -1,8 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
-const isLocal8000 = typeof window !== 'undefined' && (window.location.port === '8000' || window.location.host.includes(':8000'));
-const API_BASE_URL = import.meta.env.VITE_API_URL || (isVercel || isLocal8000 ? '' : 'http://127.0.0.1:8000');
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 /**
  * Session storage model
@@ -13,14 +11,15 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || (isVercel || isLocal8000 ? 
  * refresh token is a far smaller and far shorter-lived exposure than a
  * long-lived bearer credential in localStorage.
  * 
- * ZERO-KNOWLEDGE: GitHub token is ALSO kept in memory only - NEVER in localStorage.
+ * GitHub OAuth access token is kept in session-scoped browser storage, never in localStorage.
  * It is sent with each request via X-GitHub-Token header. Server NEVER stores it.
  */
 const REFRESH_TOKEN_KEY = 'greencode_refresh_token';
+export const GITHUB_CONNECT_STATE_KEY = 'greencode_github_connect_state';
 
 let _accessToken: string | null = null;
 let _refreshToken: string | null = null;
-let _githubToken: string | null = null;  // ZERO-KNOWLEDGE: GitHub PAT in memory only
+let _githubToken: string | null = null;
 let _refreshing: Promise<string | null> | null = null;
 
 export const getAccessToken = (): string | null => _accessToken;
@@ -62,11 +61,7 @@ export const setRefreshToken = (token: string | null): void => {
   }
 };
 
-/** 
- * ZERO-KNOWLEDGE: GitHub token stored in browser session memory only (sessionStorage).
- * Never written to localStorage, never persisted to database.
- * Survives page reloads within the tab, automatically cleared on logout or tab close.
- */
+/** OAuth access token for GitHub API requests; scoped to this browser tab session. */
 const GH_SESSION_KEY = 'greencode_gh_token';
 
 export const getGitHubToken = (): string | null => {
@@ -110,13 +105,13 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (_accessToken) {
     config.headers.Authorization = `Bearer ${_accessToken}`;
   }
-  // ZERO-KNOWLEDGE: Attach GitHub token to requests that need it
+  // Attach the GitHub OAuth token only to repository API requests.
   const ghTok = getGitHubToken();
   if (ghTok && config.url) {
     const url = config.url;
     const needsGithubToken = 
       url.includes('/api/scan') ||
-      url.includes('/github/') ||
+      url.startsWith('/github/') ||
       url.includes('/api/dynamic/analyze');
     if (needsGithubToken) {
       config.headers['X-GitHub-Token'] = ghTok;
@@ -128,7 +123,8 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 /** Paths that must never trigger a refresh (they ARE the auth endpoints). */
 const AUTH_FREE_PATHS = [
   '/api/auth/refresh',
-  '/api/auth/github',
+  '/api/auth/github/authorize',
+  '/api/auth/github/oauth',
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/google',
@@ -153,36 +149,42 @@ api.interceptors.response.use(
 
     if (status === 401 && original && !original._retried && !isAuthEndpoint) {
       const refreshToken = getRefreshToken();
-      if (refreshToken) {
-        original._retried = true;
-        try {
-          // De-duplicate concurrent refreshes into a single in-flight request.
-          if (!_refreshing) {
-            _refreshing = axios
-              .post<{ access_token: string; refresh_token: string }>(
-                `${API_BASE_URL}/api/auth/refresh`,
-                { refresh_token: refreshToken },
-              )
-              .then((res) => {
-                setAccessToken(res.data.access_token);
-                setRefreshToken(res.data.refresh_token);
-                return res.data.access_token as string;
-              })
-              .finally(() => {
-                _refreshing = null;
-              });
-          }
-          const freshToken = await _refreshing;
-          if (freshToken) {
-            original.headers.Authorization = `Bearer ${freshToken}`;
-            return api.request(original);
-          }
-        } catch {
-          clearSession();
-        }
+      if (!refreshToken) {
+        clearSession();
+        window.dispatchEvent(new CustomEvent('auth:logout'));
+        return Promise.reject(error);
       }
-      clearSession();
-      window.dispatchEvent(new CustomEvent('auth:logout'));
+      original._retried = true;
+      try {
+        // De-duplicate concurrent refreshes into a single in-flight request.
+        if (!_refreshing) {
+          _refreshing = axios
+            .post<{ access_token: string; refresh_token: string }>(
+              `${API_BASE_URL}/api/auth/refresh`,
+              { refresh_token: refreshToken },
+            )
+            .then((res) => {
+              setAccessToken(res.data.access_token);
+              setRefreshToken(res.data.refresh_token);
+              return res.data.access_token as string;
+            })
+            .finally(() => {
+              _refreshing = null;
+            });
+        }
+        const freshToken = await _refreshing;
+        if (freshToken) {
+            original.headers.Authorization = `Bearer ${freshToken}`;
+          return api.request(original);
+        }
+      } catch (refreshError: unknown) {
+        // Network and server failures are temporary; preserve the refresh token.
+        if (axios.isAxiosError(refreshError) && refreshError.response?.status === 401) {
+          clearSession();
+          window.dispatchEvent(new CustomEvent('auth:logout'));
+        }
+        return Promise.reject(error);
+      }
     }
     return Promise.reject(error);
   }

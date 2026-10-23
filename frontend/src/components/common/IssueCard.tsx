@@ -37,7 +37,7 @@ export function IssueCard({ violation, onClick, isSelected = false }: IssueCardP
       variant="default"
       padding="md"
       className={cn(
-        'cursor-pointer overflow-hidden max-w-full',
+        'gc-issue-card cursor-pointer overflow-hidden max-w-full',
         isSelected
           ? 'border-zinc-900 ring-1 ring-zinc-900/10 shadow-sm'
           : 'hover:border-zinc-300'

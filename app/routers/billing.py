@@ -112,12 +112,15 @@ async def generate_invoice(
 
 @router.get("/usage", status_code=status.HTTP_200_OK)
 async def get_usage_snapshot(
-    org_id: int = Query(1, gt=0),
+    org_id: Optional[int] = Query(None, gt=0),
     actor: Dict[str, Any] = Depends(get_current_actor),
 ):
     """Live usage vs quota for the customer dashboard + billing controls (GET)."""
-    _enforce_tenant(actor, org_id)
-    return BillingService.usage_snapshot(org_id=org_id)
+    effective_org_id = org_id if org_id is not None else actor.get("org_id")
+    if not effective_org_id:
+        raise HTTPException(status_code=403, detail="The authenticated user is not assigned to an organization.")
+    _enforce_tenant(actor, effective_org_id)
+    return BillingService.usage_snapshot(org_id=effective_org_id)
 
 
 @router.post("/usage", status_code=status.HTTP_200_OK)
@@ -177,7 +180,7 @@ class IssueLicenseRequest(BaseModel):
 
 
 class ActivateLicenseRequest(BaseModel):
-    org_id: int = Field(1, gt=0)
+    org_id: int = Field(..., gt=0)
     license_key: str = Field(..., min_length=12, max_length=512)
 
 
@@ -217,8 +220,10 @@ async def issue_license_key(
 @router.post("/license/activate", status_code=status.HTTP_200_OK)
 async def activate_license_key(
     payload: ActivateLicenseRequest,
+    actor: Dict[str, Any] = Depends(require_permission(Permission.MANAGE_ORG)),
 ):
     """Verify a signed GC-LIC-... license key and activate the corresponding subscription tier."""
+    _enforce_tenant(actor, payload.org_id)
     from app.pricing import LicenseKeyManager
     verification = LicenseKeyManager.verify_license_key(payload.license_key)
     if not verification.get("valid"):
@@ -300,4 +305,3 @@ async def reconcile_focus_cloud_billing(payload: Dict[str, Any]):
         rows=rows if isinstance(rows, list) else None,
         csv_text=str(csv_text) if csv_text else None,
     )
-

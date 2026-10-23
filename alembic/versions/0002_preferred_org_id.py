@@ -22,16 +22,21 @@ def upgrade() -> None:
     their org_id as the default preferred org until they switch via the
     /api/tenants/switch endpoint.
     """
-    op.add_column(
-        "users",
-        sa.Column(
-            "preferred_org_id",
-            sa.Integer,
-            sa.ForeignKey("organizations.id"),
-            nullable=True,
-            index=True,
-        ),
-    )
+    user_columns = {
+        column["name"]
+        for column in sa.inspect(op.get_bind()).get_columns("users")
+    }
+    if "preferred_org_id" not in user_columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "preferred_org_id",
+                sa.Integer,
+                sa.ForeignKey("organizations.id"),
+                nullable=True,
+                index=True,
+            ),
+        )
     # Backfill: set preferred_org_id = org_id for all existing users
     op.execute(
         "UPDATE users SET preferred_org_id = org_id "

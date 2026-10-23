@@ -22,6 +22,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, Optional
 
@@ -82,7 +83,12 @@ def _check_rate_limit(client_key: str) -> None:
     _rate_limit_buckets[client_key] = hits
 
 
-def _verify_alexa_request(headers: Dict[str, str], body: bytes) -> None:
+def _verify_alexa_request(
+    headers: Dict[str, str],
+    body: bytes,
+    *,
+    require_signature: bool = False,
+) -> None:
     """Verify ASK request timestamp (Fault 2), cert chain (Fault 3), and skill ID.
 
     FAULT 2 FIX: Reads the canonical timestamp from the ASK JSON body at
@@ -101,6 +107,8 @@ def _verify_alexa_request(headers: Dict[str, str], body: bytes) -> None:
         body_json = {}
 
     req_ts = (body_json.get("request") or {}).get("timestamp", "") or headers.get("date", "")
+    if require_signature and not req_ts:
+        raise HTTPException(status_code=403, detail="Missing Alexa request timestamp")
     if req_ts:
         try:
             req_time = calendar.timegm(time.strptime(req_ts, "%Y-%m-%dT%H:%M:%SZ"))
@@ -110,6 +118,8 @@ def _verify_alexa_request(headers: Dict[str, str], body: bytes) -> None:
                 req_time = datetime.fromisoformat(req_ts.replace("Z", "+00:00")).timestamp()
             except Exception:
                 req_time = None
+        if require_signature and req_time is None:
+            raise HTTPException(status_code=403, detail="Invalid Alexa request timestamp")
         if req_time is not None and abs(time.time() - req_time) > REQUEST_TOLERANCE_SECONDS:
             logger.warning("ASK request timestamp too old: %s", req_ts)
             raise HTTPException(status_code=403, detail="Request timestamp too old")
@@ -118,6 +128,8 @@ def _verify_alexa_request(headers: Dict[str, str], body: bytes) -> None:
     cert_url = headers.get("signaturecertchainurl") or headers.get("SignatureCertChainUrl", "")
     sig_b64  = (headers.get("signature-256") or headers.get("Signature-256")
                 or headers.get("signature") or headers.get("Signature", ""))
+    if require_signature and (not cert_url or not sig_b64):
+        raise HTTPException(status_code=400, detail="Missing Alexa request signature")
     if cert_url and sig_b64:
         try:
             from app.mcp_server import _verify_ask_cert_chain
@@ -135,7 +147,11 @@ def _verify_alexa_request(headers: Dict[str, str], body: bytes) -> None:
         except HTTPException:
             raise
         except Exception as exc:
-            logger.warning("ASK cert verification error (non-fatal): %s", exc)
+            logger.exception("Alexa request signature verification failed")
+            raise HTTPException(
+                status_code=400,
+                detail="Could not verify Alexa request signature",
+            ) from exc
     elif cert_url or sig_b64:
         # One header present without the other — malformed ASK request.
         raise HTTPException(status_code=400, detail="Incomplete ASK signature headers")
@@ -147,9 +163,13 @@ def _verify_alexa_request(headers: Dict[str, str], body: bytes) -> None:
             or (body_json.get("request") or {}).get("skillId")
             or ""
         )
+        if not app_id and require_signature:
+            raise HTTPException(status_code=403, detail="Missing Alexa skill ID")
         if app_id and not hmac.compare_digest(str(app_id), ALEXA_SKILL_ID):
             logger.warning("Alexa skill ID mismatch: %r", app_id)
             raise HTTPException(status_code=403, detail="Unexpected skill ID")
+    elif require_signature:
+        raise HTTPException(status_code=503, detail="Alexa skill ID is not configured on the server")
 
     # -- Existing: rate limiting ---------------------------------------------
     client = headers.get("x-forwarded-for", "").split(",")[0].strip() or headers.get("remote-addr") or "unknown"
@@ -240,6 +260,91 @@ def _call_greencode_tool(
     if tool == "help":
         return {"status": "ok", "data": {"hint": payload.get("hint", "")}}
 
+    required_fields = {
+        "audit_repository": ("repo",),
+        "audit_code": ("source_code",),
+        "audit_and_score": ("source_code",),
+        "calculate_sci": (
+            "energy_joules",
+            "duration_seconds",
+            "functional_unit",
+            "zone",
+        ),
+        "refactor_code": ("source_code",),
+        "explain_score": ("green_score",),
+        "push_green_fix": ("repo", "refactored_code"),
+        "create_pull_request": ("repo", "head_branch"),
+        "get_grid_intensity": ("zone",),
+        "dynamic_analyze": ("repo", "grid_intensity"),
+        "evaluate_sla": ("total_joules", "green_score", "sci_gco2e"),
+    }
+    missing_fields = [
+        field
+        for field in required_fields.get(tool, ())
+        if payload.get(field) is None or payload.get(field) == ""
+    ]
+    if missing_fields:
+        required = ", ".join(field.replace("_", " ") for field in missing_fields)
+        return {
+            "status": "error",
+            "data": {
+                "reason": (
+                    f"This voice request is missing {required}. Provide the real "
+                    "repository, source code, or measurement in the GreenCode dashboard."
+                )
+            },
+        }
+    if tool == "compare_regions" and len(set(payload.get("zones", []))) < 2:
+        return {
+            "status": "error",
+            "data": {
+                "reason": (
+                    "Name two real regions to compare, for example Ireland and Virginia."
+                )
+            },
+        }
+    if tool == "scope_inventory":
+        return {
+            "status": "error",
+            "data": {
+                "reason": (
+                    "A Scope 1-3 inventory needs your actual workload, infrastructure, "
+                    "and usage inputs. Enter them in the GreenCode dashboard; Alexa "
+                    "will not assume sample values."
+                )
+            },
+        }
+    if tool in {"push_green_fix", "create_pull_request"} and not github_token:
+        return {
+            "status": "error",
+            "data": {
+                "reason": (
+                    "GitHub account linking is not configured for Alexa. Sign in to "
+                    "GitHub in the GreenCode dashboard to perform repository changes."
+                )
+            },
+        }
+    if tool == "measure_energy":
+        return {
+            "status": "error",
+            "data": {
+                "reason": (
+                    "Alexa cannot measure a specific running workload from this voice "
+                    "request. Use the GreenCode Profiler to select and measure a process."
+                )
+            },
+        }
+    if tool == "deploy_production":
+        return {
+            "status": "error",
+            "data": {
+                "reason": (
+                    "No production deployment action is configured for Alexa. "
+                    "Use the project's deployment workflow instead."
+                )
+            },
+        }
+
     try:
         if tool == "list_repositories":
             from app.github_client import list_user_repositories
@@ -269,30 +374,10 @@ def _call_greencode_tool(
             from app.alexa_actions import evaluate_sla
 
             return evaluate_sla(
-                total_joules=float(payload.get("total_joules", 0.0) or 0.0),
-                green_score=float(payload.get("green_score", 0.0) or 0.0),
-                sci_gco2e=float(payload.get("sci_gco2e", 0.0) or 0.0),
+                total_joules=float(payload["total_joules"]),
+                green_score=float(payload["green_score"]),
+                sci_gco2e=float(payload["sci_gco2e"]),
                 config_path=payload.get("config_path"),
-            )
-
-        if tool == "scope_inventory":
-            from app.alexa_actions import scope_inventory
-
-            return scope_inventory(
-                energy_joules=float(payload.get("energy_joules", 3600.0) or 3600.0),
-                duration_seconds=float(payload.get("duration_seconds", 1.0) or 1.0),
-                grid_intensity_gco2_per_kwh=float(
-                    payload.get("grid_intensity_gco2_per_kwh", 200.0) or 200.0
-                ),
-                runs_per_year=int(payload.get("runs_per_year", 10000) or 10000),
-                team_size=int(payload.get("team_size", 5) or 5),
-                dev_hours=float(payload.get("dev_hours", 160.0) or 160.0),
-                cloud_provider=str(payload.get("cloud_provider", "aws")),
-                vcpu_count=int(payload.get("vcpu_count", 2) or 2),
-                memory_gb=float(payload.get("memory_gb", 4.0) or 4.0),
-                data_transfer_gb=float(payload.get("data_transfer_gb", 0.05) or 0.05),
-                grid_zone=str(payload.get("grid_zone", "US-CAL-CISO")),
-                renewable_rec_pct=float(payload.get("renewable_rec_pct", 0.0) or 0.0),
             )
 
         if tool == "audit_history":
@@ -308,9 +393,9 @@ def _call_greencode_tool(
             from app.alexa_actions import dynamic_analyze
 
             return dynamic_analyze(
-                repo=str(payload.get("repo", "")),
+                repo=str(payload["repo"]),
                 ref=str(payload.get("ref", "")),
-                grid_intensity=float(payload.get("grid_intensity", 380.0) or 380.0),
+                grid_intensity=float(payload["grid_intensity"]),
                 functional_unit=float(payload.get("functional_unit", 1.0) or 1.0),
                 timeout_sec=float(payload.get("timeout_sec", 60.0) or 60.0),
                 github_token=github_token,
@@ -320,7 +405,7 @@ def _call_greencode_tool(
 
         if tool == "audit_repository":
             return mcp_server.audit_repository(
-                repo=payload.get("repo", "owner/repo"),
+                repo=payload.get("repo", ""),
                 branch=payload.get("branch", "main"),
             )
         if tool == "audit_code":
@@ -337,21 +422,15 @@ def _call_greencode_tool(
                 duration_seconds=payload.get("duration_seconds", 1.0),
             )
         if tool == "get_grid_intensity":
-            return mcp_server.get_grid_intensity(zone=payload.get("zone", "US-CAL-CISO"))
+            return mcp_server.get_grid_intensity(zone=payload["zone"])
         if tool == "compare_regions":
-            return mcp_server.compare_regions(zones=payload.get("zones", ["US-CAL-CISO", "IE"]))
+            return mcp_server.compare_regions(zones=payload["zones"])
         if tool == "calculate_sci":
             return mcp_server.calculate_sci(
-                energy_joules=payload.get("energy_joules", 1000.0),
-                duration_seconds=payload.get("duration_seconds", 60.0),
+                energy_joules=payload["energy_joules"],
+                duration_seconds=payload.get("duration_seconds", 1.0),
                 functional_unit=payload.get("functional_unit", 1.0),
                 zone=payload.get("zone", "US-CAL-CISO"),
-            )
-        if tool == "measure_energy":
-            return mcp_server.measure_energy(
-                cpu_percent=payload.get("cpu_percent", 50.0),
-                memory_mb=payload.get("memory_mb", 512.0),
-                duration_seconds=payload.get("duration_seconds", 1.0),
             )
         if tool == "refactor_code":
             return mcp_server.refactor_code(
@@ -360,7 +439,7 @@ def _call_greencode_tool(
             )
         if tool == "explain_score":
             return mcp_server.explain_score(
-                green_score=payload.get("green_score", 0.0),
+                green_score=payload["green_score"],
                 zone=payload.get("zone", "US-CAL-CISO"),
                 measurement_method=payload.get("measurement_method", "model"),
                 functional_unit=payload.get("functional_unit", 1.0),
@@ -369,7 +448,7 @@ def _call_greencode_tool(
         if tool == "push_green_fix":
             from app.github_client import push_green_fix as gh_push
             return gh_push(
-                repo=payload.get("repo", "owner/repo"),
+                repo=payload["repo"],
                 file_path=payload.get("file_path", "refactored.py"),
                 refactored_code=payload.get("refactored_code", ""),
                 branch=payload.get("branch", "green-fix"),
@@ -380,24 +459,13 @@ def _call_greencode_tool(
         if tool == "create_pull_request":
             from app.github_client import create_pull_request as gh_pr
             return gh_pr(
-                repo=payload.get("repo", "owner/repo"),
+                repo=payload["repo"],
                 title=payload.get("title", "GreenCode: automated refactor"),
                 head_branch=payload.get("head_branch", "green-fix"),
                 base_branch=payload.get("base_branch", "main"),
                 body=payload.get("body", ""),
                 token=github_token,
             )
-
-        if tool == "deploy_production":
-            env = payload.get("environment", "production")
-            return {
-                "status": "ok",
-                "data": {
-                    "status": env,
-                    "url": os.environ.get("VERCEL_URL", "https://greencode-teal.vercel.app"),
-                    "message": f"Deployment to {env} initiated via Alexa voice command.",
-                },
-            }
 
         return {
             "status": "error",
@@ -414,13 +482,19 @@ def _call_greencode_tool(
 
 @router.post("/skill", summary="Alexa Custom Skill webhook")
 @router.post("/alexa/skill", summary="Alexa Custom Skill webhook")
+@router.post("/api/voice/alexa/ask", summary="Local browser voice assistant")
 async def alexa_skill(
     request: Request,
     x_greencode_org: Optional[str] = Header(default=None, alias="x-greencode-org"),
     authorization: Optional[str] = Header(default=None, alias="authorization"),
+    x_github_token: Optional[str] = Header(default=None, alias="x-github-token"),
 ) -> JSONResponse:
     body = await request.body()
-    _verify_alexa_request(dict(request.headers), body)
+    _verify_alexa_request(
+        dict(request.headers),
+        body,
+        require_signature=request.url.path != "/api/voice/alexa/ask",
+    )
 
     try:
         payload = json.loads(body)
@@ -486,18 +560,69 @@ async def alexa_skill(
         except Exception:
             pass
 
-    github_token = None
-    if authorization and authorization.startswith("Bearer "):
-        github_token = authorization[7:]
+    github_token = x_github_token.strip() if x_github_token else None
 
     command = MAPPER.map(utterance)
+    if command.tool == "audit_diff":
+        if user_id is None:
+            result = {
+                "status": "error",
+                "data": {
+                    "reason": (
+                        "A Green Release Briefing requires a signed-in GreenCode "
+                        "dashboard session. Sign in and connect GitHub first."
+                    )
+                },
+            }
+        elif not github_token:
+            result = {
+                "status": "error",
+                "data": {
+                    "reason": (
+                        "A Green Release Briefing needs your GitHub connection. "
+                        "Connect GitHub in the dashboard, then try again."
+                    )
+                },
+            }
+        else:
+            repo = command.payload.get("repo") or session_attrs.get("active_repo")
+            if not isinstance(repo, str) or not re.fullmatch(
+                r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo.strip()
+            ):
+                result = {
+                    "status": "error",
+                    "data": {
+                        "reason": (
+                            "I need a GitHub repository. Run a repository scan in "
+                            "the dashboard first, then ask me to audit a pull request."
+                        )
+                    },
+                }
+            elif not command.payload.get("pr_number"):
+                result = {
+                    "status": "error",
+                    "data": {
+                        "reason": (
+                            "Please include the pull request number, for example "
+                            "'audit pull request 42'."
+                        )
+                    },
+                }
+            else:
+                command.payload["repo"] = repo.strip()
+                result = _call_greencode_tool(
+                    command,
+                    org_id=org_id,
+                    user_id=user_id,
+                    github_token=github_token,
+                )
+    else:
+        result = _call_greencode_tool(
+            command, org_id=org_id, user_id=user_id, github_token=github_token
+        )
     logger.info(
         "Alexa command: intent=%s utterance=%r tool=%s confidence=%.2f fallback=%s",
         intent_name, utterance, command.tool, command.confidence, command.fallback,
-    )
-
-    result = _call_greencode_tool(
-        command, org_id=org_id, user_id=user_id, github_token=github_token
     )
 
     if command.tool == "help":
@@ -521,4 +646,3 @@ async def alexa_skill(
         response = _with_session_attributes(response, session_attrs)
 
     return JSONResponse(response)
-

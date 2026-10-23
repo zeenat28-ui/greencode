@@ -158,21 +158,12 @@ def build_help_response(
     session_attributes: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     speech = (
-        "GreenCode voice control. You can say: "
-        "'audit my repository' to scan a GitHub repo, "
-        "'what is my green score' for your carbon score, "
-        "'compare Ireland and Virginia' to pick the cleanest region, "
-        "'measure energy' to check power draw, "
-        "'refactor my code' to reduce energy waste, "
-        "'explain this score' for the full provenance trace, "
-        "'list my repositories' to see what I can audit, "
-        "'audit pull request 42' to check only the changed lines, "
-        "'check my energy SLA' for a budget verdict, "
-        "'scope one two three inventory' for a GHG report, "
-        "'show my audit history' for past audits and savings, "
-        "'run owner repo dynamically' to measure a real run, "
-        "'show my cloud billing' for FOCUS cost and carbon reconciliation, "
-        "or 'help' to repeat this list."
+        "You can ask questions about GreenCode's documented features and local setup, "
+        "compare named grid regions such as Ireland and Virginia, or ask which energy "
+        "sensor the GreenCode server reports. This Alexa skill is not linked to your "
+        "GitHub account, so it cannot scan your repositories, refactor their code, or "
+        "open pull requests. Use the GreenCode dashboard for those actions. Alexa "
+        "listens during this conversation, but Amazon controls when the session ends."
     )
     return build_response(
         speech, should_end_session=False, session_attributes=session_attributes
@@ -390,7 +381,10 @@ def build_list_response(result: Dict[str, Any]) -> Dict[str, Any]:
         speech = "You have no repositories connected to GreenCode."
     else:
         names = [r.get("name", "unknown") for r in repos[:10]]
-        speech = f"You have {_say_number(len(repos))} repositories: {_list_items(names)}."
+        speech = (
+            f"You have {_say_number(len(repos))} connected repositories: {_list_items(names)}. "
+            "I cannot tell which repository is currently selected in the dashboard."
+        )
 
     return build_response(speech, card_title="Your Repositories")
 
@@ -437,8 +431,29 @@ def build_diff_response(result: Dict[str, Any]) -> Dict[str, Any]:
         f"Diff green score: {_say_score(score)}. "
         f"{_say_number(violations)} energy anti-patterns in the changed lines."
     )
+    findings = data.get("violations") or []
     if violations:
-        speech += " The details are in your GreenCode dashboard."
+        if findings:
+            highest_priority = max(
+                findings,
+                key=lambda finding: (
+                    {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(
+                        str(finding.get("severity", "")).upper(), 0
+                    ),
+                    float(finding.get("deduction", 0) or 0),
+                ),
+            )
+            title = str(highest_priority.get("title") or "an energy anti-pattern")
+            severity = str(highest_priority.get("severity") or "unrated").lower()
+            file_path = str(highest_priority.get("file_path") or "")
+            line_number = highest_priority.get("line_number")
+            location = f" in {file_path}" if file_path else ""
+            if line_number is not None:
+                location += f" at line {line_number}"
+            speech += (
+                f" The highest-priority finding is {severity}: {title}{location}."
+            )
+        speech += " Review the changed-line findings in your GreenCode dashboard."
 
     pr = data.get("pr_number")
     title = f"GreenCode Diff Audit - PR {pr}" if pr else "GreenCode Diff Audit"
@@ -624,6 +639,11 @@ ACTION_BUILDERS: Dict[str, Any] = {
 
 def build_action_response(tool: str, result: Dict[str, Any]) -> Dict[str, Any]:
     """Speak one dashboard-backed action as a full ASK response."""
+    if result.get("status") != "ok":
+        reason = (result.get("data", {}) or {}).get(
+            "reason", "The requested action could not be completed."
+        )
+        return build_error_response(str(reason))
     builder = ACTION_BUILDERS.get(tool)
     if builder is None:
         reason = (result.get("data", {}) or {}).get("reason", "Command completed.")
@@ -653,4 +673,3 @@ def action_speech(tool: str, result: Dict[str, Any]) -> str:
                          ("&quot;", '"'), ("&apos;", "'")):
         text = text.replace(entity, char)
     return re.sub(r"\s+", " ", text).strip()
-

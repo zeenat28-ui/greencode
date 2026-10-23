@@ -92,14 +92,23 @@ class TestF2Timestamp(unittest.TestCase):
     def _guard(self, payload, headers=None):
         from app.mcp_server import alexa_request_guard
         from starlette.requests import Request
+        payload = json.loads(json.dumps(payload))
+        payload.setdefault("session", {}).setdefault("application", {}).setdefault(
+            "applicationId", "amzn1.ask.skill.TEST"
+        )
         h = list((headers or {}).items())
+        h.extend([
+            ("SignatureCertChainUrl", "https://s3.amazonaws.com/echo.api/test.pem"),
+            ("Signature-256", "dGVzdA=="),
+        ])
         scope = {
             "type": "http", "method": "POST", "path": "/api/alexa/skill",
             "query_string": b"",
             "headers": [(k.lower().encode(), v.encode()) for k, v in h],
         }
-        with mock.patch.dict(os.environ, {"GREENCODE_ALEXA_SKILL_ID": "", "GREENCODE_ALEXA_RATE_LIMIT": "1000"}):
-            return alexa_request_guard(Request(scope), payload)
+        with mock.patch.dict(os.environ, {"GREENCODE_ALEXA_SKILL_ID": "amzn1.ask.skill.TEST", "GREENCODE_ALEXA_RATE_LIMIT": "1000"}):
+            with mock.patch("app.mcp_server._verify_ask_cert_chain", return_value=None):
+                return alexa_request_guard(Request(scope), payload, b"{}")
 
     def test_stale_timestamp_rejected_403(self):
         result = self._guard({"version": "1.0", "request": {"type": "LaunchRequest", "timestamp": _stale_ts(200)}})
@@ -110,9 +119,10 @@ class TestF2Timestamp(unittest.TestCase):
         result = self._guard({"version": "1.0", "request": {"type": "LaunchRequest", "timestamp": _fresh_ts()}})
         self.assertIsNone(result)
 
-    def test_missing_timestamp_accepted(self):
+    def test_missing_timestamp_rejected(self):
         result = self._guard({"version": "1.0", "request": {"type": "LaunchRequest"}})
-        self.assertIsNone(result)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.status_code, 403)
 
 
 # ---------------------------------------------------------------------------
@@ -167,16 +177,25 @@ class TestPreservation(unittest.TestCase):
         from app.mcp_server import alexa_request_guard, _alexa_rate_buckets
         from starlette.requests import Request
         _alexa_rate_buckets.clear()
+        payload = json.loads(json.dumps(payload))
+        payload.setdefault("session", {}).setdefault("application", {}).setdefault(
+            "applicationId", "amzn1.ask.skill.TEST"
+        )
         h = list((headers or {}).items())
+        h.extend([
+            ("SignatureCertChainUrl", "https://s3.amazonaws.com/echo.api/test.pem"),
+            ("Signature-256", "dGVzdA=="),
+        ])
         scope = {
             "type": "http", "method": "POST", "path": "/api/alexa/skill",
             "query_string": b"",
             "headers": [(k.lower().encode(), v.encode()) for k, v in h],
         }
-        env = {"GREENCODE_ALEXA_SKILL_ID": "", "GREENCODE_ALEXA_RATE_LIMIT": "1000"}
+        env = {"GREENCODE_ALEXA_SKILL_ID": "amzn1.ask.skill.TEST", "GREENCODE_ALEXA_RATE_LIMIT": "1000"}
         env.update(extra_env or {})
         with mock.patch.dict(os.environ, env):
-            return alexa_request_guard(Request(scope), payload)
+            with mock.patch("app.mcp_server._verify_ask_cert_chain", return_value=None):
+                return alexa_request_guard(Request(scope), payload, b"{}")
 
     def test_rate_limit_fires_429(self):
         from app.mcp_server import alexa_request_guard, _alexa_rate_buckets
@@ -184,11 +203,17 @@ class TestPreservation(unittest.TestCase):
         _alexa_rate_buckets.clear()
         payload = {"version": "1.0", "request": {"type": "LaunchRequest", "timestamp": _fresh_ts()}}
         scope = {"type": "http", "method": "POST", "path": "/", "query_string": b"",
-                 "headers": [(b"x-forwarded-for", b"10.0.0.99")]}
-        with mock.patch.dict(os.environ, {"GREENCODE_ALEXA_SKILL_ID": "", "GREENCODE_ALEXA_RATE_LIMIT": "2"}):
-            alexa_request_guard(Request(scope), payload)
-            alexa_request_guard(Request(scope), payload)
-            result = alexa_request_guard(Request(scope), payload)
+                 "headers": [
+                     (b"x-forwarded-for", b"10.0.0.99"),
+                     (b"signaturecertchainurl", b"https://s3.amazonaws.com/echo.api/test.pem"),
+                     (b"signature-256", b"dGVzdA=="),
+                 ]}
+        payload["session"] = {"application": {"applicationId": "amzn1.ask.skill.TEST"}}
+        with mock.patch.dict(os.environ, {"GREENCODE_ALEXA_SKILL_ID": "amzn1.ask.skill.TEST", "GREENCODE_ALEXA_RATE_LIMIT": "2"}):
+            with mock.patch("app.mcp_server._verify_ask_cert_chain", return_value=None):
+                alexa_request_guard(Request(scope), payload, b"{}")
+                alexa_request_guard(Request(scope), payload, b"{}")
+                result = alexa_request_guard(Request(scope), payload, b"{}")
         self.assertIsNotNone(result)
         self.assertEqual(result.status_code, 429)
         _alexa_rate_buckets.clear()
@@ -203,9 +228,14 @@ class TestPreservation(unittest.TestCase):
             "session": {"application": {"applicationId": "amzn1.ask.skill.WRONG"}},
         }
         scope = {"type": "http", "method": "POST", "path": "/", "query_string": b"",
-                 "headers": [(b"x-forwarded-for", b"10.0.0.88")]}
+                 "headers": [
+                     (b"x-forwarded-for", b"10.0.0.88"),
+                     (b"signaturecertchainurl", b"https://s3.amazonaws.com/echo.api/test.pem"),
+                     (b"signature-256", b"dGVzdA=="),
+                 ]}
         with mock.patch.dict(os.environ, {"GREENCODE_ALEXA_SKILL_ID": "amzn1.ask.skill.CORRECT", "GREENCODE_ALEXA_RATE_LIMIT": "1000"}):
-            result = alexa_request_guard(Request(scope), payload)
+            with mock.patch("app.mcp_server._verify_ask_cert_chain", return_value=None):
+                result = alexa_request_guard(Request(scope), payload, b"{}")
         self.assertIsNotNone(result)
         self.assertEqual(result.status_code, 403)
         _alexa_rate_buckets.clear()

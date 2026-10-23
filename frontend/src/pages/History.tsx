@@ -21,6 +21,7 @@ export default function History() {
   const [historyData, setHistoryData] = useLocalStorage<RepositoryPage | null>('greencode_history', null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [, setScanData] = useLocalStorage<ScanResult | null>('greencode_scan_data', null);
   const [threshold] = useLocalStorage('greencode_threshold', 75);
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,11 +35,16 @@ export default function History() {
   const loadHistory = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setHistoryError(null);
     try {
       const resp = await scanService.getHistory();
       setHistoryData(resp.data);
-    } catch {
-      // keep existing cached history if any
+    } catch (err: any) {
+      setHistoryError(
+        err?.response?.data?.detail ||
+          err?.message ||
+          t('history.loadError')
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -50,7 +56,10 @@ export default function History() {
    * and GitHub repositories to /api/scan/github).
    */
   const handleRescan = async (record: RepositoryRecord) => {
-    const slug = record.full_name || record.path_or_url;
+    const isLocal = record.source === 'local_workspace';
+    const slug = isLocal
+      ? record.path_or_url
+      : record.full_name || record.path_or_url;
     if (!slug) {
       setRescanError('This record has no repository reference.');
       return;
@@ -58,17 +67,20 @@ export default function History() {
     setRescanningId(record.id);
     setRescanError(null);
     try {
-      const isLocal =
-        (record as any).source === 'local_workspace' || slug.startsWith('local-workspace/');
       if (isLocal) {
-        const subpath = slug.replace(/^local-workspace\//, '') || 'samples';
+        const prefix = 'local-workspace/';
+        if (!slug.startsWith(prefix)) {
+          throw new Error('This local audit does not include a valid workspace path and cannot be re-run.');
+        }
+        const subpath = slug.slice(prefix.length);
         const res = await fetch('/api/scan/local-workspace', {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ subpath, repo_name: slug, team_id: 'core-infra' }),
+          body: JSON.stringify({ subpath, repo_name: record.name }),
         });
         if (!res.ok) {
-          throw new Error(`Could not re-audit local path ${subpath}`);
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.detail || `Could not re-audit local path ${subpath}`);
         }
         const data = await res.json();
         setScanData(data);
@@ -77,7 +89,7 @@ export default function History() {
         setScanData(resp.data);
       }
       await loadHistory(true);
-      navigate('/dashboard');
+      navigate('/issues');
     } catch (err: any) {
       setRescanError(
         err?.response?.data?.detail ||
@@ -91,14 +103,17 @@ export default function History() {
 
   /** Load a stored audit into the active session, hydrating stored violations from the backend. */
   const handleViewRecord = async (record: RepositoryRecord) => {
-    let hydrated: any = record;
+    let hydrated: any;
     try {
       const resp = await scanService.getRepositoryDetails(record.id);
-      if (resp?.data) {
-        hydrated = resp.data;
-      }
-    } catch {
-      // Fall back to summary fields on record if details endpoint is unreachable
+      hydrated = resp.data;
+    } catch (err: any) {
+      setRescanError(
+        err?.response?.data?.detail ||
+          err?.message ||
+          'Could not load the saved audit details.'
+      );
+      return;
     }
 
     const rawViolations = Array.isArray(hydrated.violations) ? hydrated.violations : [];
@@ -131,7 +146,7 @@ export default function History() {
     };
 
     setScanData(loadedScan);
-    navigate('/dashboard');
+    navigate('/issues');
   };
 
   const records: RepositoryRecord[] = historyData?.repositories || [];
@@ -206,6 +221,13 @@ export default function History() {
           >
             {t('history.dismissError')}
           </button>
+        </div>
+      )}
+
+      {historyError && (
+        <div role="alert" className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm">
+          <p className="font-bold">{t('history.loadError')}</p>
+          <p className="text-xs mt-1">{historyError}</p>
         </div>
       )}
 
@@ -404,4 +426,3 @@ export default function History() {
     </div>
   );
 }
-

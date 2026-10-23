@@ -12,7 +12,12 @@ import {
 } from 'lucide-react';
 import AmazonTechStackModal from './AmazonTechStackModal';
 import { translateStatic as t } from '../../i18n/I18nContext';
-import { authHeaders } from '../../services/api';
+import { callMcpTool, type McpToolResult } from '../../services/mcpClient';
+
+interface GreenCodeEnvelope {
+  status?: string;
+  data?: Record<string, unknown>;
+}
 
 interface McpPreset {
   id: string;
@@ -20,49 +25,167 @@ interface McpPreset {
   icon: any;
   query: string;
   zone: string;
+  toolName: string;
+  toolArguments: Record<string, unknown>;
 }
 
-/**
- * Example MCP queries. These are prompt shortcuts only - the answer always
- * comes from the live /api/voice/ask -> MCP tool call, never a hardcoded string.
- */
+const AUDIT_SAMPLE = `def build_report(items):
+    result = ""
+    for item in items:
+        result += str(item)
+    return result`;
+
+const REFACTOR_SAMPLE = `def build_report(items):
+    result = ""
+    for item in items:
+        result += str(item)
+    return result`;
+
 const MCP_PRESETS: McpPreset[] = [
   {
     id: 'region_arbitrage',
     title: t('alexa.presetTitles.regionArbitrage'),
     icon: Cloud,
-    query: 'Which AWS region has the lowest marginal carbon intensity right now?',
+    query: 'Compare Ireland, the Mid-Atlantic region, and Sweden grid carbon intensity',
     zone: 'IE',
+    toolName: 'compare_regions',
+    toolArguments: { zones: ['IE', 'US-MIDA-PJM', 'SE'] },
   },
   {
     id: 'repo_score',
-    title: t('alexa.presetTitles.repoScore'),
+    title: t('alexa.presetTitles.codeAudit'),
     icon: ShieldCheck,
-    query: 'What is the current GSF SCI score and quality gate status of our repository?',
+    query: 'Audit the sample Python code and calculate its SCI score',
     zone: 'IE',
+    toolName: 'audit_and_score',
+    toolArguments: {
+      source_code: AUDIT_SAMPLE,
+      language: 'python',
+      zone: 'IE',
+      duration_seconds: 1,
+    },
   },
   {
     id: 'ai_refactor',
-    title: t('alexa.presetTitles.aiRefactor'),
+    title: t('alexa.presetTitles.codeRefactor'),
     icon: Zap,
-    query: 'Synthesize a patch for the quadratic string allocation in payment_processor.py.',
+    query: 'Refactor the sample Python code and verify the behavior',
     zone: 'IE',
+    toolName: 'refactor_code',
+    toolArguments: {
+      source_code: REFACTOR_SAMPLE,
+      language: 'python',
+      violation_type: 'quadratic_string_concatenation',
+      guidance: 'Avoid repeated string allocation while preserving behavior.',
+    },
   },
 ];
+
+function toGreenCodeEnvelope(value: unknown): GreenCodeEnvelope | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (record.result && typeof record.result === 'object') {
+    return toGreenCodeEnvelope(record.result);
+  }
+  return typeof record.status === 'string' || record.data
+    ? record as GreenCodeEnvelope
+    : null;
+}
+
+function parseToolResult(result: McpToolResult): GreenCodeEnvelope | null {
+  const structured = toGreenCodeEnvelope(result.structuredContent);
+  if (structured) return structured;
+  for (const item of result.content ?? []) {
+    if (item.type !== 'text' || !item.text) continue;
+    try {
+      const parsed = toGreenCodeEnvelope(JSON.parse(item.text) as unknown);
+      if (parsed) return parsed;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function formatToolResult(toolName: string, result: McpToolResult): string {
+  const envelope = parseToolResult(result);
+  if (!envelope) {
+    return result.content?.map((item) => item.text).filter(Boolean).join('\n')
+      || 'The MCP tool returned an empty result.';
+  }
+
+  const data = envelope.data ?? {};
+  if (envelope.status === 'error') {
+    const reason = data.reason;
+    throw new Error(typeof reason === 'string' ? reason : 'The MCP tool reported an error.');
+  }
+
+  if (toolName === 'compare_regions') {
+    const cleanest = data.cleanest as Record<string, unknown> | undefined;
+    const dirtiest = data.dirtiest as Record<string, unknown> | undefined;
+    if (cleanest && dirtiest) {
+      return `Cleanest of the requested regions: ${cleanest.zone}, ${cleanest.carbon_intensity} gCO2e/kWh (${cleanest.tier}). Highest: ${dirtiest.zone}, ${dirtiest.carbon_intensity} gCO2e/kWh (${dirtiest.tier}).`;
+    }
+  }
+  if (toolName === 'audit_and_score' || toolName === 'audit_code') {
+    const energy = (data.energy ?? {}) as Record<string, unknown>;
+    const measurement = energy.measurement_is_hardware === true
+      ? 'hardware measurement'
+      : `modelled estimate (${energy.measurement_method ?? 'method unavailable'})`;
+    return `Code audit: score ${data.green_score ?? 'unavailable'}/100, grade ${data.grade ?? 'unavailable'}, ${data.violation_count ?? 'unknown'} findings. Energy basis: ${measurement}.`;
+  }
+  if (toolName === 'calculate_sci') {
+    const sci = data.sci as Record<string, unknown> | undefined;
+    const intensity = data.grid_intensity as Record<string, unknown> | undefined;
+    return `SCI: ${sci?.sci_gco2_per_functional_unit ?? 'unavailable'} gCO2e per functional unit, grade ${data.grade ?? 'unavailable'}. Grid zone: ${intensity?.zone ?? 'not reported'}; energy input is modelled.`;
+  }
+  if (toolName === 'refactor_code') {
+    const source = typeof data.source === 'string' ? data.source : 'unknown source';
+    const provider = data.provider === 'aws_bedrock'
+      ? 'Amazon Bedrock'
+      : data.provider === 'google_gemini'
+        ? 'Google Gemini'
+        : data.provider === 'huggingface'
+          ? 'Hugging Face'
+          : typeof data.model === 'string'
+            ? data.model
+            : 'Deterministic rule engine';
+    const verification = data.behaviour_verified === true
+      ? 'behavior-verified'
+      : source === 'fallback' || source === 'deterministic'
+        ? 'rule-based proposal; not behavior-tested'
+        : 'behavior verification not reported';
+    const refactor = data.accepted === true
+      ? `Accepted refactor proposal (${provider}; ${source}; ${verification}):\n${typeof data.refactored === 'string' ? data.refactored : 'No replacement code was returned.'}`
+      : `The refactor was not accepted by verification (${data.reason ?? 'reason unavailable'}). No verified change is being presented.`;
+    return refactor;
+  }
+  if (toolName === 'get_grid_intensity') {
+    return data.carbon_intensity == null
+      ? `Grid intensity is unavailable for ${data.zone ?? 'the requested zone'}. ${typeof data.unavailable_reason === 'string' ? data.unavailable_reason : ''}`.trim()
+      : `${data.zone}: ${data.carbon_intensity} gCO2e/kWh. Source tier: ${data.intensity_source_tier ?? 'not reported'}${data.is_live === true ? ' (live source).' : ' (not confirmed live).'}`;
+  }
+  return JSON.stringify(envelope, null, 2);
+}
 
 export default function AlexaVoiceCockpit() {
   const [selectedPreset, setSelectedPreset] = useState<McpPreset>(MCP_PRESETS[0]);
   const [activeQuery, setActiveQuery] = useState<string>(MCP_PRESETS[0].query);
   const [activeZone, setActiveZone] = useState<string>(MCP_PRESETS[0].zone);
   const [answer, setAnswer] = useState<string | null>(null);
-  const [mcpTool, setMcpTool] = useState<string>('compare_regions');
+  const [mcpTool, setMcpTool] = useState<string>('connecting');
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('loading');
   const [customInput, setCustomInput] = useState('');
   const [showAmazonModal, setShowAmazonModal] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const reqIdRef = useRef(0);
 
-  const runQuery = async (rawQuery: string, zone: string) => {
+  const runQuery = async (
+    rawQuery: string,
+    zone: string,
+    toolName: string,
+    toolArguments: Record<string, unknown>,
+  ) => {
     const trimmed = rawQuery.trim();
     if (!trimmed) return;
     setExpanded(true);
@@ -73,39 +196,77 @@ export default function AlexaVoiceCockpit() {
 
     const reqId = ++reqIdRef.current;
     try {
-      const res = await fetch('/api/voice/ask', {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ query: trimmed, zone }),
-      });
-      const payload = res.ok ? await res.json() : null;
+      const result = await callMcpTool(toolName, toolArguments);
       // Ignore stale responses if a newer query was fired in the meantime.
       if (reqId !== reqIdRef.current) return;
-      if (payload?.spoken_response) {
-        setAnswer(payload.spoken_response);
-        if (payload.mcp_tool) setMcpTool(payload.mcp_tool);
-        setStatus('ready');
-      } else {
-        setStatus('error');
-      }
-    } catch {
+      setAnswer(formatToolResult(toolName, result));
+      setMcpTool(toolName);
+      setStatus('ready');
+    } catch (error) {
       if (reqId !== reqIdRef.current) return;
+      setAnswer(error instanceof Error ? error.message : 'Unknown MCP request error.');
+      setMcpTool('unavailable');
       setStatus('error');
     }
   };
 
   useEffect(() => {
-    runQuery(MCP_PRESETS[0].query, MCP_PRESETS[0].zone);
+    const preset = MCP_PRESETS[0];
+    runQuery(preset.query, preset.zone, preset.toolName, preset.toolArguments);
   }, []);
 
   const handleSelectPreset = (preset: McpPreset) => {
     setSelectedPreset(preset);
-    runQuery(preset.query, preset.zone);
+    runQuery(preset.query, preset.zone, preset.toolName, preset.toolArguments);
   };
 
   const handleCustomQuery = (e: React.FormEvent) => {
     e.preventDefault();
-    runQuery(customInput, activeZone);
+    const trimmed = customInput.trim();
+    if (!trimmed) return;
+    const lowered = trimmed.toLowerCase();
+    const codeLike = /(\n|;|=>|\b(def|function|class|return|const|let|var|for|while|import)\b)/.test(trimmed);
+    const regions = [
+      { zone: 'IE', aliases: ['ireland', 'eu-west-1'] },
+      { zone: 'US-MIDA-PJM', aliases: ['virginia', 'mid-atlantic', 'us-east-1'] },
+      { zone: 'US-CAL-CISO', aliases: ['california', 'us-west-1'] },
+      { zone: 'SE', aliases: ['sweden'] },
+      { zone: 'DE', aliases: ['germany', 'eu-central-1'] },
+    ].filter((region) => region.aliases.some((alias) => lowered.includes(alias)));
+    const matchedZones = [...new Set(regions.map((region) => region.zone))];
+    if (lowered.includes('refactor') && codeLike) {
+      runQuery(trimmed, activeZone, 'refactor_code', {
+        source_code: trimmed,
+        language: /(\bfunction\b|\b(const|let|var)\b|=>)/.test(trimmed) ? 'javascript' : 'python',
+        guidance: 'Preserve behavior and explain any unverified optimization.',
+      });
+    } else if (lowered.includes('audit') && codeLike) {
+      runQuery(trimmed, activeZone, 'audit_and_score', {
+        source_code: trimmed,
+        language: /(\bfunction\b|\b(const|let|var)\b|=>)/.test(trimmed) ? 'javascript' : 'python',
+        zone: activeZone,
+      });
+    } else if (lowered.includes('compare') || (matchedZones.length > 1 && lowered.includes('region'))) {
+      const zones = matchedZones.length > 1 ? matchedZones : ['IE', 'US-MIDA-PJM'];
+      runQuery(trimmed, activeZone, 'compare_regions', { zones });
+    } else if (lowered.includes('sci') || lowered.includes('software carbon intensity')) {
+      runQuery(trimmed, activeZone, 'calculate_sci', {
+        energy_joules: 45,
+        duration_seconds: 1.5,
+        functional_unit: 1,
+        zone: matchedZones[0] ?? activeZone,
+      });
+    } else if (lowered.includes('intensity') || lowered.includes('grid') || lowered.includes('carbon')) {
+      runQuery(trimmed, matchedZones[0] ?? activeZone, 'get_grid_intensity', {
+        zone: matchedZones[0] ?? activeZone,
+      });
+    } else {
+      setExpanded(true);
+      setActiveQuery(trimmed);
+      setAnswer('Choose a preset, or enter code with “audit” or “refactor”. Grid questions use the selected zone.');
+      setMcpTool('no matching MCP tool');
+      setStatus('error');
+    }
     setCustomInput('');
   };
 
@@ -125,7 +286,7 @@ export default function AlexaVoiceCockpit() {
               MCP 2025-11-25 &middot; /mcp
             </span>
             <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] font-mono text-emerald-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className={`w-1.5 h-1.5 rounded-full ${status === 'error' ? 'bg-rose-400' : status === 'ready' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
               tool: {mcpTool}
             </span>
           </div>
@@ -215,7 +376,7 @@ export default function AlexaVoiceCockpit() {
                  <div className="p-3 rounded-lg bg-rose-50 border border-rose-200/80 text-xs text-rose-700 flex items-start gap-2">
                    <AlertCircle size={13} className="mt-0.5 shrink-0" />
                    <span>
-                     {t('alexa.error')}
+                      {answer ?? t('alexa.error')}
                   </span>
                 </div>
               )}

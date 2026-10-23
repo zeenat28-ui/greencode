@@ -37,29 +37,29 @@ def _pat(regex: str, tool: str, payload_fn=None, priority: int = 0) -> None:
 _pat(
     r"\b(audit|scan|check|review|analyse|analyze)\b.*\b(repository|repo|github|codebase)\b",
     "audit_repository",
-    lambda m: {"repo": _extract_repo(m.group(0)) or "owner/repo", "branch": "main"},
+    lambda m: {"repo": _extract_repo(m.group(0)) or "", "branch": "main"},
 )
 _pat(
     r"\b(audit|scan|check)\b.*\b(my\s+)?(code|repo|repository)\b",
     "audit_repository",
-    lambda m: {"repo": _extract_repo(m.group(0)) or "owner/repo", "branch": "main"},
+    lambda m: {"repo": _extract_repo(m.group(0)) or "", "branch": "main"},
 )
 _pat(
     r"\b(green score|eco score|carbon score)\b.*\b(of|for|my)\b.*\b(repository|repo|code)\b",
     "audit_repository",
-    lambda m: {"repo": _extract_repo(m.group(0)) or "owner/repo", "branch": "main"},
+    lambda m: {"repo": _extract_repo(m.group(0)) or "", "branch": "main"},
 )
 
 # 2. SNIPPET / CODE AUDIT ---------------------------------------------------
 _pat(
     r"\b(audit|scan|check|review)\b.*\b(snippet|function|this code|this function)\b",
     "audit_code",
-    lambda m: {"source_code": _extract_snippet(m.group(0)), "language": "python"},
+    lambda m: {"source_code": "", "language": "python"},
 )
 _pat(
     r"\b(nested loop|quadratic|energy waste|anti.?pattern|carbon anti.?pattern)\b",
     "audit_code",
-    lambda m: {"source_code": m.group(0), "language": "python"},
+    lambda m: {"source_code": "", "language": "python"},
 )
 
 # 3. END-TO-END AUDIT AND SCORE ---------------------------------------------
@@ -67,7 +67,7 @@ _pat(
     r"\b(audit and score|full audit|complete audit|end.to.end|green score)\b",
     "audit_and_score",
     lambda m: {
-        "source_code": _extract_snippet(m.group(0)),
+        "source_code": "",
         "language": "python",
         "zone": "US-CAL-CISO",
         "functional_unit": 1.0,
@@ -79,29 +79,29 @@ _pat(
 _pat(
     r"\b(grid|carbon intensity|cleanest|greenest|dirtiest)\b.*\b(region|zone|aws)\b",
     "get_grid_intensity",
-    lambda m: {"zone": _extract_zone(m.string) or "US-CAL-CISO"},
+    lambda m: {"zone": _extract_zone(m.string) or ""},
 )
 _pat(
     r"\b(compare|which|should we run|where should)\b.*\b(region|zone|aws)\b",
     "compare_regions",
-    lambda m: {"zones": _extract_zones(m.group(0)) or ["US-CAL-CISO", "IE"]},
+    lambda m: {"zones": _extract_zones(m.group(0))},
 )
 _pat(
     r"\bcompare\b\s+(?:the\s+)?(?:carbon\s+)?(?:intensity\s+)?(?:of\s+)?(.+?)\s+(?:and|vs|versus|verses|or)\s+(.+)",
     "compare_regions",
-    lambda m: {"zones": _extract_zones(m.group(1) + " " + m.group(2)) or ["US-CAL-CISO", "IE"]},
+    lambda m: {"zones": _extract_zones(m.group(1) + " " + m.group(2))},
 )
 _pat(
     r"\b(what is the carbon intensity|how clean is the grid|grid intensity)\b",
     "get_grid_intensity",
-    lambda m: {"zone": _extract_zone(m.string) or "US-CAL-CISO"},
+    lambda m: {"zone": _extract_zone(m.string) or ""},
 )
 
 
 _pat(
     r"\bcarbon intensity\b(?:\s+of)?\s+(.+)",
     "get_grid_intensity",
-    lambda m: {"zone": _extract_zone(m.group(1)) or "US-CAL-CISO"},
+    lambda m: {"zone": _extract_zone(m.group(1)) or ""},
 )
 
 # 5. SCI CALCULATION --------------------------------------------------------
@@ -109,10 +109,10 @@ _pat(
     r"\b(calculate sci|software carbon intensity|sci score|carbon intensity score)\b",
     "calculate_sci",
     lambda m: {
-        "energy_joules": 1000.0,
-        "duration_seconds": 60.0,
-        "functional_unit": 1.0,
-        "zone": "US-CAL-CISO",
+        "energy_joules": _extract_number(m.string, ("joules", "joule")),
+        "duration_seconds": _extract_number(m.string, ("seconds", "second")),
+        "functional_unit": _extract_number(m.string, ("requests", "request", "runs", "run")),
+        "zone": _extract_zone(m.string) or "",
     },
 )
 
@@ -120,29 +120,31 @@ _pat(
 _pat(
     r"\b(measure energy|power draw|watts|joules|energy consumption|hardware reading)\b",
     "measure_energy",
-    lambda m: {"cpu_percent": 50.0, "memory_mb": 512.0, "duration_seconds": 1.0},
+    lambda m: {},
 )
 
 # 7. REFACTOR / OPTIMIZE ----------------------------------------------------
 _pat(
     r"\b(refactor|optimize|fix|improve|clean up|reduce energy|lower carbon)\b",
     "refactor_code",
-    lambda m: {"source_code": _extract_snippet(m.group(0)), "language": "python"},
+    lambda m: {"source_code": "", "language": "python"},
 )
 
 # 8. EXPLAIN SCORE ----------------------------------------------------------
 _pat(
     r"\b(explain|why|breakdown|reason for)\b.*\b(score|grade|green|carbon)\b",
     "explain_score",
-    lambda m: {
-        "green_score": 75.0,
-        "zone": "US-CAL-CISO",
-        "measurement_method": "model",
-        "functional_unit": 1.0,
-    },
+    lambda m: {},
 )
 
 # 9. LIST / MY REPOSITORIES -------------------------------------------------
+_pat(
+    r"\b(which|what)\b.*\b(github\s+)?(repo|repository)\b.*\b(current|currently|selected|active|working|connected)\b"
+    r"|\b(which|what)\s+(?:is|are)\s+(?:my\s+)?(?:current\s+|selected\s+|active\s+)?(?:github\s+)?(?:repo|repository)\b",
+    "list_repositories",
+    lambda m: {},
+    priority=5,
+)
 _pat(
     r"\b(my repos|list repos|show repositories|my repositories|all repos)\b",
     "list_repositories",
@@ -161,12 +163,12 @@ _pat(
 _pat(
     r"\b(push to github|push code|push fix|commit code|push refactor|github push)\b",
     "push_green_fix",
-    lambda m: {"repo": _extract_repo(m.string) or "owner/repo", "file_path": "refactored.py"},
+    lambda m: {"repo": _extract_repo(m.string) or ""},
 )
 _pat(
     r"\b(create pull request|open pr|make pr|create pr|pull request)\b",
     "create_pull_request",
-    lambda m: {"repo": _extract_repo(m.string) or "owner/repo"},
+    lambda m: {"repo": _extract_repo(m.string) or ""},
 )
 
 # 10.6. DEPLOY TO PRODUCTION ------------------------------------------------
@@ -204,9 +206,9 @@ _pat(
     r".*\b(check|evaluate|assess|does|pass|meets?|meet|violat|comply|compliant)",
     "evaluate_sla",
     lambda m: {
-        "total_joules": _extract_number(m.string, ("joules", "joule")) or 0.0,
-        "green_score": _extract_number(m.string, ("score",)) or 0.0,
-        "sci_gco2e": _extract_number(m.string, ("sci",)) or 0.0,
+        "total_joules": _extract_number(m.string, ("joules", "joule")),
+        "green_score": _extract_number(m.string, ("score",)),
+        "sci_gco2e": _extract_number(m.string, ("sci",)),
     },
     priority=10,
 )
@@ -215,9 +217,9 @@ _pat(
     r".*\b(sla|energy budget|budget policy|service level agreement)\b",
     "evaluate_sla",
     lambda m: {
-        "total_joules": _extract_number(m.string, ("joules", "joule")) or 0.0,
-        "green_score": _extract_number(m.string, ("score",)) or 0.0,
-        "sci_gco2e": _extract_number(m.string, ("sci",)) or 0.0,
+        "total_joules": _extract_number(m.string, ("joules", "joule")),
+        "green_score": _extract_number(m.string, ("score",)),
+        "sci_gco2e": _extract_number(m.string, ("sci",)),
     },
     priority=10,
 )
@@ -228,8 +230,7 @@ _pat(
     r"carbon inventory|scope inventory)\b",
     "scope_inventory",
     lambda m: {
-        "grid_zone": _extract_zone(m.string) or "US-CAL-CISO",
-        "grid_intensity_gco2_per_kwh": 200.0,
+        "grid_zone": _extract_zone(m.string) or "",
     },
     priority=10,
 )
@@ -248,7 +249,13 @@ _pat(
     r"\b(dynamically|run it and see|run the repo|actually run|profile the repo|"
     r"dynamic analysis|dynamic profile|real world measurement)\b",
     "dynamic_analyze",
-    lambda m: {"repo": _extract_repo(m.string) or ""},
+    lambda m: {
+        "repo": _extract_repo(m.string) or "",
+        "grid_intensity": _extract_number(m.string, ("intensity", "gco2")),
+        "functional_unit": _extract_number(
+            m.string, ("requests", "request", "runs", "run")
+        ),
+    },
     priority=10,
 )
 
@@ -304,8 +311,6 @@ def _extract_zones(text: str) -> List[str]:
         for t in tokens:
             if t not in found:
                 found.append(t)
-    if not found:
-        found = ["US-CAL-CISO", "IE"]
     return found[:5]
 
 
@@ -369,24 +374,7 @@ def _extract_repo(text: str) -> Optional[str]:
     m = re.search(r"\b([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\b", text)
     if m:
         return m.group(1)
-    m = re.search(
-        r"\b(?:repo|repository|github)\s+(?:of|is|called|named)?\s+([A-Za-z0-9_.-]+)",
-        text, re.IGNORECASE,
-    )
-    if m:
-        return f"owner/{m.group(1)}"
     return None
-
-
-def _extract_snippet(text: str) -> str:
-    return (
-        "def example(x):\n"
-        "    total = 0\n"
-        "    for i in range(x):\n"
-        "        for j in range(x):\n"
-        "            total += i * j\n"
-        "    return total\n"
-    )
 
 
 class AlexaNLUMapper:
@@ -506,4 +494,3 @@ class AlexaNLUMapper:
 
 
 MAPPER = AlexaNLUMapper()
-

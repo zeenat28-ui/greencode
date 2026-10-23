@@ -9,6 +9,7 @@ import re
 import secrets
 from typing import Any, Dict, Optional
 import smtplib
+from urllib.parse import urlencode
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -35,7 +36,7 @@ router = APIRouter(prefix="/api/auth", tags=["Enterprise Authentication & SSO"])
 
 def _get_app_url() -> str:
     """Resolve frontend app URL for OAuth redirects and emails."""
-    return os.environ.get("APP_URL", "https://greencode-teal.vercel.app").rstrip("/")
+    return os.environ.get("APP_URL", "http://localhost:5173").rstrip("/")
 
 
 
@@ -298,83 +299,26 @@ async def login(payload: LoginPayload):
 
 
 # ---------------------------------------------------------------------------
-# 2B. 1-CLICK INSTANT DEMO DEVELOPER LOGIN
-# ---------------------------------------------------------------------------
-@router.post("/demo")
-async def demo_login():
-    """1-Click instant guest / demo developer login for evaluation and testing without credentials."""
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(
-            (User.email == "developer@greencode.io") | (User.username == "developer")
-        ).first()
-        if not user:
-            hashed = hash_password("DemoPassword123!")
-            now_utc = datetime.now(timezone.utc)
-            user = User(
-                email="developer@greencode.io",
-                username="developer",
-                full_name="GreenCode Developer",
-                password_hash=hashed,
-                role="developer",
-                is_verified=True,
-                created_at=now_utc,
-                last_login_at=now_utc,
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-
-        if not user.org_id:
-            default_org = db.query(Organization).first()
-            if not default_org:
-                default_org = Organization(name="GreenCode Community", slug="community-default", tier="free")
-                db.add(default_org)
-                db.commit()
-                db.refresh(default_org)
-            user.org_id = default_org.id
-            user.preferred_org_id = default_org.id
-
-        user.last_login_at = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(user)
-        user_dto = _user_to_dict(user)
-    finally:
-        db.close()
-
-    access_token = _generate_access_token(user_dto["id"], user_dto["org_id"], user_dto["role"])
-    refresh_res = create_refresh_token(user_dto["id"])
-    refresh_token = refresh_res["refresh_token"]
-
-    return {
-        "success": True,
-        "message": f"Welcome, {user_dto['full_name']}! (Demo Developer Access)",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "expires_in": settings.jwt_access_expire_minutes * 60,
-        "user": user_dto,
-        "tokens": {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-        },
-    }
-
-
-
-# ---------------------------------------------------------------------------
 # 3. REAL GITHUB OAUTH 2.0 FLOW
 # ---------------------------------------------------------------------------
 @router.get("/github/authorize")
-async def github_authorize(redirect_uri: Optional[str] = None):
+async def github_authorize(
+    redirect_uri: Optional[str] = None,
+    state: str = Query(..., min_length=16, max_length=256),
+):
     """Return real GitHub OAuth authorization URL or configuration status."""
     client_id = os.environ.get("GITHUB_CLIENT_ID", "").strip()
     configured = bool(client_id and os.environ.get("GITHUB_CLIENT_SECRET", "").strip())
     
     target_redirect = redirect_uri or f"{_get_app_url()}/login?provider=github"
     auth_url = (
-        f"https://github.com/login/oauth/authorize?client_id={client_id}"
-        f"&redirect_uri={target_redirect}&scope=read:user,user:email,repo"
+        "https://github.com/login/oauth/authorize?"
+        + urlencode({
+            "client_id": client_id,
+            "redirect_uri": target_redirect,
+            "scope": "read:user,user:email,repo",
+            "state": state,
+        })
     ) if configured else None
 
     return {
@@ -383,7 +327,7 @@ async def github_authorize(redirect_uri: Optional[str] = None):
         "auth_url": auth_url,
         "message": (
             "GitHub OAuth ready." if configured else
-            "GitHub OAuth credentials not set. You can sign in directly using your GitHub Personal Access Token (PAT)."
+            "GitHub OAuth credentials are not configured on the backend. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET."
         ),
     }
 
@@ -460,16 +404,24 @@ async def github_oauth_exchange(payload: GitHubOAuthPayload):
 # 4. REAL GOOGLE OAUTH 2.0 FLOW
 # ---------------------------------------------------------------------------
 @router.get("/google/authorize")
-async def google_authorize(redirect_uri: Optional[str] = None):
+async def google_authorize(
+    redirect_uri: Optional[str] = None,
+    state: str = Query(..., min_length=16, max_length=256),
+):
     """Return real Google OAuth 2.0 authorization URL or configuration status."""
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
     configured = bool(client_id and os.environ.get("GOOGLE_CLIENT_SECRET", "").strip())
 
     target_redirect = redirect_uri or f"{_get_app_url()}/login?provider=google"
     auth_url = (
-        f"https://accounts.google.com/o/oauth2/v2/auth?client_id={client_id}"
-        f"&redirect_uri={target_redirect}&response_type=code&scope=openid%20email%20profile"
-        f"&access_type=offline&prompt=consent"
+        "https://accounts.google.com/o/oauth2/v2/auth?"
+        + urlencode({
+            "client_id": client_id,
+            "redirect_uri": target_redirect,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": state,
+        })
     ) if configured else None
 
     return {

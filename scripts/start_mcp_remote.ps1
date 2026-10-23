@@ -13,11 +13,10 @@
   3. Starts `python -m app.mcp_server` in the foreground (Ctrl+C stops it,
      then the tunnel is torn down).
 
-  Set GREENCODE_MCP_TOKEN before running this so the /mcp endpoint answers
-  unauthenticated requests with the 401 + PRM handshake the Alexa+ checklist
-  requires. Paste the printed https:// URL into addon.json's
-  integrations[0].config.endpoints.default.uri. The tunnel is HTTPS; the
-  server itself stays loopback-only - cloudflared terminates the public side.
+  Set GREENCODE_MCP_TOKEN before running this when the remote MCP endpoint
+  must reject unauthenticated clients. The script configures alexa/addon.json
+  with the printed HTTPS origin and the correct /mcp path. The tunnel is
+  HTTPS; the server itself stays loopback-only - cloudflared terminates TLS.
 
 .NOTES
   Requires: python (repo venv), cloudflared on PATH
@@ -41,7 +40,7 @@ if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
 }
 
 if (-not $env:GREENCODE_MCP_TOKEN) {
-    Write-Warning "GREENCODE_MCP_TOKEN is not set - /mcp will run open. Set it to enforce the Alexa+ 401 checklist."
+    throw "Refusing to publish an unauthenticated MCP endpoint. Set GREENCODE_MCP_TOKEN in this shell before starting the tunnel."
 }
 
 # 1. Tunnel first: its random domain is needed for the Host allowlist.
@@ -80,20 +79,12 @@ if ($env:GREENCODE_MCP_ALLOWED_HOSTS) {
     $env:GREENCODE_MCP_ALLOWED_HOSTS = $tunnelHost
 }
 
-# 2.5 Quick tunnels get a fresh domain each run - point addon.json at it so
-#     every URL (endpoint, privacy, terms, icons) stays live without editing.
-#     Handles both URL states: an earlier tunnel domain (rotation) and the
-#     production domain this repo shipped with (first local run).
+# 2.5 Configure the actual MCP route and all endpoint-hosted resources. A
+#     quick-tunnel hostname changes each run, so never use a string-only host
+#     replacement that could leave the MCP endpoint on the ASK webhook path.
 $addonPath = Join-Path $PSScriptRoot "..\alexa\addon.json"
-if (Test-Path $addonPath) {
-    $before = Get-Content $addonPath -Raw
-    $after = $before -replace "https://[a-z0-9-]+\.trycloudflare\.com", $url
-    $after = $after -replace "https://greencode-teal\.vercel\.app", $url
-    if ($after -ne $before) {
-        Set-Content -Path $addonPath -Value $after -NoNewline
-        Write-Host "addon.json URLs updated -> $url" -ForegroundColor Green
-    }
-}
+$configureAddon = Join-Path $PSScriptRoot "configure-alexa-addon.ps1"
+& $configureAddon -BaseUrl $url -AddonPath $addonPath -ConfigureAskSkill
 
 Write-Host "Tunnel up: $url" -ForegroundColor Green
 Write-Host "Allowed host: $tunnelHost" -ForegroundColor Green

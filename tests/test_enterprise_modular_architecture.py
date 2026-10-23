@@ -149,15 +149,15 @@ def test_kubernetes_modular_routes(client):
 
 def test_reports_modular_routes(client):
     """Test /api/reports/esg/1, HTML, and CSV export."""
-    res_esg = client.get("/api/reports/esg/1")
+    res_esg = client.get("/api/reports/esg/1", headers=ADMIN)
     assert res_esg.status_code == 200
     assert "emissions_summary" in res_esg.json()
 
-    res_html = client.get("/api/reports/esg/1/html")
+    res_html = client.get("/api/reports/esg/1/html", headers=ADMIN)
     assert res_html.status_code == 200
     assert "<!DOCTYPE html>" in res_html.text
 
-    res_csv = client.get("/api/reports/esg/1/csv")
+    res_csv = client.get("/api/reports/esg/1/csv", headers=ADMIN)
     assert res_csv.status_code == 200
     assert "Report ID" in res_csv.text
 

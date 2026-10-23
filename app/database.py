@@ -2162,7 +2162,7 @@ def create_refresh_token(user_id: int) -> Dict[str, Any]:
         jti = str(uuid.uuid4())
         plain_token = secrets.token_urlsafe(64)
         token_hash = hashlib.sha256(plain_token.encode("utf-8")).hexdigest()
-        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=30)
         rt = RefreshToken(
             user_id=user_id,
             token_jti=jti,
@@ -2219,7 +2219,7 @@ def create_refresh_token_internal(db, user_id: int) -> Dict[str, Any]:
     jti = str(uuid.uuid4())
     plain_token = secrets.token_urlsafe(64)
     token_hash = hashlib.sha256(plain_token.encode("utf-8")).hexdigest()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
     rt = RefreshToken(
         user_id=user_id,
         token_jti=jti,
@@ -2474,5 +2474,4 @@ def delete_aws_account_record(account_id: str, org_id: Optional[int] = None) -> 
         raise
     finally:
         db.close()
-
 

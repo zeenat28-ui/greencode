@@ -18,12 +18,16 @@ Covered contracts:
 """
 
 import pytest
+from unittest.mock import AsyncMock
+from urllib.parse import parse_qs, urlparse
 from fastapi.testclient import TestClient
 
 from app.database import init_db, create_user, create_organization
 from app.main import app
+from app.auth.oauth import OAuthManager
 from app.auth.jwt import create_tokens
 from app.auth.roles import Role
+from app.services.budget_service import BudgetService
 
 
 @pytest.fixture(autouse=True)
@@ -101,6 +105,71 @@ def test_auth_me_contract(client, tenant_user):
     assert body["user"]["id"] == user["id"]
     assert "email" in body["user"]
 
+def test_github_oauth_connection_requires_authenticated_greencode_user(client):
+    response = client.post(
+        "/api/auth/github/connect",
+        json={"code": "github-code", "redirect_uri": "http://localhost:5173/login"},
+    )
+    assert response.status_code == 401
+
+
+def test_github_oauth_connection_returns_repo_access_without_replacing_platform_session(
+    client, tenant_user, monkeypatch
+):
+    user, org = tenant_user
+    exchange = AsyncMock(return_value={
+        "access_token": "github-session-token",
+        "username": "connected-developer",
+        "avatar_url": "https://avatars.githubusercontent.com/u/42",
+    })
+    monkeypatch.setattr(OAuthManager, "exchange_github_code", exchange)
+
+    response = client.post(
+        "/api/auth/github/connect",
+        json={"code": "github-code", "redirect_uri": "http://localhost:5173/login"},
+        headers=_headers(user_id=user["id"], org_id=org["id"]),
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body == {
+        "success": True,
+        "github_token": "github-session-token",
+        "github_user": {
+            "login": "connected-developer",
+            "avatar_url": "https://avatars.githubusercontent.com/u/42",
+        },
+    }
+    exchange.assert_awaited_once_with("github-code", "http://localhost:5173/login")
+
+
+def test_google_authorize_requires_state(client):
+    response = client.get("/api/auth/google/authorize")
+
+    assert response.status_code == 422
+
+
+def test_google_authorize_encodes_state_and_redirect_without_forced_consent(client, monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-google-client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "test-google-client-secret")
+    state = "unguessable-google-state-value"
+    redirect_uri = "http://localhost:5173/login?provider=google"
+
+    response = client.get(
+        "/api/auth/google/authorize",
+        params={"redirect_uri": redirect_uri, "state": state},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    query = parse_qs(urlparse(payload["auth_url"]).query)
+    assert payload["configured"] is True
+    assert query["state"] == [state]
+    assert query["redirect_uri"] == [redirect_uri]
+    assert query["response_type"] == ["code"]
+    assert query["scope"] == ["openid email profile"]
+    assert "prompt" not in query
+
 
 def test_switch_tenant_returns_new_tokens(client, tenant_user):
     """`POST /api/tenants/switch` must not 500 and must return fresh tokens."""
@@ -130,7 +199,7 @@ def test_switch_tenant_requires_org_id(client, tenant_user):
 
 def test_audit_log_trail_returns_bare_array(client):
     """The audit trail endpoint returns a bare JSON array (not {entries: []})."""
-    res = client.get("/api/reports/audit-logs/1?limit=5")
+    res = client.get("/api/reports/audit-logs/1?limit=5", headers=_headers())
     assert res.status_code == 200, res.text
     body = res.json()
     assert isinstance(body, list)
@@ -143,7 +212,7 @@ def test_audit_log_trail_returns_bare_array(client):
 
 def test_audit_log_verification_uses_get_and_records_verified(client):
     """Verification is a GET and reports `records_verified`."""
-    res = client.get("/api/reports/audit-logs/1/verify")
+    res = client.get("/api/reports/audit-logs/1/verify", headers=_headers())
     assert res.status_code == 200, res.text
     body = res.json()
     assert "records_verified" in body
@@ -152,8 +221,46 @@ def test_audit_log_verification_uses_get_and_records_verified(client):
     assert "status" in body
 
 
+def test_report_endpoints_require_authentication_and_tenant_scope(client):
+    """Organization reports reject anonymous and cross-tenant requests."""
+    assert client.get("/api/reports/esg/1").status_code == 401
+    assert client.get("/api/reports/audit-logs/1").status_code == 401
+    assert client.get(
+        "/api/reports/esg/2",
+        headers=_headers(org_id=1, role=Role.AUDITOR.value),
+    ).status_code == 403
+
+
+def test_billing_usage_defaults_to_authenticated_organization(client, tenant_user):
+    """The usage endpoint derives the tenant from the bearer session, not org 1."""
+    user, org = tenant_user
+    response = client.get(
+        "/api/billing/usage",
+        headers=_headers(user_id=user["id"], org_id=org["id"]),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["org_id"] == org["id"]
+
+
+def test_license_activation_requires_authenticated_tenant_admin(client):
+    response = client.post(
+        "/api/billing/license/activate",
+        json={"org_id": 1, "license_key": "GC-LIC-invalid"},
+    )
+    assert response.status_code == 401
+
+    tokens = create_tokens(user_id=1, org_id=1, role=Role.VIEWER.value)
+    response = client.post(
+        "/api/billing/license/activate",
+        json={"org_id": 1, "license_key": "GC-LIC-invalid"},
+        headers={"Authorization": f"Bearer {tokens['access_token']}"},
+    )
+    assert response.status_code == 403
+
+
 def test_evaluate_pr_accepts_frontend_payload(client):
     """`evaluate-pr` accepts the frontend's team_id / additional_projected_kg_co2e."""
+    BudgetService.allocate_budget(org_id=1, team_id="core-infra", monthly_budget_kg=500.0)
     res = client.post(
         "/api/energy/budgets/evaluate-pr",
         json={
@@ -186,6 +293,7 @@ def test_evaluate_pr_rejects_negative_projection(client):
 
 def test_energy_budgets_contract(client):
     """`GET /api/energy/budgets` returns the team status plus the budget list."""
+    BudgetService.allocate_budget(org_id=1, team_id="core-infra", monthly_budget_kg=500.0)
     res = client.get("/api/energy/budgets", headers=_headers())
     assert res.status_code == 200, res.text
     body = res.json()
@@ -193,3 +301,153 @@ def test_energy_budgets_contract(client):
     assert isinstance(body["budgets"], list)
     for field in ("monthly_budget_kg", "current_consumed_kg", "consumption_pct", "alert_level"):
         assert field in body, f"missing team-status field: {field}"
+
+
+def test_refactor_rejects_unsupported_network_snippet(client, tenant_user):
+    """A network finding without a supported loop rewrite is not presented as a patch."""
+    user, org = tenant_user
+    response = client.post(
+        "/api/refactor",
+        json={
+            "snippet": "try:\n    await websocket.send_text(message)\nexcept Exception:\n    pass",
+            "violation_type": "UNCACHED_NETWORK",
+            "language": "python",
+        },
+        headers=_headers(user_id=user["id"], org_id=org["id"]),
+    )
+
+    assert response.status_code == 422
+    assert "cannot be safely rewritten" in response.json()["detail"]
+
+
+def test_refactor_reuses_session_for_supported_request_loop(client, tenant_user, monkeypatch):
+    """A complete requests loop still receives the deterministic connection-pooling rewrite."""
+    user, org = tenant_user
+    monkeypatch.setenv("GREENCODE_LLM_PROVIDER", "none")
+    response = client.post(
+        "/api/refactor",
+        json={
+            "snippet": "for item in items:\n    requests.get(item.url)",
+            "violation_type": "UNCACHED_NETWORK",
+            "language": "python",
+        },
+        headers=_headers(user_id=user["id"], org_id=org["id"]),
+    )
+
+    assert response.status_code == 200, response.text
+    patch = response.json()["refactored_code"]
+    assert "session = requests.Session()" in patch
+    assert "session.get(item.url)" in patch
+    assert "requests.get(item.url)" not in patch
+
+
+def test_refactor_rejects_generic_nested_loop_patch(client, tenant_user):
+    """A generic loop-depth finding must not produce unrelated placeholder code."""
+    user, org = tenant_user
+    response = client.post(
+        "/api/refactor",
+        json={
+            "snippet": "for (int c = 0; c < 3; ++c) { value += pixels[c]; }",
+            "violation_type": "NESTED_LOOPS_DEPTH_3+",
+            "language": "cpp",
+        },
+        headers=_headers(user_id=user["id"], org_id=org["id"]),
+    )
+
+    assert response.status_code == 422
+    assert "Loop depth alone" in response.json()["detail"]
+
+
+def test_scope_inventory_matches_cloud_carbon_response_contract(client):
+    response = client.post(
+        "/api/scope/inventory",
+        json={
+            "energy_joules": 360000,
+            "duration_seconds": 3600,
+            "grid_intensity_gco2_per_kwh": 380,
+            "runs_per_year": 50000,
+            "team_size": 12,
+            "dev_hours": 160,
+            "cloud_provider": "aws",
+            "vcpu_count": 8,
+            "memory_gb": 32,
+            "data_transfer_gb": 5.0,
+            "renewable_rec_pct": 0,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    report = response.json()
+    assert isinstance(report["scope_1"]["direct_emissions_kgco2e"], (int, float))
+    assert isinstance(report["scope_2"]["location_based_kgco2e"], (int, float))
+    assert isinstance(report["scope_2"]["total_energy_kwh_annual"], (int, float))
+    assert isinstance(report["scope_2"]["pue"], (int, float))
+    assert isinstance(report["scope_3"]["total_scope3_kgco2e_annual"], (int, float))
+    assert isinstance(report["scope_3"]["embodied_hardware_gco2e_annual"], (int, float))
+    assert isinstance(report["total_carbon_kgco2e_annual"], (int, float))
+
+
+def test_ml_token_projection_matches_cloud_carbon_response_contract(client):
+    response = client.post(
+        "/api/ml/tokens",
+        json={
+            "parameter_count_b": 7,
+            "token_count": 2048,
+            "hardware": "h100",
+            "grid_intensity_gco2_per_kwh": 200,
+            "runs_per_year": 1_000_000,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    for field in (
+        "energy_joules",
+        "energy_kwh",
+        "carbon_gco2e",
+        "joules_per_token",
+        "gco2e_per_1k_tokens",
+        "annual_cost_usd_at_scale",
+        "recommendation",
+    ):
+        assert field in result, f"missing model-token field: {field}"
+
+
+def test_ml_audit_matches_cloud_carbon_response_contract(client):
+    response = client.post(
+        "/api/ml/audit",
+        json={
+            "source_code": (
+                "import torch\n"
+                "model = torch.nn.Linear(4, 2)\n"
+                "model.eval()\n"
+                "def predict(values):\n"
+                "    return model(values).cpu().numpy()\n"
+            ),
+            "file_path": "model.py",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    for field in ("file_or_repo", "ml_green_score", "violations_count", "violations", "frameworks_detected"):
+        assert field in result, f"missing ML audit field: {field}"
+    if result["violations"]:
+        violation = result["violations"][0]
+        for field in ("rule", "severity", "line", "deduction", "description", "remediation", "code_snippet"):
+            assert field in violation, f"missing ML violation field: {field}"
+
+
+def test_unallocated_team_has_no_default_budget(client):
+    """Reading budget status must not invent or persist an unconfigured quota."""
+    org_id = 987654321
+    res = client.get(
+        "/api/energy/budgets",
+        params={"org_id": org_id, "team_id": "unallocated-team", "period": "2099-01"},
+        headers=_headers(org_id=1),
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["org_id"] == org_id
+    assert body["team_status"] is None
+    assert body["budgets"] == []

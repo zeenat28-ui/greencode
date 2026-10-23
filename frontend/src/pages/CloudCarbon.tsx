@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { scopeService, mlService, awsService } from '../services/greencodeApi';
+import {
+  scopeService,
+  mlService,
+  awsService,
+  type MLCodeAuditResult,
+  type MLTokenProjectionResult,
+  type ScopeInventoryReport,
+} from '../services/greencodeApi';
 import { Button } from '../components/primitives/Button';
 import { Badge } from '../components/primitives/Badge';
 import { Card } from '../components/primitives/Card';
@@ -40,7 +47,8 @@ export default function CloudCarbon() {
     data_transfer_gb: 5.0,
     renewable_rec_pct: 0,
   });
-  const [scopeResult, setScopeResult] = useState<any>(null);
+  const [scopeResult, setScopeResult] = useState<ScopeInventoryReport | null>(null);
+  const [scopeError, setScopeError] = useState<string | null>(null);
   const [scopeLoading, setScopeLoading] = useState(false);
 
   // ML Code Audit State
@@ -59,7 +67,8 @@ def predict(input_tensor):
     prediction = output.cpu().numpy()
     return prediction
 `);
-  const [mlAuditResult, setMlAuditResult] = useState<any>(null);
+  const [mlAuditResult, setMlAuditResult] = useState<MLCodeAuditResult | null>(null);
+  const [mlAuditError, setMlAuditError] = useState<string | null>(null);
   const [mlAuditLoading, setMlAuditLoading] = useState(false);
 
   // Token Projections State
@@ -70,7 +79,8 @@ def predict(input_tensor):
     grid_intensity: 200,
     runs_per_year: 1000000,
   });
-  const [tokenResult, setTokenResult] = useState<any>(null);
+  const [tokenResult, setTokenResult] = useState<MLTokenProjectionResult | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   const [tokenLoading, setTokenLoading] = useState(false);
 
   // ------------------------------------------------------------------
@@ -105,6 +115,7 @@ def predict(input_tensor):
 
   const handleRunScope = async () => {
     setScopeLoading(true);
+    setScopeError(null);
     try {
       const resp = await scopeService.calculateInventory({
         energy_joules: Number(scopeForm.energy_joules),
@@ -120,8 +131,8 @@ def predict(input_tensor):
         renewable_rec_pct: Number(scopeForm.renewable_rec_pct),
       });
       setScopeResult(resp.data);
-    } catch (err) {
-      console.error('Scope inventory calculation error:', err);
+    } catch (error) {
+      setScopeError(error instanceof Error ? error.message : t('cloudCarbon.inventoryError'));
     } finally {
       setScopeLoading(false);
     }
@@ -129,11 +140,12 @@ def predict(input_tensor):
 
   const handleRunMlAudit = async () => {
     setMlAuditLoading(true);
+    setMlAuditError(null);
     try {
       const resp = await mlService.auditCode(mlCode, 'inference_pipeline.py');
       setMlAuditResult(resp.data);
-    } catch (err) {
-      console.error('ML Audit error:', err);
+    } catch (error) {
+      setMlAuditError(error instanceof Error ? error.message : t('cloudCarbon.mlAuditError'));
     } finally {
       setMlAuditLoading(false);
     }
@@ -141,6 +153,7 @@ def predict(input_tensor):
 
   const handleRunTokenCalc = async () => {
     setTokenLoading(true);
+    setTokenError(null);
     try {
       const resp = await mlService.calculateTokens({
         parameter_count_b: Number(tokenForm.parameter_count_b),
@@ -150,8 +163,8 @@ def predict(input_tensor):
         runs_per_year: Number(tokenForm.runs_per_year),
       });
       setTokenResult(resp.data);
-    } catch (err) {
-      console.error('Token calculation error:', err);
+    } catch (error) {
+      setTokenError(error instanceof Error ? error.message : t('cloudCarbon.tokenError'));
     } finally {
       setTokenLoading(false);
     }
@@ -411,6 +424,11 @@ def predict(input_tensor):
               {scopeLoading ? <RefreshCw size={14} className="animate-spin" /> : <FileCheck size={14} />}
               {t('cloudCarbon.computeInventory')}
             </Button>
+            {scopeError && (
+              <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">
+                {scopeError}
+              </p>
+            )}
           </Card>
         </div>
 
@@ -421,7 +439,7 @@ def predict(input_tensor):
                     <Card className="border-l-4 border-l-slate-400 p-4">
                       <p className="label">{t('cloudCarbon.scope1')}</p>
                      <p className="text-xl font-bold font-mono text-slate-900 mt-1">
-                       {scopeResult.scope_1.total_emissions_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
+                       {scopeResult.scope_1.direct_emissions_kgco2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
                      </p>
                       <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{t('cloudCarbon.devTeamOverhead')}</p>
                    </Card>
@@ -429,7 +447,7 @@ def predict(input_tensor):
                 <Card className="border-l-4 border-l-emerald-600 p-4">
                       <p className="label">{t('cloudCarbon.scope2')}</p>
                      <p className="text-xl font-bold font-mono text-emerald-700 mt-1">
-                       {scopeResult.scope_2.location_based_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
+                       {scopeResult.scope_2.location_based_kgco2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
                      </p>
                       <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{t('cloudCarbon.awsGridFootprint')}</p>
                    </Card>
@@ -437,7 +455,7 @@ def predict(input_tensor):
                   <Card className="border-l-4 border-l-cyan-600 p-4">
                       <p className="label">{t('cloudCarbon.scope3')}</p>
                      <p className="text-xl font-bold font-mono text-cyan-800 mt-1">
-                       {scopeResult.scope_3.total_kg_co2e.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
+                       {scopeResult.scope_3.total_scope3_kgco2e_annual.toFixed(2)} <span className="text-xs text-slate-500 font-normal">kg CO₂e</span>
                      </p>
                       <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{t('cloudCarbon.hardwareLca')}</p>
                    </Card>
@@ -449,22 +467,22 @@ def predict(input_tensor):
                       Organizational Carbon Breakdown
                     </h3>
                     <Badge variant="success">
-                      Total: {scopeResult.total_organizational_carbon_kg_co2e.toFixed(2)} kg CO₂e / yr
+                      Total: {scopeResult.total_carbon_kgco2e_annual.toFixed(2)} kg CO₂e / yr
                 </Badge>
                 </div>
 
                 <div className="space-y-2.5 text-xs">
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600 dark:text-zinc-400">{t('cloudCarbon.pueCoeff')}</span>
-                    <span className="font-mono font-semibold text-slate-900 dark:text-zinc-100">{scopeResult.cloud_pue}</span>
+                    <span className="font-mono font-semibold text-slate-900 dark:text-zinc-100">{scopeResult.scope_2.pue}</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700">
                     <span className="text-slate-600 dark:text-zinc-400">{t('cloudCarbon.operationalEnergy')}</span>
-                    <span className="font-mono font-semibold text-slate-900 dark:text-zinc-100">{scopeResult.scope_2.annual_energy_kwh.toFixed(2)} kWh / year</span>
+                    <span className="font-mono font-semibold text-slate-900 dark:text-zinc-100">{scopeResult.scope_2.total_energy_kwh_annual.toFixed(2)} kWh / year</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700">
                     <span className="text-slate-600 dark:text-zinc-400">{t('cloudCarbon.hardwareLcaAmortization')}</span>
-                    <span className="font-mono font-semibold text-slate-900 dark:text-zinc-100">{scopeResult.scope_3.hardware_embodied_kg_co2e.toFixed(2)} kg CO₂e</span>
+                    <span className="font-mono font-semibold text-slate-900 dark:text-zinc-100">{(scopeResult.scope_3.embodied_hardware_gco2e_annual / 1000).toFixed(2)} kg CO₂e</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-700">
                     <span className="text-slate-600 dark:text-zinc-400">{t('cloudCarbon.regulatoryCompliance')}</span>
@@ -514,6 +532,11 @@ def predict(input_tensor):
               {mlAuditLoading ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
               {t('cloudCarbon.scanMl')}
             </button>
+            {mlAuditError && (
+              <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">
+                {mlAuditError}
+              </p>
+            )}
           </div>
 
           <div className="lg:col-span-6 space-y-4">
@@ -523,28 +546,40 @@ def predict(input_tensor):
               <div>
                 <p className="label dark:text-zinc-300">{t('cloudCarbon.mlStatus')}</p>
                 <p className="text-lg font-bold text-slate-900 dark:text-zinc-100 mt-0.5">
-                  {t('cloudCarbon.inefficienciesDetected', { count: String(mlAuditResult.detected_patterns.length) })}
+                  {t('cloudCarbon.inefficienciesDetected', { count: String(mlAuditResult.violations.length) })}
                 </p>
               </div>
-              <Badge variant={mlAuditResult.detected_patterns.length > 0 ? 'critical' : 'success'}>
-                {mlAuditResult.detected_patterns.length > 0 ? t('cloudCarbon.gpuOptimizationRequired') : t('cloudCarbon.optimal')}
+              <Badge variant={mlAuditResult.violations.length > 0 ? 'critical' : 'success'}>
+                {mlAuditResult.violations.length > 0 ? t('cloudCarbon.gpuOptimizationRequired') : t('cloudCarbon.optimal')}
               </Badge>
             </Card>
 
                 <div className="space-y-2.5">
-                  {mlAuditResult.detected_patterns.map((p: any, idx: number) => (
+                  {mlAuditResult.violations.map((violation, idx) => (
                     <Card key={idx} className="border-l-4 border-l-amber-500 p-4 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold font-mono text-slate-900">{p.rule_id}</span>
-                        <Badge variant="high" size="sm" className="text-[10px]">{p.severity}</Badge>
+                        <span className="text-xs font-bold font-mono text-slate-900">{violation.rule}</span>
+                        <Badge variant="high" size="sm" className="text-[10px]">{violation.severity}</Badge>
                       </div>
-                      <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200">{p.title}</p>
-                      <p className="text-[11px] text-slate-600 dark:text-zinc-400">{p.description}</p>
+                      <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
+                        {violation.rule.replace(/_/g, ' ')}
+                      </p>
+                      <p className="text-[11px] text-slate-600 dark:text-zinc-400">{violation.description}</p>
                       <div className="pt-2 border-t border-slate-100 dark:border-zinc-700 flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500 dark:text-zinc-400 font-mono">{t('cloudCarbon.lineNumber', { line: String(p.line_number) })}</span>
-                        <span className="text-emerald-700 font-medium">{t('cloudCarbon.estimatedSavings', { pct: String(p.estimated_energy_savings_pct) })}</span>
-                </div>
-              </Card>
+                        <span className="text-slate-500 dark:text-zinc-400 font-mono">
+                          {t('cloudCarbon.lineNumber', { line: String(violation.line) })}
+                        </span>
+                        <span className="text-emerald-700 font-medium">-{violation.deduction} pts</span>
+                      </div>
+                      <p className="text-[11px] text-emerald-800 dark:text-emerald-300">
+                        {violation.remediation}
+                      </p>
+                      {violation.code_snippet && (
+                        <code className="block rounded bg-slate-900 p-2 font-mono text-[11px] text-slate-100">
+                          {violation.code_snippet}
+                        </code>
+                      )}
+                    </Card>
                   ))}
                 </div>
               </div>
@@ -638,6 +673,11 @@ def predict(input_tensor):
               {tokenLoading ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
               {t('cloudCarbon.modelTokenEnergy')}
             </Button>
+            {tokenError && (
+              <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">
+                {tokenError}
+              </p>
+            )}
             </Card>
           </div>
 
@@ -648,17 +688,17 @@ def predict(input_tensor):
                   <Card className="p-4">
                     <p className="label">Inference Energy</p>
                     <p className="text-xl font-bold font-mono text-slate-900 mt-1">
-                      {tokenResult.joules_per_run.toFixed(3)} <span className="text-xs text-slate-500 font-normal">Joules</span>
+                      {tokenResult.energy_joules.toFixed(3)} <span className="text-xs text-slate-500 font-normal">Joules</span>
                     </p>
                     <p className="text-[11px] text-slate-500 mt-1">
-                      {(tokenResult.joules_per_run / 3600).toFixed(6)} Wh per {tokenForm.token_count} tokens
+                      {(tokenResult.energy_joules / 3600).toFixed(6)} Wh per {tokenForm.token_count} tokens
                     </p>
                   </Card>
 
                   <Card className="p-4">
                     <p className="label">Inference Carbon</p>
                     <p className="text-xl font-bold font-mono text-emerald-700 mt-1">
-                      {tokenResult.gco2e_per_run.toFixed(6)} <span className="text-xs text-slate-500 font-normal">gCO₂e</span>
+                      {tokenResult.carbon_gco2e.toFixed(6)} <span className="text-xs text-slate-500 font-normal">gCO₂e</span>
                     </p>
                     <p className="text-[11px] text-slate-500 mt-1">Direct operational footprint</p>
                   </Card>
@@ -672,20 +712,20 @@ def predict(input_tensor):
                       <div>
                         <p className="text-slate-500 dark:text-zinc-400">{t('cloudCarbon.pueCoeff')}</p>
                         <p className="font-mono text-sm font-bold text-slate-900 dark:text-zinc-100 mt-0.5">
-                        {tokenResult.annual_energy_kwh.toFixed(2)} kWh
+                        {(tokenResult.energy_kwh * tokenForm.runs_per_year).toFixed(2)} kWh
                       </p>
                     </div>
                     <div>
                       <p className="text-slate-500 dark:text-zinc-400">{t('cloudCarbon.annualAtmosphericCarbon')}</p>
                       <p className="font-mono text-sm font-bold text-emerald-700 mt-0.5">
-                        {tokenResult.annual_carbon_kg.toFixed(2)} kg CO₂e
+                        {((tokenResult.carbon_gco2e * tokenForm.runs_per_year) / 1000).toFixed(2)} kg CO₂e
                       </p>
                     </div>
                   </div>
-                  {tokenResult.aws_silicon_recommendation && (
+                  {tokenResult.recommendation && (
                     <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-950">
                       <span className="font-bold">{t('cloudCarbon.awsSiliconAdvisory')}</span>
-                      {tokenResult.aws_silicon_recommendation}
+                      {tokenResult.recommendation}
                     </div>
                   )}
                   </Card>
@@ -1061,4 +1101,3 @@ def predict(input_tensor):
      </div>
   );
 }
-

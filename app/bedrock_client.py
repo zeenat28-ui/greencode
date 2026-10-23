@@ -368,7 +368,7 @@ class BedrockClient:
         if not self.configured:
             raise BedrockError(
                 "Amazon Bedrock is not configured. Set AWS credentials and "
-                "BEDROCK_MODEL_ID, or set GREENCODE_LLM_PROVIDER=huggingface.",
+                "BEDROCK_MODEL_ID, or configure Gemini/HuggingFace as a fallback.",
                 kind="auth",
             )
 
@@ -472,5 +472,4 @@ def get_client() -> BedrockClient:
             if _client_singleton is None:
                 _client_singleton = BedrockClient()
     return _client_singleton
-
 

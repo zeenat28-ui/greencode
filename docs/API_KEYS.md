@@ -142,7 +142,21 @@ supports it.
 
 ---
 
-## 7. Hugging Face — `HUGGINGFACE_API_KEY` / `HUGGINGFACE_TOKEN`
+## 7. Google Gemini — `GEMINI_API_KEY`
+
+**Needed for:** the Gemini Pro refactoring fallback when Bedrock is unavailable
+or fails. GreenCode uses `gemini-3.1-pro-preview`; Flash models are not selected.
+
+**How to get it:** create an API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
+See Google's [Gemini model list](https://ai.google.dev/gemini-api/docs/models) for
+current model availability.
+
+**Set it as:** `GEMINI_API_KEY` in the backend `.env` file. Never commit or
+paste the key into chat.
+
+---
+
+## 8. Hugging Face — `HUGGINGFACE_API_KEY` / `HUGGINGFACE_TOKEN`
 
 **Needed for:** the Hugging Face refactoring backend when
 `GREENCODE_LLM_PROVIDER=huggingface`.
@@ -164,7 +178,7 @@ supports it.
 
 ---
 
-## 8. GreenCode's own secrets (no external signup needed)
+## 9. GreenCode's own secrets (no external signup needed)
 
 These you generate yourself. They are already present in your `.env`.
 
@@ -189,7 +203,7 @@ in front of it.
 emission factors. Results stay correct and offline, but they are not
 real-time. This is why `check-keys` reports "Using Built-in Global Grid
 Matrix" rather than an error.
-## 9. Where to put the keys
+## 10. Where to put the keys
 
 ### Local development
 
@@ -251,5 +265,3 @@ This is worth knowing, because GreenCode is designed to degrade gracefully:
 
 So you can demo the entire voice surface offline. Keys only upgrade the data
 from "accurate but cached" to "live".
-
-

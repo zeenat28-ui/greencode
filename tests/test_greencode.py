@@ -426,7 +426,12 @@ class TestGreenCodeAuditor(unittest.TestCase):
         from unittest.mock import patch
         # 1. Test Python nested loop transformation (under deterministic synthesis)
         bad_py = "for i in a:\n    for j in b:\n        for k in c:\n            val = i * j * k"
-        with patch.dict(os.environ, {"HUGGINGFACE_API_KEY": "", "HF_TOKEN": ""}):
+        with patch.dict(os.environ, {
+            "HUGGINGFACE_API_KEY": "",
+            "HF_TOKEN": "",
+            "GEMINI_API_KEY": "",
+            "GREENCODE_LLM_PROVIDER": "none",
+        }):
             res = refactor_repository_code(bad_py, ViolationType.NESTED_LOOPS, language_id="python")
             self.assertIn("product(a, b, c)", res["refactored_code"])
             self.assertIn("for i, j, k in", res["refactored_code"])
@@ -489,7 +494,12 @@ class TestGreenCodeAuditor(unittest.TestCase):
 
         # And through the public entry point, which is what the API returns.
         from unittest.mock import patch
-        with patch.dict(os.environ, {"HUGGINGFACE_API_KEY": "", "HF_TOKEN": ""}):
+        with patch.dict(os.environ, {
+            "HUGGINGFACE_API_KEY": "",
+            "HF_TOKEN": "",
+            "GEMINI_API_KEY": "",
+            "GREENCODE_LLM_PROVIDER": "none",
+        }):
             res = refactor_repository_code(
                 top_level, ViolationType.NESTED_LOOPS, language_id="python"
             )
@@ -815,7 +825,6 @@ class TestGreenCodeAuditor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
 
 
 

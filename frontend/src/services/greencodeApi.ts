@@ -20,8 +20,52 @@ import {
   HealthStatus,
 } from '../types';
 
+export interface ScopeInventoryReport {
+  scope_1: {
+    direct_emissions_kgco2e: number;
+  };
+  scope_2: {
+    location_based_kgco2e: number;
+    total_energy_kwh_annual: number;
+    pue: number;
+  };
+  scope_3: {
+    total_scope3_kgco2e_annual: number;
+    embodied_hardware_gco2e_annual: number;
+  };
+  total_carbon_kgco2e_annual: number;
+}
+
+export interface MLTokenProjectionResult {
+  energy_joules: number;
+  energy_kwh: number;
+  carbon_gco2e: number;
+  joules_per_token: number;
+  gco2e_per_1k_tokens: number;
+  annual_cost_usd_at_scale: number;
+  recommendation: string;
+}
+
+export interface MLCodeAuditResult {
+  file_or_repo: string;
+  ml_green_score: number;
+  total_deductions: number;
+  violations_count: number;
+  violations: Array<{
+    rule: string;
+    severity: string;
+    line: number;
+    deduction: number;
+    description: string;
+    remediation: string;
+    code_snippet: string;
+  }>;
+  frameworks_detected: string[];
+  token_projection: MLTokenProjectionResult | null;
+}
+
 // ---------------------------------------------------------------------------
-// Authentication - GitHub Personal Access Token is the only supported method.
+// Authentication - GitHub OAuth authorization-code flow.
 // ---------------------------------------------------------------------------
 export const ssoService = {
   /** Check if SSO is required for the org with the given email domain. */
@@ -50,9 +94,6 @@ export const ssoService = {
 };
 
 export const authService = {
-  signInWithGitHub: (githubToken: string) =>
-    api.post<AuthResponse>('/api/auth/github', { github_token: githubToken }),
-
   login: (emailOrUsername: string, password: string) =>
     api.post<AuthResponse>('/api/auth/login', {
       email: emailOrUsername,
@@ -60,28 +101,32 @@ export const authService = {
       password,
     }),
 
-  demoLogin: () => api.post<AuthResponse>('/api/auth/demo'),
-
-
   register: (data: { email: string; password: string; full_name?: string; username?: string }) =>
     api.post<AuthResponse>('/api/auth/register', data),
 
   googleLogin: (payload?: { id_token?: string; email?: string; name?: string }) =>
     api.post<AuthResponse>('/api/auth/google/oauth', payload || {}),
 
-  getGitHubAuthorize: (redirectUri?: string) =>
+  getGitHubAuthorize: (redirectUri?: string, state?: string) =>
     api.get<{ configured: boolean; auth_url?: string; client_id?: string; message?: string }>(
       '/api/auth/github/authorize',
-      { params: { redirect_uri: redirectUri } },
+      { params: { redirect_uri: redirectUri, state } },
     ),
 
   exchangeGitHubOAuth: (code: string, redirectUri?: string) =>
     api.post<AuthResponse>('/api/auth/github/oauth', { code, redirect_uri: redirectUri }),
 
-  getGoogleAuthorize: (redirectUri?: string) =>
+  connectGitHubOAuth: (code: string, redirectUri?: string) =>
+    api.post<{
+      success: boolean;
+      github_token: string;
+      github_user: GitHubUser;
+    }>('/api/auth/github/connect', { code, redirect_uri: redirectUri }),
+
+  getGoogleAuthorize: (redirectUri?: string, state?: string) =>
     api.get<{ configured: boolean; auth_url?: string; client_id?: string; message?: string }>(
       '/api/auth/google/authorize',
-      { params: { redirect_uri: redirectUri } },
+      { params: { redirect_uri: redirectUri, state } },
     ),
 
   exchangeGoogleOAuth: (code?: string, idToken?: string, redirectUri?: string) =>
@@ -122,11 +167,13 @@ export const githubService = {
 
   listBranches: (owner: string, name: string) =>
     api.get<{ count: number; branches: GitHubBranch[] }>(
-      `/github/repos/${owner}/${name}/branches`
+      `/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/branches`
     ),
 
   inspect: (owner: string, name: string) =>
-    api.get<RepoPreflight>(`/github/repos/${owner}/${name}/inspect`),
+    api.get<RepoPreflight>(
+      `/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/inspect`
+    ),
 
   createPullRequest: (
     repoFullName: string,
@@ -276,7 +323,7 @@ export const scopeService = {
     data_transfer_gb?: number;
     grid_zone?: string;
     renewable_rec_pct?: number;
-  }) => api.post('/api/scope/inventory', params),
+  }) => api.post<ScopeInventoryReport>('/api/scope/inventory', params),
 
   /**
    * Enterprise overview: repositories, budgets, workloads, and org details.
@@ -394,17 +441,17 @@ export const policyService = {
 // ESG Reporting & Audit Assurance
 // ---------------------------------------------------------------------------
 export const reportService = {
-  getEsgReport: () => api.get<any>('/api/reports/esg/1'),
-  getEvidenceManifest: () => api.get<any>('/api/reports/esg/1/evidence-manifest'),
-  getCompliance: () => api.get<any>('/api/reports/compliance/1'),
+  getEsgReport: (orgId: number) => api.get<any>(`/api/reports/esg/${orgId}`),
+  getEvidenceManifest: (orgId: number) => api.get<any>(`/api/reports/esg/${orgId}/evidence-manifest`),
+  getCompliance: (orgId: number) => api.get<any>(`/api/reports/compliance/${orgId}`),
   /**
    * The audit trail endpoint returns a bare JSON *array* of ledger entries
    * (see `app/routers/reports.py` -> `AuditLogManager.get_trail`), so the
    * response is normalised into `{ entries, count }` here to give callers a
    * stable shape.
    */
-  getAuditLogs: (limit: number = 8) =>
-    api.get<{ entries: any[]; count: number }>('/api/reports/audit-logs/1', { params: { limit } })
+  getAuditLogs: (orgId: number, limit: number = 8) =>
+    api.get<{ entries: any[]; count: number }>(`/api/reports/audit-logs/${orgId}`, { params: { limit } })
       .then((res) => {
         const entries = Array.isArray(res.data) ? res.data : (res.data?.entries ?? []);
         return { ...res, data: { entries, count: entries.length } };
@@ -414,9 +461,9 @@ export const reportService = {
    * Chain verification is a GET (`GET /api/reports/audit-logs/{org_id}/verify`)
    * and reports `records_verified`, not `checked_records`.
    */
-  verifyAuditLogs: () =>
+  verifyAuditLogs: (orgId: number) =>
     api.get<{ status: string; valid: boolean; records_verified: number; latest_hash?: string }>(
-      '/api/reports/audit-logs/1/verify',
+      `/api/reports/audit-logs/${orgId}/verify`,
     ),
 };
 
@@ -425,7 +472,7 @@ export const reportService = {
 // ---------------------------------------------------------------------------
 export const billingService = {
   getUsage: (params?: { org_id?: number }) =>
-    api.get<any>('/api/billing/usage', { params: { org_id: params?.org_id ?? 1 } }),
+    api.get<any>('/api/billing/usage', { params }),
   activateLicense: (params: { org_id: number; license_key: string }) =>
     api.post<{ license?: { tier: string; seats: number } }>('/api/billing/license/activate', params),
 };
@@ -465,7 +512,7 @@ export const voiceService = {
 // ---------------------------------------------------------------------------
 export const mlService = {
   auditCode: (sourceCode: string, filePath?: string) =>
-    api.post('/api/ml/audit', { source_code: sourceCode, file_path: filePath }),
+    api.post<MLCodeAuditResult>('/api/ml/audit', { source_code: sourceCode, file_path: filePath }),
 
   calculateTokens: (params: {
     parameter_count_b: number;
@@ -473,7 +520,7 @@ export const mlService = {
     hardware: string;
     grid_intensity_gco2_per_kwh: number;
     runs_per_year: number;
-  }) => api.post('/api/ml/tokens', params),
+  }) => api.post<MLTokenProjectionResult>('/api/ml/tokens', params),
 };
 
 // ---------------------------------------------------------------------------
@@ -607,5 +654,3 @@ export default {
   localScanService,
   voiceService,
 };
-
-

@@ -1,27 +1,26 @@
-import { Link } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
-import { Menu, X, ShieldCheck, Loader2, LogOut, Github, ChevronDown, Settings } from 'lucide-react';
+import { ShieldCheck, Loader2, LogOut, ChevronDown, Settings } from 'lucide-react';
 import { gridService } from '../../services/greencodeApi';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useAuth } from '../../context/AuthContext';
 import TenantSwitcher from '../primitives/TenantSwitcher';
 import { useT } from '../../i18n/I18nContext';
+import BrandLogo from '../common/BrandLogo';
 
-interface NavbarProps {
-  navOpen?: boolean;
-  onToggleNav?: () => void;
-}
-
-export default function Navbar({ navOpen, onToggleNav }: NavbarProps) {
+export default function Navbar() {
   const t = useT();
   const { user, logout } = useAuth();
+  const location = useLocation();
   const [zone] = useLocalStorage('greencode_zone', 'US-CAL-CISO');
   const [threshold] = useLocalStorage('greencode_threshold', 75);
   const [gridIntensity, setGridIntensity] = useState<number | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [gridLoading, setGridLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sectionsMenuOpen, setSectionsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const sectionsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setGridLoading(true);
@@ -39,12 +38,16 @@ export default function Navbar({ navOpen, onToggleNav }: NavbarProps) {
   }, [zone]);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !sectionsMenuOpen) return;
     const onClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (sectionsRef.current && !sectionsRef.current.contains(e.target as Node)) setSectionsMenuOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpen(false);
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+        setSectionsMenuOpen(false);
+      }
     };
     document.addEventListener('mousedown', onClick);
     document.addEventListener('keydown', onKey);
@@ -52,25 +55,99 @@ export default function Navbar({ navOpen, onToggleNav }: NavbarProps) {
       document.removeEventListener('mousedown', onClick);
       document.removeEventListener('keydown', onKey);
     };
-  }, [menuOpen]);
+  }, [menuOpen, sectionsMenuOpen]);
 
   const displayName = user?.github_username || user?.username || 'Developer';
   const avatar = user?.avatar_url;
+  const explorePaths = [
+    '/history',
+    '/profiler',
+    '/cloud-carbon',
+    '/budgets',
+    '/policies',
+    '/deployments',
+    '/reports',
+  ];
+  const exploreActive = explorePaths.includes(location.pathname);
 
   return (
-    <header className="h-12 shrink-0 bg-[var(--gc-rail)] border-b border-[var(--gc-border-default)] flex items-center gap-2 px-3">
-      <button
-        type="button"
-        className="lg:hidden inline-flex items-center justify-center w-8 h-8 rounded-md border border-[var(--gc-border-default)] text-[var(--gc-text-secondary)]"
-        onClick={onToggleNav}
-        aria-label={navOpen ? t('nav.closeMenu') : t('nav.openMenu')}
-      >
-        {navOpen ? <X size={16} /> : <Menu size={16} />}
-      </button>
+    <header className="gc-console-topbar h-14 shrink-0 flex items-center gap-3 px-3 sm:px-5">
+      <Link to="/dashboard" className="gc-console-brand flex items-center gap-2 shrink-0" aria-label={t('app.name')}>
+        <BrandLogo size="sm" />
+        <span className="font-bold text-sm tracking-tight">GreenCode</span>
+      </Link>
+
+      <nav className="gc-topnav flex items-center gap-1 ml-2 sm:ml-6" aria-label={t('nav.primary')}>
+        {[
+          { to: '/dashboard', label: t('nav.dashboard') },
+          { to: '/scan', label: t('nav.scan') },
+          { to: '/issues', label: t('nav.issues') },
+        ].map(({ to, label }) => (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) => `gc-topnav-link ${isActive ? 'gc-topnav-link-active' : ''}`}
+          >
+            {label}
+          </NavLink>
+        ))}
+        <div className="relative" ref={sectionsRef}>
+          <button
+            type="button"
+            className={`gc-topnav-link ${sectionsMenuOpen || exploreActive ? 'gc-topnav-link-active' : ''}`}
+            aria-haspopup="menu"
+            aria-expanded={sectionsMenuOpen}
+            onClick={() => setSectionsMenuOpen((open) => !open)}
+          >
+            {t('nav.explore')} <ChevronDown size={12} className="ml-1" />
+          </button>
+          {sectionsMenuOpen && (
+            <div role="menu" className="gc-more-dropdown card absolute left-0 top-full z-50 mt-2 p-2 shadow-lg">
+              {[
+                {
+                  title: 'nav.workspace',
+                  links: [['/history', 'nav.history']],
+                },
+                {
+                  title: 'nav.insights',
+                  links: [
+                    ['/profiler', 'nav.profiler'],
+                    ['/cloud-carbon', 'nav.cloudCarbon'],
+                  ],
+                },
+                {
+                  title: 'nav.governance',
+                  links: [
+                    ['/budgets', 'nav.budgets'],
+                    ['/policies', 'nav.policies'],
+                    ['/deployments', 'nav.deployments'],
+                    ['/reports', 'nav.reports'],
+                  ],
+                },
+              ].map((section) => (
+                <div key={section.title} className="gc-nav-section">
+                  <p className="gc-nav-section-label">{t(section.title)}</p>
+                  {section.links.map(([to, labelKey]) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      role="menuitem"
+                      onClick={() => setSectionsMenuOpen(false)}
+                      className={({ isActive }) => `gc-more-link ${isActive ? 'gc-more-link-active' : ''}`}
+                    >
+                      {t(labelKey)}
+                    </NavLink>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </nav>
 
       <div className="flex-1 min-w-0" />
 
-      <div className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--gc-bg-subtle)] border border-[var(--gc-border-default)] text-[11px] font-mono text-[var(--gc-text-secondary)]">
+      <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--gc-bg-subtle)] border border-[var(--gc-border-default)] text-[11px] font-mono text-[var(--gc-text-secondary)]">
         {gridLoading ? (
           <Loader2 size={11} className="animate-spin" />
         ) : (
@@ -84,7 +161,7 @@ export default function Navbar({ navOpen, onToggleNav }: NavbarProps) {
         )}
       </div>
 
-      <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950 text-[11px] font-mono font-medium text-emerald-800 dark:text-emerald-300">
+      <div className="hidden lg:flex items-center gap-1 px-2 py-1 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950 text-[11px] font-mono font-medium text-emerald-800 dark:text-emerald-300">
         <ShieldCheck size={12} />
         {t('topbar.gate', { threshold })}
       </div>

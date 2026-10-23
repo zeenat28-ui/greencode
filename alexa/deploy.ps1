@@ -10,7 +10,7 @@
 #   - ASK CLI installed (npm install -g ask-cli)
 #   - GREENCODE_ALEXA_SKILL_ID set (your Alexa Skill ID)
 #   - GREENCODE_MCP_TOKEN set (for MCP server auth)
-#   - Your GreenCode API deployed and reachable (Vercel, EC2, etc.)
+#   - A public HTTPS API endpoint reachable by Amazon's Alexa service
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -22,15 +22,15 @@ Write-Host "====================================================================
 # ------------------------------------------------------------------ config --
 $SKILL_ID = $env:GREENCODE_ALEXA_SKILL_ID
 $MCP_TOKEN = $env:GREENCODE_MCP_TOKEN
-$API_BASE_URL = $env:GREENCODE_API_BASE_URL  # e.g. https://greencode-teal.vercel.app
-$INTERACTION_MODEL = Join-Path $PSScriptRoot "interaction_model_en_US.json"
+$API_BASE_URL = $env:GREENCODE_API_BASE_URL
+$INTERACTION_MODEL = Join-Path $PSScriptRoot "interactionModels\custom\en-US.json"
 
 if (-not $SKILL_ID) {
     Write-Warning "GREENCODE_ALEXA_SKILL_ID not set. Skill ID validation will be skipped."
 }
 if (-not $API_BASE_URL) {
-    Write-Warning "GREENCODE_API_BASE_URL not set. Using default https://greencode-teal.vercel.app"
-    $API_BASE_URL = "https://greencode-teal.vercel.app"
+    Write-Error "GREENCODE_API_BASE_URL is required for Alexa's cloud webhook. Local browser voice does not use this deployment script."
+    exit 1
 }
 
 # ------------------------------------------------------------------ step 1 --

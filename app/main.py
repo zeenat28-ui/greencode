@@ -26,6 +26,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 import uvicorn
+from app.auth.dependencies import require_permission as require_tenant_permission
+from app.auth.roles import Permission
+from app.auth.oauth import OAuthManager
 
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -126,6 +129,10 @@ class GitHubAuthRequest(BaseModel):
         ..., min_length=3, max_length=200,
         description="GitHub Personal Access Token with 'repo' scope",
     )
+
+class GitHubOAuthConnectRequest(BaseModel):
+    code: str = Field(..., min_length=1, max_length=2048)
+    redirect_uri: Optional[str] = Field(None, max_length=2048)
 
 
 class UpdateProfileRequest(BaseModel):
@@ -332,14 +339,13 @@ CORS_ORIGINS = [
     o.strip()
     for o in os.environ.get(
         "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000,http://localhost:8080,https://greencode-teal.vercel.app",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000",
     ).split(",")
     if o.strip()
 ]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_origin_regex=r"^https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_headers=["*"],
     allow_methods=["*"],
@@ -893,6 +899,21 @@ def health_check():
 
     hf = get_hf_client()
     deps["huggingface"] = "ok" if hf.configured else "not_configured"
+    try:
+        from app.bedrock_client import get_client as get_bedrock_client
+
+        bedrock = get_bedrock_client()
+        deps["aws_bedrock"] = "ok" if bedrock.configured else "not_configured"
+    except Exception as bedrock_exc:
+        deps["aws_bedrock"] = f"error: {type(bedrock_exc).__name__}"
+
+    try:
+        from app.gemini_client import get_client as get_gemini_client
+
+        gemini = get_gemini_client()
+        deps["google_gemini"] = "ok" if gemini.configured else "not_configured"
+    except Exception as gemini_exc:
+        deps["google_gemini"] = f"error: {type(gemini_exc).__name__}"
 
     # Carbon-intensity provider readiness. Operators need to know whether the
     # figures they are about to publish are live, and which source produced
@@ -971,7 +992,10 @@ def health_check():
             "dynamic_analysis": False if is_vercel else dyn["dynamic_analysis_available"],
             "dynamic_analysis_blockers": ["vercel_serverless"] if is_vercel else dyn["blockers"],
             "hardware_energy_measurement": False,
-            "llm_refactoring": hf.configured,
+            "llm_refactoring": any(
+                deps.get(provider) == "ok"
+                for provider in ("aws_bedrock", "google_gemini", "huggingface")
+            ),
         },
     }
 
@@ -1291,6 +1315,12 @@ def refactor_code_endpoint(
         file_context=req.file_context or req.file_path or "",
     )
 
+    if refactor_result.get("requires_manual_review"):
+        raise HTTPException(
+            status_code=422,
+            detail=refactor_result["explanation"],
+        )
+
     save_refactoring_record(
         original_code=code_input,
         refactored_code=refactor_result["refactored_code"],
@@ -1338,9 +1368,14 @@ def get_audit_history_endpoint(
 def list_monitored_repositories_endpoint(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Return latest audited repositories for the control plane overview."""
-    page = get_latest_repositories(limit=limit, offset=offset)
+    """Return the authenticated user's latest audited repositories."""
+    page = get_latest_repositories(
+        limit=limit,
+        user_id=int(current_user["id"]),
+        offset=offset,
+    )
     items = page.get("items", []) if isinstance(page, dict) else page
     enriched = [
         {
@@ -1359,58 +1394,52 @@ def list_monitored_repositories_endpoint(
 
 
 class LocalWorkspaceScanRequest(BaseModel):
-    subpath: str = Field("app", max_length=200, description="Relative path inside the workspace root to audit")
-    repo_name: str = Field("greencode-org/greencode", max_length=200)
-    team_id: str = Field("core-infra", max_length=100)
+    subpath: str = Field(".", max_length=200, description="Relative path inside the workspace root to audit")
+    repo_name: Optional[str] = Field(None, max_length=200)
 
 
 @app.post("/api/scan/local-workspace", tags=["Audit History"])
 def scan_local_workspace_endpoint(
     payload: Optional[LocalWorkspaceScanRequest] = Body(default=None),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Audit a directory within the local workspace and persist the scan record to the database."""
+    """Audit a workspace directory for the authenticated caller and persist its result."""
     from app.database import save_scan_results
-    from app.services.budget_service import BudgetService
 
     req = payload or LocalWorkspaceScanRequest()
     workspace_root = os.path.realpath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    candidate = os.path.realpath(os.path.join(workspace_root, req.subpath.strip("/\\") or "app"))
-    if not (candidate == workspace_root or candidate.startswith(workspace_root + os.sep)) or not os.path.exists(candidate):
+    relative_subpath = req.subpath.strip("/\\") or "."
+    candidate = os.path.realpath(os.path.join(workspace_root, relative_subpath))
+    if not (candidate == workspace_root or candidate.startswith(workspace_root + os.sep)) or not os.path.isdir(candidate):
         raise HTTPException(status_code=400, detail="Target path must be an existing directory inside the workspace root.")
 
     scan_result = audit_repository(candidate)
-    slug = req.repo_name.strip() or "greencode-org/greencode"
+    slug = req.repo_name.strip() if req.repo_name else os.path.basename(workspace_root)
     short_name = slug.split("/")[-1]
+    relative_subpath = os.path.relpath(candidate, workspace_root).replace(os.sep, "/")
     saved_repo = save_scan_results(
         name=short_name,
-        path_or_url=slug,
+        path_or_url=f"local-workspace/{relative_subpath}",
         total_files=scan_result["total_files"],
         total_lines=scan_result["total_lines"],
         green_score=scan_result["green_score"],
         violations_data=scan_result["violations"],
         summary_json=json.dumps(scan_result["violation_breakdown"]),
-        user_id=None,
+        user_id=current_user["id"],
         source="local_workspace",
-        full_name=slug,
-        default_branch="main",
-        html_url=f"https://github.com/{slug}",
+        full_name=None,
+        default_branch=None,
+        html_url=None,
     )
-
-    # Record modeled operational carbon impact against the team's active monthly budget
-    lines = max(1, int(scan_result.get("total_lines", 1)))
-    violations_count = int(scan_result.get("total_violations", 0))
-    estimated_kg_co2e = round((lines * 0.0005) + (violations_count * 0.25), 3)
-    BudgetService.record_emission(org_id=1, team_id=req.team_id, consumed_kg=estimated_kg_co2e)
 
     return {
         "success": True,
         "repo_id": saved_repo.id,
         "repo_name": slug,
         "repo_path": slug,
-        "full_name": slug,
+        "full_name": None,
         "source": "local_workspace",
         "is_github": False,
-        "team_id": req.team_id,
         "green_score": scan_result["green_score"],
         "total_files": scan_result["total_files"],
         "total_lines": scan_result["total_lines"],
@@ -1419,7 +1448,6 @@ def scan_local_workspace_endpoint(
         "languages_breakdown": scan_result.get("languages_breakdown", {}),
         "violations": scan_result.get("violations", []),
         "file_results": scan_result.get("file_results", []),
-        "recorded_emission_kg": estimated_kg_co2e,
     }
 
 
@@ -1986,6 +2014,42 @@ def _violation_breakdown(violations: List[Dict[str, Any]]) -> Dict[str, int]:
 # Never stored, never logged, immediately discarded after use.
 # ---------------------------------------------------------------------------
 
+@app.post("/api/auth/github/connect", tags=["GitHub Integration"])
+async def connect_github_oauth_endpoint(
+    payload: GitHubOAuthConnectRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Exchange GitHub OAuth for a browser-session token without changing GreenCode identity."""
+    try:
+        profile = await OAuthManager.exchange_github_code(payload.code, payload.redirect_uri)
+    except Exception as exc:
+        logger.warning(
+            "GitHub OAuth connection failed for user_id=%s error_type=%s",
+            current_user["id"],
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GitHub could not authorize this connection. Restart the GitHub connection flow and try again.",
+        ) from None
+
+    access_token = profile.get("access_token")
+    login = profile.get("username")
+    if not access_token or not login:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="GitHub authorization returned an incomplete account profile.",
+        )
+    return {
+        "success": True,
+        "github_token": access_token,
+        "github_user": {
+            "login": login,
+            "avatar_url": profile.get("avatar_url"),
+        },
+    }
+
+
 @app.get("/github/user", tags=["GitHub Integration"])
 def get_github_user_endpoint(
     http_request: Request,
@@ -2410,12 +2474,16 @@ async def api_scim_create_user(
 
 @app.get("/api/enterprise/compliance/esg-disclosure", tags=["Enterprise Compliance"])
 async def api_export_esg_disclosure(
-    current_user: Dict[str, Any] = Depends(require_permission("compliance:read")),
+    current_user: Dict[str, Any] = Depends(require_tenant_permission(Permission.EXPORT_ESG)),
 ):
     """Generate CSRD / SEC compliant signed corporate sustainability disclosure package."""
-    org_id = current_user.get("org_id") or 1
-    org = get_organization_by_id(org_id) or {"name": "Enterprise Workspace", "slug": "enterprise"}
-    audits_page = get_latest_repositories(limit=25)
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=403, detail="The authenticated user is not assigned to an organization.")
+    org = get_organization_by_id(org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="The authenticated organization was not found.")
+    audits_page = get_latest_repositories(limit=25, user_id=int(current_user["user_id"]))
     audits = audits_page.get("items", []) if isinstance(audits_page, dict) else audits_page
     report = ESGComplianceExporter.generate_disclosure_package(organization=org, audits=audits)
     return {

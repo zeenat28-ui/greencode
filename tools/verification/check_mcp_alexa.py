@@ -1,11 +1,12 @@
-"""Alexa+ compliance live check: boot the real server over a socket and prove
-the exact checklist items the Alexa+ MCP quickstart requires.
+"""MCP live transport check: boot the real server over a socket and exercise its
+discovery, optional bearer-token guard, MCP session, and tool latency.
 
 Checks, in order:
   1-3  Protected Resource Metadata (RFC 9728) at the well-known URI, at the
        resource-specific path, describing the resource as https:// behind a
        forwarded proto (i.e. behind cloudflared).
-  4    Authorization server metadata (RFC 8414) including PKCE S256.
+  4    OAuth authorization-server metadata is not advertised; GreenCode does
+       not implement OAuth/account linking.
   5-6  401 Unauthorized WITHOUT a WWW-Authenticate header for unauthenticated
        GET and POST to /mcp.
   7    401 for a wrong bearer token.
@@ -20,11 +21,17 @@ import asyncio
 import json
 import os
 import socket
+import sys
 import threading
 import time
+from pathlib import Path
 
 import httpx
 import uvicorn
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from app.mcp_server import create_app
 from mcp import ClientSession
@@ -60,7 +67,7 @@ def wait_for_port(port, timeout=30):
 
 def check_discovery(failures, base, remote=False):
     print("-" * 62)
-    print("Discovery documents (RFC 9728 / RFC 8414)")
+    print("MCP discovery (RFC 9728; OAuth/account linking not implemented)")
     with httpx.Client(base_url=base, timeout=20) as client:
         prm = client.get("/.well-known/oauth-protected-resource")
         if prm.status_code != 200 or not prm.json().get("resource", "").endswith("/mcp"):
@@ -93,12 +100,15 @@ def check_discovery(failures, base, remote=False):
             else:
                 print("3  PRM behind tunnel    : OK  reports https:// URL")
 
+        prm_document = prm.json() if prm.status_code == 200 else {}
         asmd = client.get("/.well-known/oauth-authorization-server")
-        methods = asmd.json().get("code_challenge_methods_supported", []) if asmd.status_code == 200 else []
-        if asmd.status_code != 200 or "S256" not in methods:
-            failures.append(f"AS metadata missing or no S256: {asmd.status_code} {methods}")
+        if prm_document.get("authorization_servers") != [] or asmd.status_code != 404:
+            failures.append(
+                "OAuth metadata incorrectly advertises an authorization server: "
+                f"PRM={prm_document.get('authorization_servers')} AS={asmd.status_code}"
+            )
         else:
-            print(f"4  AS metadata + S256   : OK  methods={methods}")
+            print("4  OAuth metadata      : not advertised (no OAuth implementation)")
 
 
 def check_401(failures, base):
@@ -130,7 +140,7 @@ def check_401(failures, base):
 
 async def run_session_checks(failures, mcp_url, token):
     print("-" * 62)
-    print("Authenticated MCP session + latency budget (<500 ms warm)")
+    print("Authenticated MCP session + first-call latency budget (<500 ms)")
     import httpx2
 
     # This MCP SDK version threads auth through an httpx2 client rather than
@@ -178,6 +188,11 @@ async def run_session_checks(failures, mcp_url, token):
                     verdict = "ok" if ok else f"status={warm_payload.get('status')}"
                     if not ok:
                         failures.append(f"{name} returned status={warm_payload.get('status')}")
+                    if cold_ms >= BUDGET_MS:
+                        failures.append(
+                            f"{name} first round trip {cold_ms:.0f} ms >= {BUDGET_MS} ms budget"
+                        )
+                        verdict = f"OVER FIRST-CALL BUDGET ({cold_ms:.0f} ms)"
                     if warm_ms >= BUDGET_MS:
                         failures.append(
                             f"{name} warm round trip {warm_ms:.0f} ms >= {BUDGET_MS} ms budget"
@@ -221,8 +236,14 @@ def main():
     if args.url:
         base = args.url.rstrip("/")
     else:
-        # The token must be in the environment before create_app() reads it.
+        # Prepare startup-only caches before opening the socket so the first
+        # measured tool call is the first client call, not a competing warm-up.
         os.environ["GREENCODE_MCP_TOKEN"] = token
+        warm_started = time.perf_counter()
+        from app import mcp_server
+
+        mcp_server.warm_mcp_caches()
+        print(f"Startup pre-warm           : {(time.perf_counter() - warm_started) * 1000:.0f} ms")
         config = uvicorn.Config(create_app(), host="127.0.0.1", port=PORT,
                                 log_level="error")
         server = uvicorn.Server(config)
@@ -235,7 +256,7 @@ def main():
         base = LOCAL_BASE
 
     print("=" * 62)
-    print(f"Alexa+ MCP compliance live check  ({base})")
+    print(f"GreenCode MCP transport checks  ({base})")
     print("=" * 62)
     failures = []
     check_discovery(failures, base, remote=bool(args.url))
@@ -251,7 +272,7 @@ def main():
         for f in failures:
             print(f"FAIL: {f}")
         return 1
-    print("ALL ALEXA+ COMPLIANCE CHECKS PASSED")
+    print("MCP transport checks passed. This does not verify Alexa+, Echo, or OAuth.")
     return 0
 
 

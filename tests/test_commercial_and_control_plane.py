@@ -117,25 +117,61 @@ def test_energy_control_plane_workloads_and_pr_budget_gate():
 
 def test_local_workspace_scanner_and_path_traversal_guard():
     """Verify /api/scan/local-workspace audits valid subdirectories and rejects path traversal."""
+    unauthenticated_repositories = client.get("/api/repositories")
+    assert unauthenticated_repositories.status_code == 401
+
+    unauthenticated = client.post(
+        "/api/scan/local-workspace",
+        json={"subpath": "samples"},
+    )
+    assert unauthenticated.status_code == 401
+
+    registration = client.post(
+        "/api/auth/register",
+        json={
+            "email": "local-scan-test@example.test",
+            "username": "local-scan-test",
+            "password": "TestPassword123!A",
+        },
+    )
+    assert registration.status_code == 201
+    headers = {"Authorization": f"Bearer {registration.json()['access_token']}"}
+
+    repositories = client.get("/api/repositories", headers=headers)
+    assert repositories.status_code == 200
+    assert isinstance(repositories.json()["repositories"], list)
+
     valid_res = client.post(
         "/api/scan/local-workspace",
-        json={"subpath": "samples", "team_id": "core-infra"},
+        json={"subpath": "app"},
+        headers=headers,
     )
     assert valid_res.status_code == 200
     data = valid_res.json()
     assert data["success"] is True
     assert data["total_files"] >= 1
+    assert "recorded_emission_kg" not in data
+
+    history = client.get("/api/history", headers=headers)
+    assert history.status_code == 200
+    saved_scan = next(
+        repo for repo in history.json()["repositories"]
+        if repo["id"] == data["repo_id"]
+    )
+    assert saved_scan["source"] == "local_workspace"
+    assert saved_scan["path_or_url"] == "local-workspace/app"
 
     traversal_res = client.post(
         "/api/scan/local-workspace",
-        json={"subpath": "../../Windows", "team_id": "core-infra"},
+        json={"subpath": "../../Windows"},
+        headers=headers,
     )
     assert traversal_res.status_code in (400, 403, 404)
 
 
 def test_csrd_signed_evidence_bundle_zip():
     """Verify /api/reports/esg/1/evidence-bundle returns a valid signed ZIP with manifest."""
-    res = client.get("/api/reports/esg/1/evidence-bundle")
+    res = client.get("/api/reports/esg/1/evidence-bundle", headers=_admin_headers())
     assert res.status_code == 200
     assert res.headers.get("content-type") == "application/zip"
     assert res.headers.get("X-Bundle-Root-SHA256")

@@ -17,7 +17,7 @@ docker==7.2.0
 requests==2.34.2
 psutil==7.2.2
 pydantic==2.13.4
-python-dotenv==1.2.3
+python-dotenv==1.2.4
 huggingface-hub>=0.20.0
 tree-sitter==0.26.0
 tree-sitter-languages==1.10.2

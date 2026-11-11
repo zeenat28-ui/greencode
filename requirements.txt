@@ -5,7 +5,7 @@
 # instead of silently picking up a breaking minor release on deploy day.
 #
 # Regenerate after an intentional upgrade:  pip list --format=freeze
-fastapi==0.141.1
+fastapi==0.146.0
 uvicorn==0.54.0
 streamlit==1.65.0
 streamlit-code-diff==0.1.2
